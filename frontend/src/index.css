@@ -1,0 +1,93 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    @apply text-slate-900 bg-white;
+    overflow-x: hidden;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl
+           bg-blue-500 text-white font-semibold text-base
+           shadow-blue hover:bg-blue-600 hover:-translate-y-0.5
+           transition-all duration-200 cursor-pointer border-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl
+           bg-green-500 text-white font-semibold text-base
+           shadow-green hover:bg-green-600 hover:-translate-y-0.5
+           transition-all duration-200 cursor-pointer border-none;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl
+           border-2 border-navy text-navy font-semibold text-base
+           hover:bg-navy hover:text-white
+           transition-all duration-200 cursor-pointer bg-transparent;
+  }
+  .btn-outline-white {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl
+           border-2 border-white/50 text-white font-semibold text-base
+           hover:bg-white/10 hover:border-white
+           transition-all duration-200 cursor-pointer bg-transparent;
+  }
+  .btn-white {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl
+           bg-white text-navy font-bold text-base
+           hover:-translate-y-0.5 shadow-lg
+           transition-all duration-200 cursor-pointer;
+  }
+  .card {
+    @apply bg-white rounded-2xl border border-slate-100 shadow-card;
+  }
+  .section-label {
+    @apply inline-block bg-blue-100 text-blue-500 px-3 py-1 rounded-full
+           text-xs font-semibold tracking-wide uppercase mb-3;
+  }
+  .section-title {
+    @apply font-display text-3xl md:text-4xl font-bold text-navy leading-tight tracking-tight;
+  }
+  .section-sub {
+    @apply text-slate-500 text-base md:text-lg leading-relaxed;
+  }
+  .form-input {
+    @apply w-full px-4 py-3 rounded-xl border-2 border-slate-200
+           font-sans text-sm text-slate-900 bg-white outline-none
+           focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10
+           transition-all duration-200;
+  }
+  .form-label {
+    @apply block text-xs font-semibold text-navy mb-1.5;
+  }
+  .upload-zone {
+    @apply border-2 border-dashed border-slate-300 rounded-xl p-5
+           text-center cursor-pointer bg-slate-50
+           hover:border-blue-500 hover:bg-blue-50
+           transition-all duration-200;
+  }
+}
+
+@layer utilities {
+  .font-display { font-family: 'Fraunces', serif; }
+  .gradient-text {
+    background: linear-gradient(135deg, #1A73C8, #3DAA4A);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "nav": {
+    "how_it_works": "Como funciona",
+    "professionals": "Profissionais",
+    "safety": "Segurança",
+    "login": "Entrar",
+    "get_started": "Começar agora"
+  },
+  "hero": {
+    "badge": "Plataforma verificada de cuidados",
+    "title_1": "Cuidado em casa,",
+    "title_2": "quando você precisar",
+    "subtitle": "Conectamos pacientes e famílias a enfermeiros, técnicos e cuidadores verificados. Agendamento simples, pagamento seguro, profissional certificado.",
+    "cta_client": "Preciso de cuidado",
+    "cta_pro": "Sou profissional"
+  },
+  "trust": {
+    "coren": "Validação COREN/COFEN",
+    "background": "Antecedentes criminais",
+    "selfie": "Selfie com prova de vida",
+    "lgpd": "Conformidade LGPD",
+    "whatsapp": "Suporte WhatsApp"
+  },
+  "how": {
+    "label": "Como funciona",
+    "title": "Simples para todos os lados",
+    "subtitle": "Seja você quem precisa de cuidado ou quem presta o serviço — o processo é rápido e seguro.",
+    "tab_client": "Para clientes",
+    "tab_pro": "Para profissionais",
+    "client_steps": {
+      "1": { "title": "Crie seu perfil", "desc": "Cadastre-se em minutos. Adicione informações do paciente, histórico e necessidades de cuidado." },
+      "2": { "title": "Encontre profissionais", "desc": "Veja enfermeiros e cuidadores disponíveis na sua região com avaliações e especialidades." },
+      "3": { "title": "Agende o atendimento", "desc": "Escolha horário, duração e tipo de serviço. De 1h até plantões de 24h ou recorrência semanal." },
+      "4": { "title": "Acompanhe tudo", "desc": "Receba relatórios pós-atendimento, avalie o profissional e faça o pagamento com segurança." }
+    },
+    "pro_steps": {
+      "1": { "title": "Envie seus documentos", "desc": "COREN ativo, diploma, antecedentes criminais e selfie com prova de vida. Aprovação em até 48h." },
+      "2": { "title": "Configure sua agenda", "desc": "Defina seus dias, horários disponíveis e raio de atendimento. Você controla quando trabalha." },
+      "3": { "title": "Aceite chamados", "desc": "Receba notificações de solicitações próximas. Aceite ou recuse com um toque. Sem pressão." },
+      "4": { "title": "Receba seu pagamento", "desc": "Pagamento automático após cada atendimento. Direto na sua conta via PIX, sem demora." }
+    }
+  },
+  "professionals": {
+    "label": "Profissionais",
+    "title": "Quem cuida de quem você ama",
+    "subtitle": "Três categorias de profissionais verificados, cada uma com escopo de atuação bem definido.",
+    "nurse": {
+      "title": "Enfermeiro(a)",
+      "badge": "COREN ativo obrigatório",
+      "services": ["Consulta e avaliação de enfermagem", "Curativos simples e complexos", "Administração de medicamentos", "Cuidados com sondas e traqueostomia", "Relatórios e evolução de prontuário"]
+    },
+    "technician": {
+      "title": "Técnico de Enfermagem",
+      "badge": "COREN técnico ativo",
+      "services": ["Banho no leito e higiene", "Prevenção de escaras", "Monitoramento de sinais vitais", "Curativos autorizados", "Apoio ao paciente e família"]
+    },
+    "caregiver": {
+      "title": "Cuidador(a)",
+      "badge": "Certificado + antecedentes",
+      "services": ["Auxílio nas atividades diárias", "Acompanhamento em consultas", "Companhia e alimentação assistida", "Monitoramento não clínico", "Organização de rotinas"]
+    }
+  },
+  "safety": {
+    "label": "Segurança",
+    "title": "Construído com segurança em cada detalhe",
+    "items": {
+      "identity": { "title": "Verificação de identidade", "desc": "Selfie com prova de vida + comparação com documento oficial. Detectamos duplicatas e fraudes automaticamente." },
+      "coren": { "title": "Validação COREN/COFEN", "desc": "Cruzamento automático do número de registro com o status ativo no conselho profissional." },
+      "gps": { "title": "GPS com audit trail", "desc": "Check-in e check-out com hora e localização registrados. Histórico completo de cada atendimento." },
+      "lgpd": { "title": "Dados criptografados (LGPD)", "desc": "Todos os dados sensíveis criptografados em trânsito e em repouso. Conformidade total com a LGPD." }
+    },
+    "checklist_title": "✓ Checklist de aprovação profissional",
+    "checklist": ["Documento oficial com foto", "Selfie com prova de vida", "Registro COREN ativo", "Diploma ou certificado", "Antecedentes criminais", "Comprovante de residência", "Declaração de veracidade", "Termos de uso aceitos"],
+    "review_note": "Revisão e aprovação pela equipe Cuida.me em até 48 horas após envio completo."
+  },
+  "register": {
+    "label": "Cadastro",
+    "title": "Comece agora, é gratuito",
+    "subtitle": "Crie sua conta em menos de 3 minutos.",
+    "tab_client": "Sou cliente / família",
+    "tab_pro": "Sou profissional",
+    "google_client": "Entrar com Google como Cliente",
+    "google_pro": "Entrar com Google como Profissional",
+    "or": "ou preencha o formulário",
+    "already_have": "Já tem conta?",
+    "login": "Fazer login",
+    "continue": "Continuar",
+    "back": "Voltar",
+    "submit_client": "Criar conta",
+    "submit_pro": "Enviar para análise",
+    "success_client_title": "Cadastro realizado!",
+    "success_client_desc": "Verifique seu e-mail para confirmar a conta. Em breve você poderá encontrar profissionais na sua região.",
+    "success_pro_title": "Cadastro enviado!",
+    "success_pro_desc": "Nossa equipe irá revisar seus documentos em até 48 horas. Você receberá uma notificação por e-mail e WhatsApp quando sua conta for aprovada.",
+    "fields": {
+      "full_name": "Nome completo",
+      "cpf": "CPF",
+      "email": "E-mail",
+      "whatsapp": "WhatsApp",
+      "password": "Senha",
+      "password_placeholder": "Mínimo 8 caracteres",
+      "patient_name": "Nome do paciente",
+      "patient_age": "Idade",
+      "relation": "Relação com o paciente",
+      "diagnoses": "Diagnósticos / condições principais",
+      "address": "Endereço de atendimento",
+      "care_type": "Tipo de cuidado necessário",
+      "coren_number": "Nº Registro COREN",
+      "state": "Estado (UF)",
+      "specialties": "Especialidades",
+      "city": "Cidade / região de atendimento",
+      "radius": "Raio de atendimento (km)",
+      "upload_click": "Clique para enviar ou arraste o arquivo",
+      "upload_formats": "JPG, PNG ou PDF · Máx. 5MB",
+      "doc_photo": "Documento com foto (RG/CNH)",
+      "diploma": "Diploma ou certificado",
+      "vaccination": "Carteira de vacinação (opcional)",
+      "selfie": "Selfie com prova de vida",
+      "criminal": "Antecedentes criminais",
+      "criminal_note": "Emitido há menos de 90 dias"
+    },
+    "roles": {
+      "nurse": { "title": "Enfermeiro(a)", "subtitle": "COREN graduado" },
+      "technician": { "title": "Técnico de Enf.", "subtitle": "COREN técnico" },
+      "caregiver": { "title": "Cuidador(a)", "subtitle": "Certificado" }
+    },
+    "terms": "Li e aceito os Termos de Uso e a Política de Privacidade da Cuida.me",
+    "lgpd_consent": "Autorizo o tratamento dos meus dados conforme a LGPD",
+    "accuracy_declaration": "Declaro que todas as informações são verdadeiras e autorizo o tratamento conforme a LGPD"
+  },
+  "testimonials": {
+    "label": "Depoimentos",
+    "title": "O que dizem sobre a Cuida.me",
+    "items": [
+      { "text": "Minha mãe precisou de cuidados após a cirurgia. Em menos de 2 horas encontrei uma enfermeira verificada, com COREN ativo e ótimas avaliações. Tranquilidade que não tem preço.", "name": "Ana Carolina M.", "location": "São Paulo, SP" },
+      { "text": "Como técnica de enfermagem, nunca imaginei ter tanta autonomia para escolher meus horários e receber direto na minha conta. A plataforma é limpa e fácil de usar.", "name": "Juliana F.", "location": "Técnica de Enfermagem · RJ" },
+      { "text": "O prontuário digital foi o que me convenceu. Cada visita fica registrada, com relatório enviado para a família. Profissionalismo de verdade no cuidado domiciliar.", "name": "Roberto P.", "location": "Belo Horizonte, MG" }
+    ]
+  },
+  "cta": {
+    "title": "Pronto para cuidar melhor?",
+    "subtitle": "Junte-se às famílias e profissionais que já confiam na Cuida.me.",
+    "client": "Preciso de cuidado",
+    "pro": "Quero ser profissional"
+  },
+  "footer": {
+    "tagline": "Conectando famílias a profissionais de saúde verificados para cuidado domiciliar seguro e acessível.",
+    "platform": "Plataforma",
+    "how_it_works": "Como funciona",
+    "for_clients": "Para clientes",
+    "for_pros": "Para profissionais",
+    "pricing": "Preços",
+    "support": "Suporte",
+    "help": "Central de ajuda",
+    "contact": "Fale conosco",
+    "whatsapp": "WhatsApp",
+    "report": "Reportar problema",
+    "legal": "Legal",
+    "terms": "Termos de uso",
+    "privacy": "Privacidade (LGPD)",
+    "conduct": "Código de conduta",
+    "cookies": "Cookies",
+    "rights": "Todos os direitos reservados",
+    "lgpd_badge": "Conforme LGPD"
+  }
+}
