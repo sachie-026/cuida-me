@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -8,17 +9,16 @@ import httpx
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# ── Schemas ──
 class GoogleAuthRequest(BaseModel):
-    credential: str           # Google ID token
+    credential: str
     role: str = "client"
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    phone: str | None = None
-    cpf: str | None = None
+    phone: Optional[str] = None
+    cpf: Optional[str] = None
     role: str = "client"
 
 class LoginRequest(BaseModel):

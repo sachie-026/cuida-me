@@ -1,11 +1,24 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GoogleLogin } from "@react-oauth/google";
 import { Link } from "react-router-dom";
-import Logo from "../components/common/Logo";
-import LanguageSwitcher from "../components/common/LanguageSwitcher";
+import Logo from "../../components/common/Logo";
+import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 
 const Login = () => {
   const { t } = useTranslation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const quickLogin = (role) => {
+    if (role === "client") {
+      setEmail("admin@cuida.me");
+      setPassword("admin123");
+    } else {
+      setEmail("enfermeira@cuida.me");
+      setPassword("pro123");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-hero-gradient flex flex-col items-center justify-center px-4 py-12">
@@ -20,9 +33,28 @@ const Login = () => {
           <h1 className="font-display text-2xl font-bold text-navy mb-1">
             {t("nav.login")}
           </h1>
-          <p className="text-slate-500 text-sm mb-7">
+          <p className="text-slate-500 text-sm mb-6">
             Acesse sua conta Cuida.me
           </p>
+
+          {/* Dev quick login */}
+          <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <p className="text-xs font-semibold text-amber-700 mb-2">🛠 Dev — Quick login</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => quickLogin("client")}
+                className="flex-1 text-xs py-2 px-2 rounded-lg bg-blue-100 text-blue-700 font-semibold hover:bg-blue-200 transition-colors"
+              >
+                👤 Client
+              </button>
+              <button
+                onClick={() => quickLogin("pro")}
+                className="flex-1 text-xs py-2 px-2 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200 transition-colors"
+              >
+                👩‍⚕️ Professional
+              </button>
+            </div>
+          </div>
 
           {/* Google */}
           <div className="flex justify-center mb-5">
@@ -44,11 +76,23 @@ const Login = () => {
           {/* Email login */}
           <div className="mb-4">
             <label className="form-label">E-mail</label>
-            <input className="form-input" type="email" placeholder="seu@email.com" />
+            <input
+              className="form-input"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
           </div>
           <div className="mb-6">
             <label className="form-label">Senha</label>
-            <input className="form-input" type="password" placeholder="Sua senha" />
+            <input
+              className="form-input"
+              type="password"
+              placeholder="Sua senha"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
           </div>
 
           <button className="btn-primary w-full mb-4">Entrar</button>

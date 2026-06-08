@@ -1,3 +1,4 @@
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -11,13 +12,13 @@ class BookingCreate(BaseModel):
     patient_id:      str
     professional_id: str
     service_type:    str
-    procedures:      list[str] = []
+    procedures:      List[str] = []
     scheduled_start: datetime
     scheduled_end:   datetime
     total_price:     float
     platform_fee:    float
     pro_payout:      float
-    notes:           str | None = None
+    notes:           Optional[str] = None
 
 class CheckInOut(BaseModel):
     lat: float

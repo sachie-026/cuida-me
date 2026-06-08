@@ -1,3 +1,4 @@
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -7,13 +8,13 @@ from app.models.models import Professional, User
 router = APIRouter(prefix="/professionals", tags=["professionals"])
 
 class ProfessionalUpdate(BaseModel):
-    council_number: str | None = None
-    council_state:  str | None = None
-    specialties:    list[str] = []
+    council_number: Optional[str] = None
+    council_state:  Optional[str] = None
+    specialties:    List[str] = []
     service_radius: int = 15
-    city:           str | None = None
-    state:          str | None = None
-    hourly_rate:    float | None = None
+    city:           Optional[str] = None
+    state:          Optional[str] = None
+    hourly_rate:    Optional[float] = None
     is_available:   bool = False
 
 @router.get("/nearby")
