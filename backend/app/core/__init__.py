@@ -1,1 +1,0 @@
-from app.routes import auth, professionals, bookings, admin, ratings, users
