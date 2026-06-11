@@ -2,30 +2,30 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.routes import auth, professionals, bookings
+from app.routes import auth, professionals, bookings, admin, ratings, users
 
-# Create tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Cuida.me API",
-    description="Home care platform API — connecting patients with verified nursing professionals.",
+    description="Home care platform API",
     version="1.0.0",
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Routers
 app.include_router(auth.router,          prefix="/api")
 app.include_router(professionals.router, prefix="/api")
 app.include_router(bookings.router,      prefix="/api")
+app.include_router(admin.router,         prefix="/api")
+app.include_router(ratings.router,       prefix="/api")
+app.include_router(users.router,         prefix="/api")
 
 @app.get("/")
 def root():
