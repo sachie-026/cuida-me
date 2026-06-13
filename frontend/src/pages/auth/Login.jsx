@@ -4,6 +4,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { Link, useNavigate } from "react-router-dom";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
+import FullScreenLoader from "../../components/common/FullScreenLoader";
 import toast from "react-hot-toast";
 import axios from "axios";
 
@@ -34,14 +35,15 @@ const RolePicker = ({ onPick }) => (
 const Login = () => {
   const { t } = useTranslation();
   const navigate  = useNavigate();
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [email,       setEmail]       = useState("");
+  const [password,    setPassword]    = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [pendingCred, setPendingCred] = useState(null);
 
   const quickLogin = (role) => {
-    if (role === "client") { setEmail("admin@cuida.me");       setPassword("admin123"); }
-    else                   { setEmail("enfermeira@cuida.me");  setPassword("pro123");   }
+    if (role === "client") { setEmail("admin@cuida.me");      setPassword("admin123"); }
+    else                   { setEmail("enfermeira@cuida.me"); setPassword("pro123");   }
   };
 
   const saveAndRedirect = (data) => {
@@ -49,6 +51,7 @@ const Login = () => {
     localStorage.setItem("role",      data.role);
     localStorage.setItem("user_id",   data.user_id);
     localStorage.setItem("full_name", data.full_name);
+    localStorage.setItem("email",     data.email);
     toast.success(`Bem-vindo, ${data.full_name}!`);
     const isPro = ["nurse","technician","caregiver"].includes(data.role);
     navigate(isPro ? "/dashboard/professional" : "/dashboard/client");
@@ -68,12 +71,12 @@ const Login = () => {
   };
 
   const handleGoogleSuccess = (cred) => {
-    // Store credential and show role picker for new users
     setPendingCred(cred.credential);
   };
 
   const handleRolePick = async (role) => {
     setPendingCred(null);
+    setGoogleLoading(true);
     try {
       const { data } = await axios.post(`${API}/api/auth/google`, {
         credential: pendingCred,
@@ -82,8 +85,11 @@ const Login = () => {
       saveAndRedirect(data);
     } catch {
       toast.error("Erro ao entrar com Google.");
+      setGoogleLoading(false);
     }
   };
+
+  if (googleLoading) return <FullScreenLoader message="Entrando com Google..." />;
 
   return (
     <div className="min-h-screen bg-hero-gradient flex flex-col items-center justify-center px-4 py-12">
@@ -114,7 +120,6 @@ const Login = () => {
             </div>
           </div>
 
-          {/* Google */}
           <div className="flex justify-center mb-5">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
@@ -144,7 +149,12 @@ const Login = () => {
 
           <button onClick={handleLogin} disabled={loading}
             className="btn-primary w-full mb-4 disabled:opacity-60">
-            {loading ? "Entrando..." : "Entrar"}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                Entrando...
+              </span>
+            ) : "Entrar"}
           </button>
 
           <p className="text-center text-xs text-slate-500">
