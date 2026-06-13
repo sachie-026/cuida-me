@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
@@ -31,8 +31,9 @@ class TokenResponse(BaseModel):
     role: str
     user_id: str
     full_name: str
+    email: str
+    is_new_user: bool = False
 
-# ── Google OAuth ──
 @router.post("/google", response_model=TokenResponse)
 async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
     # Verify Google token
@@ -43,32 +44,42 @@ async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid Google token")
 
-    info = resp.json()
+    info      = resp.json()
     google_id = info.get("sub")
     email     = info.get("email")
     full_name = info.get("name", "")
+    is_new    = False
 
-    # Find or create user
+    # Find existing user by google_id first, then email
     user = db.query(User).filter(User.google_id == google_id).first()
     if not user:
         user = db.query(User).filter(User.email == email).first()
         if user:
+            # Link Google ID to existing account
             user.google_id = google_id
         else:
+            # New user — use provided role
+            is_new = True
             user = User(
-                email=email, full_name=full_name,
+                email=email,
+                full_name=full_name,
                 google_id=google_id,
                 role=UserRole(body.role),
+                is_active=True,
                 is_verified=True,
             )
             db.add(user)
+
     db.commit()
     db.refresh(user)
 
     token = create_access_token({"sub": user.id, "role": user.role})
-    return TokenResponse(access_token=token, role=user.role, user_id=user.id, full_name=user.full_name)
+    return TokenResponse(
+        access_token=token, role=user.role,
+        user_id=user.id, full_name=user.full_name,
+        email=user.email, is_new_user=is_new,
+    )
 
-# ── Register ──
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
@@ -85,13 +96,20 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     token = create_access_token({"sub": user.id, "role": user.role})
-    return TokenResponse(access_token=token, role=user.role, user_id=user.id, full_name=user.full_name)
+    return TokenResponse(
+        access_token=token, role=user.role,
+        user_id=user.id, full_name=user.full_name,
+        email=user.email,
+    )
 
-# ── Login ──
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token({"sub": user.id, "role": user.role})
-    return TokenResponse(access_token=token, role=user.role, user_id=user.id, full_name=user.full_name)
+    return TokenResponse(
+        access_token=token, role=user.role,
+        user_id=user.id, full_name=user.full_name,
+        email=user.email,
+    )
