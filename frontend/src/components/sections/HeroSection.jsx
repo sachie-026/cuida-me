@@ -73,10 +73,10 @@ const HeroSection = () => {
             {t("hero.subtitle")}
           </p>
           <div className="flex flex-wrap gap-3">
-            <a href="#register" className="btn-primary">
+            <a href="/register" className="btn-primary">
               {t("hero.cta_client")}
             </a>
-            <a href="#register" className="btn-outline">
+            <a href="/register" className="btn-outline">
               {t("hero.cta_pro")}
             </a>
           </div>

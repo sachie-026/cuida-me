@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { GoogleLogin } from "@react-oauth/google";
-import { useNavigate } from "react-router-dom";
-import { Upload, CheckCircle, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Upload, CheckCircle, X, AlertCircle } from "lucide-react";
 import axios from "axios";
+import Logo from "../../components/common/Logo";
+import LanguageSwitcher from "../../components/common/LanguageSwitcher";
+import FullScreenLoader from "../../components/common/FullScreenLoader";
 import toast from "react-hot-toast";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -11,15 +14,12 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 // TODO: Implement COREN validation via COFEN/COREN API before account approval
 // TODO: Implement document upload to Cloudinary (photo ID, diploma, criminal record, selfie)
 // TODO: Implement criminal background check verification
-// TODO: Admin must approve professional before they can accept bookings (already in admin panel)
+// TODO: Admin must approve professional before they can accept bookings
 
-/* ── Decode Google JWT ── */
+/* ── Helpers ── */
 const decodeGoogleJWT = (credential) => {
   try {
-    const base64 = credential
-      .split(".")[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
+    const base64 = credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
     return JSON.parse(atob(padded));
   } catch {
@@ -40,7 +40,15 @@ const StepDots = ({ total, current }) => (
   </div>
 );
 
-// TODO: Wire to Cloudinary — files are NOT saved yet
+const InlineError = ({ message }) =>
+  message ? (
+    <div className="flex items-center gap-2 mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+      <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
+      <p className="text-xs text-red-600 font-medium">{message}</p>
+    </div>
+  ) : null;
+
+// TODO: Wire to Cloudinary
 const UploadZone = ({ label, note }) => (
   <div className="mb-4">
     <label className="form-label">{label}</label>
@@ -74,14 +82,15 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
   const [step,    setStep]    = useState(1);
   const [done,    setDone]    = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
   const f = t("register.fields", { returnObjects: true });
 
   const [form, setForm] = useState({
     full_name: "", email: "", cpf: "", phone: "", password: "",
-    patient_name: "", age: "", relation: "", diagnoses: "", address: "", care_type: "",
+    patient_name: "", age: "", relation: "", diagnoses: "",
+    address: "", care_type: "",
   });
 
-  // ← THIS is the fix: sync googleData into form when it changes
   useEffect(() => {
     if (googleData) {
       setForm(p => ({
@@ -92,10 +101,11 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
     }
   }, [googleData]);
 
-  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k) => (e) => { setError(""); setForm((p) => ({ ...p, [k]: e.target.value })); };
 
   const handleSubmit = async () => {
     setLoading(true);
+    setError("");
     try {
       let data;
       if (googleData?.credential) {
@@ -103,8 +113,8 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
         data = res.data;
       } else {
         const res = await axios.post(`${API}/api/auth/register`, {
-          email: form.email, password: form.password, full_name: form.full_name,
-          phone: form.phone, cpf: form.cpf, role: "client",
+          email: form.email, password: form.password,
+          full_name: form.full_name, phone: form.phone, cpf: form.cpf, role: "client",
         });
         data = res.data;
       }
@@ -114,17 +124,16 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
       localStorage.setItem("full_name", data.full_name);
       localStorage.setItem("email",     data.email || form.email);
       setDone(true);
-      toast.success("Conta criada com sucesso!");
       setTimeout(() => navigate("/dashboard/client"), 2000);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao criar conta.");
+      setError(err.response?.data?.detail || "Erro ao criar conta. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
 
   if (done) return (
-    <div className="text-center py-6">
+    <div className="text-center py-8">
       <CheckCircle size={56} className="mx-auto mb-4 text-green-500" />
       <h3 className="font-display text-2xl text-navy mb-2">{t("register.success_client_title")}</h3>
       <p className="text-slate-500 text-sm">{t("register.success_client_desc")}</p>
@@ -153,11 +162,8 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
               <label className="form-label">{f.email} *</label>
               <input
                 className={`form-input ${googleData ? "bg-slate-100 text-slate-500 cursor-not-allowed" : ""}`}
-                type="email"
-                value={form.email}
-                onChange={set("email")}
-                placeholder="seu@email.com"
-                readOnly={!!googleData}
+                type="email" value={form.email} onChange={set("email")}
+                placeholder="seu@email.com" readOnly={!!googleData}
               />
             </div>
             <div>
@@ -166,16 +172,19 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
             </div>
           </div>
           {!googleData && (
-            <div className="mb-5">
+            <div className="mb-2">
               <label className="form-label">{f.password} *</label>
               <input className="form-input" type="password" value={form.password} onChange={set("password")} placeholder={f.password_placeholder} />
             </div>
           )}
+          <InlineError message={error} />
           <button onClick={() => {
-            if (!form.full_name || !form.email) { toast.error("Nome e e-mail são obrigatórios."); return; }
-            if (!googleData && !form.password)  { toast.error("Defina uma senha."); return; }
-            setStep(2);
-          }} className="btn-primary w-full">{t("register.continue")} →</button>
+            if (!form.full_name)               { setError("Nome completo é obrigatório."); return; }
+            if (!form.email)                   { setError("E-mail é obrigatório."); return; }
+            if (!googleData && !form.password) { setError("Defina uma senha."); return; }
+            if (!googleData && form.password.length < 8) { setError("A senha deve ter no mínimo 8 caracteres."); return; }
+            setError(""); setStep(2);
+          }} className="btn-primary w-full mt-4">{t("register.continue")} →</button>
         </div>
       )}
 
@@ -202,15 +211,17 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
             <label className="form-label">{f.diagnoses}</label>
             <textarea className="form-input min-h-[80px]" value={form.diagnoses} onChange={set("diagnoses")} placeholder="Ex: Diabetes, hipertensão, acamado..." />
           </div>
-          <div className="mb-5">
+          <div className="mb-2">
             <label className="form-label">{f.address} *</label>
             <input className="form-input" value={form.address} onChange={set("address")} placeholder="Rua, número, bairro, cidade" />
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="btn-outline flex-1">← {t("register.back")}</button>
+          <InlineError message={error} />
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => { setError(""); setStep(1); }} className="btn-outline flex-1">← {t("register.back")}</button>
             <button onClick={() => {
-              if (!form.patient_name || !form.address) { toast.error("Preencha os dados do paciente."); return; }
-              setStep(3);
+              if (!form.patient_name) { setError("Nome do paciente é obrigatório."); return; }
+              if (!form.address)      { setError("Endereço é obrigatório."); return; }
+              setError(""); setStep(3);
             }} className="btn-primary flex-1">{t("register.continue")} →</button>
           </div>
         </div>
@@ -228,16 +239,17 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
           </div>
           {/* TODO: Wire document upload to Cloudinary */}
           <UploadZone label={`${f.doc_photo} *`} note="RG ou CPF · JPG, PNG ou PDF · Máx. 5MB" />
-          <div className="flex gap-3">
-            <button onClick={() => setStep(2)} className="btn-outline flex-1">← {t("register.back")}</button>
-            <button onClick={() => setStep(4)} className="btn-primary flex-1">{t("register.continue")} →</button>
+          <InlineError message={error} />
+          <div className="flex gap-3 mt-2">
+            <button onClick={() => { setError(""); setStep(2); }} className="btn-outline flex-1">← {t("register.back")}</button>
+            <button onClick={() => { setError(""); setStep(4); }} className="btn-primary flex-1">{t("register.continue")} →</button>
           </div>
         </div>
       )}
 
       {step === 4 && (
         <div>
-          <div className="space-y-3 mb-5">
+          <div className="space-y-3 mb-4">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" className="mt-0.5 accent-blue-500" />
               <span className="text-xs text-slate-500">{t("register.terms")}</span>
@@ -247,10 +259,16 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
               <span className="text-xs text-slate-500">{t("register.lgpd_consent")}</span>
             </label>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setStep(3)} className="btn-outline flex-1">← {t("register.back")}</button>
+          <InlineError message={error} />
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => { setError(""); setStep(3); }} className="btn-outline flex-1">← {t("register.back")}</button>
             <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1 disabled:opacity-60">
-              {loading ? "Criando..." : `${t("register.submit_client")} ✓`}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  Criando...
+                </span>
+              ) : `${t("register.submit_client")} ✓`}
             </button>
           </div>
         </div>
@@ -283,6 +301,7 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
   const [role,    setRole]    = useState("nurse");
   const [done,    setDone]    = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
   const f     = t("register.fields", { returnObjects: true });
   const roles = t("register.roles",  { returnObjects: true });
 
@@ -291,7 +310,6 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
     council_number: "", council_state: "", specialties: "", city: "", radius: "15",
   });
 
-  // ← THIS is the fix: sync googleData into form when it changes
   useEffect(() => {
     if (googleData) {
       setForm(p => ({
@@ -302,10 +320,11 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
     }
   }, [googleData]);
 
-  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k) => (e) => { setError(""); setForm((p) => ({ ...p, [k]: e.target.value })); };
 
   const handleSubmit = async () => {
     setLoading(true);
+    setError("");
     try {
       let data;
       if (googleData?.credential) {
@@ -313,8 +332,8 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
         data = res.data;
       } else {
         const res = await axios.post(`${API}/api/auth/register`, {
-          email: form.email, password: form.password, full_name: form.full_name,
-          phone: form.phone, cpf: form.cpf, role,
+          email: form.email, password: form.password,
+          full_name: form.full_name, phone: form.phone, cpf: form.cpf, role,
         });
         data = res.data;
       }
@@ -324,17 +343,16 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
       localStorage.setItem("full_name", data.full_name);
       localStorage.setItem("email",     data.email || form.email);
       setDone(true);
-      toast.success("Cadastro enviado para análise!");
       setTimeout(() => navigate("/dashboard/professional"), 2000);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao criar conta.");
+      setError(err.response?.data?.detail || "Erro ao criar conta. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
 
   if (done) return (
-    <div className="text-center py-6">
+    <div className="text-center py-8">
       <CheckCircle size={56} className="mx-auto mb-4 text-green-500" />
       <h3 className="font-display text-2xl text-navy mb-2">{t("register.success_pro_title")}</h3>
       <p className="text-slate-500 text-sm">{t("register.success_pro_desc")}</p>
@@ -372,11 +390,8 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
               <label className="form-label">{f.email} *</label>
               <input
                 className={`form-input ${googleData ? "bg-slate-100 text-slate-500 cursor-not-allowed" : ""}`}
-                type="email"
-                value={form.email}
-                onChange={set("email")}
-                placeholder="seu@email.com"
-                readOnly={!!googleData}
+                type="email" value={form.email} onChange={set("email")}
+                placeholder="seu@email.com" readOnly={!!googleData}
               />
             </div>
             <div>
@@ -385,16 +400,19 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
             </div>
           </div>
           {!googleData && (
-            <div className="mb-5">
+            <div className="mb-2">
               <label className="form-label">Senha *</label>
               <input className="form-input" type="password" value={form.password} onChange={set("password")} placeholder="Mínimo 8 caracteres" />
             </div>
           )}
+          <InlineError message={error} />
           <button onClick={() => {
-            if (!form.full_name || !form.email) { toast.error("Nome e e-mail são obrigatórios."); return; }
-            if (!googleData && !form.password)  { toast.error("Defina uma senha."); return; }
-            setStep(2);
-          }} className="btn-primary w-full">{t("register.continue")} →</button>
+            if (!form.full_name)               { setError("Nome completo é obrigatório."); return; }
+            if (!form.email)                   { setError("E-mail é obrigatório."); return; }
+            if (!googleData && !form.password) { setError("Defina uma senha."); return; }
+            if (!googleData && form.password.length < 8) { setError("A senha deve ter no mínimo 8 caracteres."); return; }
+            setError(""); setStep(2);
+          }} className="btn-primary w-full mt-4">{t("register.continue")} →</button>
         </div>
       )}
 
@@ -424,17 +442,18 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
             <label className="form-label">{f.city} *</label>
             <input className="form-input" value={form.city} onChange={set("city")} placeholder="São Paulo, SP - Zona Sul" />
           </div>
-          <div className="mb-5">
+          <div className="mb-2">
             <label className="form-label">{f.radius}</label>
             <input className="form-input" type="number" value={form.radius} onChange={set("radius")} placeholder="15" min="1" max="100" />
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="btn-outline flex-1">← {t("register.back")}</button>
+          <InlineError message={error} />
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => { setError(""); setStep(1); }} className="btn-outline flex-1">← {t("register.back")}</button>
             <button onClick={() => {
-              if (!form.council_number || !form.council_state || !form.city) {
-                toast.error("Preencha os dados profissionais."); return;
-              }
-              setStep(3);
+              if (!form.council_number)  { setError("Número COREN é obrigatório."); return; }
+              if (!form.council_state)   { setError("Estado do COREN é obrigatório."); return; }
+              if (!form.city)            { setError("Cidade é obrigatória."); return; }
+              setError(""); setStep(3);
             }} className="btn-primary flex-1">{t("register.continue")} →</button>
           </div>
         </div>
@@ -450,9 +469,10 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
           <UploadZone label={`${f.doc_photo} *`} note="Frente e verso · JPG, PNG ou PDF" />
           <UploadZone label={`${f.diploma} *`} note="Diploma de enfermagem ou certificado" />
           <UploadZone label={f.vaccination} note="Hepatite B, tétano, etc." />
-          <div className="flex gap-3">
-            <button onClick={() => setStep(2)} className="btn-outline flex-1">← {t("register.back")}</button>
-            <button onClick={() => setStep(4)} className="btn-primary flex-1">{t("register.continue")} →</button>
+          <InlineError message={error} />
+          <div className="flex gap-3 mt-2">
+            <button onClick={() => { setError(""); setStep(2); }} className="btn-outline flex-1">← {t("register.back")}</button>
+            <button onClick={() => { setError(""); setStep(4); }} className="btn-primary flex-1">{t("register.continue")} →</button>
           </div>
         </div>
       )}
@@ -462,7 +482,7 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
           {/* TODO: Wire selfie and criminal record upload to Cloudinary */}
           <UploadZone label={`${f.selfie} *`} note="Selfie com RG/CNH visível no momento da foto" />
           <UploadZone label={`${f.criminal} *`} note={f.criminal_note} />
-          <div className="space-y-3 mb-5">
+          <div className="space-y-3 mb-4">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" className="mt-0.5 accent-blue-500" />
               <span className="text-xs text-slate-500">{t("register.terms")}</span>
@@ -472,10 +492,16 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
               <span className="text-xs text-slate-500">{t("register.accuracy_declaration")}</span>
             </label>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setStep(3)} className="btn-outline flex-1">← {t("register.back")}</button>
+          <InlineError message={error} />
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => { setError(""); setStep(3); }} className="btn-outline flex-1">← {t("register.back")}</button>
             <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1 disabled:opacity-60">
-              {loading ? "Enviando..." : `${t("register.submit_pro")} ✓`}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  Enviando...
+                </span>
+              ) : `${t("register.submit_pro")} ✓`}
             </button>
           </div>
         </div>
@@ -485,38 +511,44 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
 };
 
 /* ─────────────────────────────────────────
-   REGISTER SECTION (main)
+   REGISTER PAGE
 ───────────────────────────────────────── */
-const RegisterSection = () => {
+const Register = () => {
   const { t }    = useTranslation();
-  const [tab,        setTab]        = useState("client");
-  const [googleData, setGoogleData] = useState(null);
+  const [tab,          setTab]          = useState("client");
+  const [googleData,   setGoogleData]   = useState(null);
+  const [googleLoading,setGoogleLoading]= useState(false);
 
   const handleGoogleSuccess = (cred) => {
     const payload = decodeGoogleJWT(cred.credential);
-    if (!payload) { toast.error("Erro ao processar dados do Google."); return; }
-    setGoogleData({
-      credential: cred.credential,
-      name:       payload.name  || "",
-      email:      payload.email || "",
-    });
-    toast.success(`Olá, ${(payload.name || "").split(" ")[0]}! Complete o cadastro abaixo.`);
+    if (!payload) return;
+    setGoogleData({ credential: cred.credential, name: payload.name || "", email: payload.email || "" });
   };
 
-  const clearGoogle = () => {
-    setGoogleData(null);
-  };
+  const clearGoogle = () => setGoogleData(null);
+
+  if (googleLoading) return <FullScreenLoader message="Carregando..." />;
 
   return (
-    <section id="register" className="py-20 bg-slate-50">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-8">
-          <span className="section-label">{t("register.label")}</span>
-          <h2 className="section-title mb-2">{t("register.title")}</h2>
-          <p className="section-sub">{t("register.subtitle")}</p>
+    <div className="min-h-screen bg-hero-gradient py-10 px-4">
+      <div className="max-w-xl mx-auto">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <Link to="/"><Logo size="md" /></Link>
+          <LanguageSwitcher />
         </div>
 
-        <div className="flex rounded-xl overflow-hidden border-2 border-slate-200 bg-white mb-8">
+        <div className="text-center mb-6">
+          <h1 className="font-display text-3xl font-bold text-navy mb-2">Criar conta</h1>
+          <p className="text-slate-500 text-sm">
+            Já tem conta?{" "}
+            <Link to="/login" className="text-blue-500 font-semibold hover:underline">Fazer login</Link>
+          </p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex rounded-xl overflow-hidden border-2 border-slate-200 bg-white mb-6">
           {["client","pro"].map(type => (
             <button key={type} onClick={() => { setTab(type); setGoogleData(null); }}
               className={`flex-1 py-3 text-sm font-semibold transition-all duration-200 ${
@@ -528,13 +560,13 @@ const RegisterSection = () => {
         </div>
 
         <div className="card p-6 sm:p-8">
+          {/* Google signup */}
           {!googleData && (
             <div className="mb-6">
-              <p className="text-xs text-slate-500 text-center mb-3">Acelere com sua conta Google</p>
               <div className="flex justify-center">
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
-                  onError={() => toast.error("Google login falhou.")}
+                  onError={() => {}}
                   text="signup_with"
                   width="320"
                   shape="rectangular"
@@ -553,17 +585,17 @@ const RegisterSection = () => {
             ? <ClientForm googleData={googleData} onClearGoogle={clearGoogle} />
             : <ProfForm   googleData={googleData} onClearGoogle={clearGoogle} />
           }
-
-          <p className="text-center text-xs text-slate-500 mt-5">
-            {t("register.already_have")}{" "}
-            <a href="/login" className="text-blue-500 font-semibold hover:underline">
-              {t("register.login")}
-            </a>
-          </p>
         </div>
+
+        <p className="text-center text-xs text-slate-400 mt-6">
+          Ao criar uma conta você concorda com nossos{" "}
+          <a href="/terms" className="text-blue-500 hover:underline">Termos de Uso</a>{" "}
+          e{" "}
+          <a href="/privacy" className="text-blue-500 hover:underline">Política de Privacidade</a>.
+        </p>
       </div>
-    </section>
+    </div>
   );
 };
 
-export default RegisterSection;
+export default Register;

@@ -64,7 +64,7 @@ const Navbar = () => {
               <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-blue-500 transition-colors px-3 py-1.5">
                 {t("nav.login")}
               </Link>
-              <a href="#register" className="btn-primary text-sm px-4 py-2">
+              <a href="/register" className="btn-primary text-sm px-4 py-2">
                 {t("nav.get_started")}
               </a>
             </>
@@ -100,7 +100,7 @@ const Navbar = () => {
               <Link to="/login" className="btn-outline text-sm py-2.5 text-center">
                 {t("nav.login")}
               </Link>
-              <a href="#register" className="btn-primary text-sm py-2.5 text-center">
+              <a href="/register" className="btn-primary text-sm py-2.5 text-center">
                 {t("nav.get_started")}
               </a>
             </div>

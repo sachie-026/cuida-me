@@ -36,7 +36,6 @@ class TokenResponse(BaseModel):
 
 @router.post("/google", response_model=TokenResponse)
 async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
-    # Verify Google token
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"https://oauth2.googleapis.com/tokeninfo?id_token={body.credential}"
@@ -50,7 +49,7 @@ async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
     full_name = info.get("name", "")
     is_new    = False
 
-    # Find existing user by google_id first, then email
+    # Find existing user
     user = db.query(User).filter(User.google_id == google_id).first()
     if not user:
         user = db.query(User).filter(User.email == email).first()
@@ -58,15 +57,20 @@ async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
             # Link Google ID to existing account
             user.google_id = google_id
         else:
-            # New user — use provided role
+            # Truly new user
+            if body.role == "check":
+                # Frontend probing — return is_new_user=True so FE shows role picker
+                # Don't create the user yet
+                return TokenResponse(
+                    access_token="", role="", user_id="",
+                    full_name=full_name, email=email, is_new_user=True,
+                )
             is_new = True
             user = User(
-                email=email,
-                full_name=full_name,
+                email=email, full_name=full_name,
                 google_id=google_id,
                 role=UserRole(body.role),
-                is_active=True,
-                is_verified=True,
+                is_active=True, is_verified=True,
             )
             db.add(user)
 
@@ -88,8 +92,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         email=body.email,
         password_hash=hash_password(body.password),
         full_name=body.full_name,
-        phone=body.phone,
-        cpf=body.cpf,
+        phone=body.phone, cpf=body.cpf,
         role=UserRole(body.role),
     )
     db.add(user)
