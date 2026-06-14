@@ -173,3 +173,6 @@ Built for Brazil Beta but ready to expand:
 - [ ] GPS real-time tracking
 - [ ] WhatsApp notifications
 - [ ] Mobile app (React Native)
+
+
+---
