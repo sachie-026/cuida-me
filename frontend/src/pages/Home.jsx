@@ -3,7 +3,6 @@ import {
   TrustBar, HowItWorks, Professionals,
   Stats, Safety, Testimonials, CTASection
 } from "../components/sections/Sections";
-import RegisterSection from "../components/sections/RegisterSection";
 
 const Home = () => (
   <main>
@@ -14,7 +13,6 @@ const Home = () => (
     <Stats />
     <Safety />
     <Testimonials />
-    <RegisterSection />
     <CTASection />
   </main>
 );
