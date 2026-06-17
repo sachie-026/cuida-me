@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, X, LogOut, CheckCircle, XCircle, Ban } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -13,22 +13,30 @@ const useAdmin = () => {
   return { headers: { Authorization: `Bearer ${token}` } };
 };
 
-// ── Sidebar ──
+const DOC_LABELS = {
+  photo_id:    "Documento com foto",
+  diploma:     "Diploma/Certificado",
+  criminal:    "Antecedentes criminais",
+  selfie:      "Selfie com documento",
+  vaccination: "Carteira de vacinação",
+};
+
+const DOC_STATUS_COLOR = {
+  approved: "text-green-600",
+  pending:  "text-amber-600",
+  rejected: "text-red-600",
+};
+
+/* ── Sidebar ── */
 const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
   const navigate = useNavigate();
   const links = [
-    { key: "overview",      label: "Visão geral",     icon: <DollarSign size={18} /> },
-    { key: "professionals", label: "Profissionais",   icon: <ShieldCheck size={18} /> },
-    { key: "users",         label: "Usuários",        icon: <Users size={18} /> },
-    { key: "bookings",      label: "Agendamentos",    icon: <CalendarDays size={18} /> },
-    { key: "commission",    label: "Comissão",        icon: <DollarSign size={18} /> },
+    { key: "overview",      label: "Visão geral",   icon: <DollarSign size={18} /> },
+    { key: "professionals", label: "Profissionais", icon: <ShieldCheck size={18} /> },
+    { key: "users",         label: "Usuários",      icon: <Users size={18} /> },
+    { key: "bookings",      label: "Agendamentos",  icon: <CalendarDays size={18} /> },
+    { key: "commission",    label: "Comissão",      icon: <DollarSign size={18} /> },
   ];
-
-  const handleLogout = () => {
-    localStorage.clear();
-    toast.success("Até logo!");
-    navigate("/login");
-  };
 
   const content = (
     <div className="flex flex-col h-full">
@@ -46,7 +54,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
         ))}
       </nav>
       <div className="p-4 border-t border-slate-100">
-        <button onClick={handleLogout}
+        <button onClick={() => { localStorage.clear(); navigate("/login"); }}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-colors">
           <LogOut size={18} /> Sair
         </button>
@@ -56,11 +64,9 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
 
   return (
     <>
-      {/* Desktop */}
       <aside className="hidden md:flex w-56 flex-col bg-white border-r border-slate-100 h-screen sticky top-0">
         {content}
       </aside>
-      {/* Mobile overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
@@ -71,24 +77,22 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
   );
 };
 
-// ── Overview ──
+/* ── Overview ── */
 const Overview = () => {
   const { headers } = useAdmin();
   const [stats, setStats] = useState(null);
-
   useEffect(() => {
     axios.get(`${API}/api/admin/stats`, { headers }).then(r => setStats(r.data)).catch(() => {});
   }, []);
-
-  const cards = stats ? [
-    { label: "Total usuários",     value: stats.total_users,         icon: <Users size={20} className="text-blue-500" />,    bg: "bg-blue-100" },
-    { label: "Clientes",           value: stats.total_clients,       icon: <Users size={20} className="text-green-500" />,   bg: "bg-green-100" },
-    { label: "Profissionais",      value: stats.total_professionals, icon: <ShieldCheck size={20} className="text-blue-500" />, bg: "bg-blue-100" },
-    { label: "Aguardando aprovação",value: stats.pending_approvals,  icon: <ShieldCheck size={20} className="text-amber-500" />, bg: "bg-amber-100" },
-    { label: "Agendamentos",       value: stats.total_bookings,      icon: <CalendarDays size={20} className="text-blue-500" />, bg: "bg-blue-100" },
-    { label: "Receita (comissão)", value: `R$${Number(stats.total_revenue).toFixed(2)}`, icon: <DollarSign size={20} className="text-green-500" />, bg: "bg-green-100" },
-  ] : [];
-
+  if (!stats) return <p className="text-slate-400 text-sm">Carregando...</p>;
+  const cards = [
+    { label: "Total usuários",      value: stats.total_users,         bg: "bg-blue-100",  icon: <Users size={20} className="text-blue-500" /> },
+    { label: "Clientes",            value: stats.total_clients,       bg: "bg-green-100", icon: <Users size={20} className="text-green-500" /> },
+    { label: "Profissionais",       value: stats.total_professionals, bg: "bg-blue-100",  icon: <ShieldCheck size={20} className="text-blue-500" /> },
+    { label: "Aguardando aprovação",value: stats.pending_approvals,   bg: "bg-amber-100", icon: <ShieldCheck size={20} className="text-amber-500" /> },
+    { label: "Agendamentos",        value: stats.total_bookings,      bg: "bg-blue-100",  icon: <CalendarDays size={20} className="text-blue-500" /> },
+    { label: "Receita (comissão)",  value: `R$${Number(stats.total_revenue).toFixed(2)}`, bg: "bg-green-100", icon: <DollarSign size={20} className="text-green-500" /> },
+  ];
   return (
     <div>
       <h2 className="font-display text-xl font-bold text-navy mb-6">Visão geral</h2>
@@ -105,11 +109,57 @@ const Overview = () => {
   );
 };
 
-// ── Professionals ──
+/* ── Document Viewer Modal ── */
+const DocModal = ({ prof, onClose }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+    <div className="relative bg-white rounded-2xl shadow-hover w-full max-w-lg max-h-[85vh] overflow-y-auto z-10 p-6">
+      <h3 className="font-display text-lg font-bold text-navy mb-1">{prof.full_name}</h3>
+      <p className="text-xs text-slate-500 mb-4">{prof.email} · {prof.council_type} {prof.council_number}-{prof.council_state}</p>
+
+      {(!prof.documents || prof.documents.length === 0) ? (
+        <div className="text-center py-8 text-slate-400">
+          <FileText size={40} className="mx-auto mb-3 opacity-40" />
+          <p className="text-sm">Nenhum documento enviado ainda.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {prof.documents.map((doc, i) => (
+            <div key={i} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50">
+              <div>
+                <p className="text-sm font-semibold text-navy">{DOC_LABELS[doc.doc_type] || doc.doc_type}</p>
+                <p className={`text-xs font-medium mt-0.5 ${DOC_STATUS_COLOR[doc.status]}`}>
+                  {doc.status === "approved" ? "✓ Aprovado" : doc.status === "pending" ? "⏳ Em análise" : "✗ Rejeitado"}
+                </p>
+              </div>
+              {doc.file_url && doc.file_url !== "https://placeholder.com/doc1.jpg" && (
+                <a href={doc.file_url} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+                  <ExternalLink size={13} /> Ver arquivo
+                </a>
+              )}
+              {(!doc.file_url || doc.file_url.includes("placeholder.com")) && (
+                <span className="text-xs text-slate-400 italic">Arquivo placeholder</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-5 pt-4 border-t border-slate-100 text-xs text-slate-400">
+        {prof.documents?.length || 0} de 4 documentos obrigatórios enviados
+        {prof.documents?.length >= 4 && " ✓"}
+      </div>
+    </div>
+  </div>
+);
+
+/* ── Professionals Panel ── */
 const ProfessionalsPanel = () => {
   const { headers } = useAdmin();
-  const [list, setList] = useState([]);
-  const [filter, setFilter] = useState("pending");
+  const [list,       setList]       = useState([]);
+  const [filter,     setFilter]     = useState("pending");
+  const [viewingDoc, setViewingDoc] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/api/admin/professionals?status=${filter}`, { headers })
@@ -130,6 +180,8 @@ const ProfessionalsPanel = () => {
 
   return (
     <div>
+      {viewingDoc && <DocModal prof={viewingDoc} onClose={() => setViewingDoc(null)} />}
+
       <h2 className="font-display text-xl font-bold text-navy mb-4">Profissionais</h2>
       <div className="flex gap-2 mb-5">
         {["pending","approved","rejected"].map(s => (
@@ -140,35 +192,61 @@ const ProfessionalsPanel = () => {
           </button>
         ))}
       </div>
+
       {list.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-10">Nenhum profissional nesta categoria.</p>
       ) : (
         <div className="space-y-3">
           {list.map(p => (
-            <div key={p.id} className="card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <p className="font-semibold text-navy text-sm">{p.council_type} {p.council_number}-{p.council_state}</p>
-                <p className="text-xs text-slate-500">{p.city} · {p.specialties?.join(", ")}</p>
-                <p className="text-xs text-slate-400 mt-0.5">⭐ {p.rating_avg} · {p.rating_count} avaliações</p>
-              </div>
-              {filter === "pending" && (
-                <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={() => approve(p.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-colors">
-                    <CheckCircle size={14} /> Aprovar
-                  </button>
-                  <button onClick={() => reject(p.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-200 transition-colors">
-                    <XCircle size={14} /> Rejeitar
-                  </button>
+            <div key={p.id} className="card p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-navy text-sm">{p.full_name}</p>
+                  <p className="text-xs text-slate-500">{p.email} · {p.phone}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {p.council_type} {p.council_number}-{p.council_state} · {p.city}
+                  </p>
+                  {/* Document status summary */}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {["photo_id","diploma","criminal","selfie"].map(type => {
+                      const doc = p.documents?.find(d => d.doc_type === type);
+                      return (
+                        <span key={type} className={`text-xs px-2 py-0.5 rounded-full font-medium
+                          ${doc ? (doc.status === "approved" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700") : "bg-slate-100 text-slate-400"}`}>
+                          {DOC_LABELS[type]?.split(" ")[0]} {doc ? "✓" : "—"}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-              {filter !== "pending" && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full
-                  ${filter === "approved" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                  {filter === "approved" ? "Aprovado" : "Rejeitado"}
-                </span>
-              )}
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* View documents button */}
+                  <button onClick={() => setViewingDoc(p)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors">
+                    <FileText size={13} /> Documentos ({p.documents?.length || 0})
+                  </button>
+
+                  {filter === "pending" && (
+                    <>
+                      <button onClick={() => approve(p.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-colors">
+                        <CheckCircle size={14} /> Aprovar
+                      </button>
+                      <button onClick={() => reject(p.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-200 transition-colors">
+                        <XCircle size={14} /> Rejeitar
+                      </button>
+                    </>
+                  )}
+                  {filter !== "pending" && (
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full
+                      ${filter === "approved" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                      {filter === "approved" ? "Aprovado" : "Rejeitado"}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -177,11 +255,10 @@ const ProfessionalsPanel = () => {
   );
 };
 
-// ── Users ──
+/* ── Users Panel ── */
 const UsersPanel = () => {
   const { headers } = useAdmin();
   const [users, setUsers] = useState([]);
-
   useEffect(() => {
     axios.get(`${API}/api/admin/users`, { headers }).then(r => setUsers(r.data)).catch(() => {});
   }, []);
@@ -200,7 +277,7 @@ const UsersPanel = () => {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {["Nome","E-mail","Papel","Verificado","Status","Ação"].map(h => (
+                {["Nome","E-mail","Papel","Status","Ação"].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500">{h}</th>
                 ))}
               </tr>
@@ -208,15 +285,14 @@ const UsersPanel = () => {
             <tbody>
               {users.map(u => (
                 <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-navy">{u.full_name}</td>
-                  <td className="px-4 py-3 text-slate-500">{u.email}</td>
+                  <td className="px-4 py-3 font-medium text-navy text-sm">{u.full_name}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs">{u.email}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-                      ${u.role === "client" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                      ${u.role === "client" ? "bg-blue-100 text-blue-700" : u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
                       {u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{u.is_verified ? "✅" : "⏳"}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
                       ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
@@ -224,11 +300,13 @@ const UsersPanel = () => {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => toggleBlock(u.id, u.is_active)}
-                      className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors
-                        ${u.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
-                      <Ban size={12} /> {u.is_active ? "Bloquear" : "Desbloquear"}
-                    </button>
+                    {u.role !== "admin" && (
+                      <button onClick={() => toggleBlock(u.id, u.is_active)}
+                        className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors
+                          ${u.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
+                        <Ban size={12} /> {u.is_active ? "Bloquear" : "Desbloquear"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -240,19 +318,17 @@ const UsersPanel = () => {
   );
 };
 
-// ── Bookings ──
+/* ── Bookings Panel ── */
 const BookingsPanel = () => {
   const { headers } = useAdmin();
   const [bookings, setBookings] = useState([]);
-  const [filter, setFilter] = useState("");
-
+  const [filter,   setFilter]   = useState("");
   useEffect(() => {
     const url = filter ? `${API}/api/admin/bookings?status=${filter}` : `${API}/api/admin/bookings`;
     axios.get(url, { headers }).then(r => setBookings(r.data)).catch(() => {});
   }, [filter]);
 
-  const statusColor = { accepted:"bg-green-100 text-green-700", completed:"bg-slate-100 text-slate-600",
-    pending:"bg-amber-100 text-amber-700", cancelled:"bg-red-100 text-red-600", checked_in:"bg-blue-100 text-blue-700" };
+  const STATUS_COLOR = { accepted:"bg-green-100 text-green-700", completed:"bg-slate-100 text-slate-600", pending:"bg-amber-100 text-amber-700", cancelled:"bg-red-100 text-red-600", checked_in:"bg-blue-100 text-blue-700" };
 
   return (
     <div>
@@ -278,15 +354,13 @@ const BookingsPanel = () => {
             </thead>
             <tbody>
               {bookings.map(b => (
-                <tr key={b.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-navy">{b.service_type}</td>
-                  <td className="px-4 py-3 text-slate-500">{new Date(b.scheduled_start).toLocaleDateString("pt-BR")}</td>
-                  <td className="px-4 py-3 font-semibold text-navy">R${b.total_price?.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-green-600 font-semibold">R${b.platform_fee?.toFixed(2)}</td>
+                <tr key={b.id} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-navy text-sm">{b.service_type}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs">{new Date(b.scheduled_start).toLocaleDateString("pt-BR")}</td>
+                  <td className="px-4 py-3 font-semibold text-navy text-sm">R${b.total_price?.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-green-600 font-semibold text-sm">R${b.platform_fee?.toFixed(2)}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor[b.status]}`}>
-                      {b.status}
-                    </span>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_COLOR[b.status]}`}>{b.status}</span>
                   </td>
                 </tr>
               ))}
@@ -298,12 +372,11 @@ const BookingsPanel = () => {
   );
 };
 
-// ── Commission ──
+/* ── Commission Panel ── */
 const CommissionPanel = () => {
   const { headers } = useAdmin();
-  const [rate, setRate] = useState(12);
+  const [rate,  setRate]  = useState(12);
   const [input, setInput] = useState("12");
-
   useEffect(() => {
     axios.get(`${API}/api/admin/commission`, { headers })
       .then(r => { setRate(r.data.rate); setInput(String(r.data.rate)); }).catch(() => {});
@@ -311,7 +384,7 @@ const CommissionPanel = () => {
 
   const save = async () => {
     const val = parseFloat(input);
-    if (isNaN(val) || val <= 0 || val >= 100) { toast.error("Taxa inválida (deve ser entre 0 e 100)."); return; }
+    if (isNaN(val) || val <= 0 || val >= 100) { toast.error("Taxa inválida (entre 0 e 100)."); return; }
     await axios.put(`${API}/api/admin/commission?rate=${val}`, {}, { headers });
     setRate(val);
     toast.success(`Taxa atualizada para ${val}%`);
@@ -321,14 +394,11 @@ const CommissionPanel = () => {
     <div className="max-w-md">
       <h2 className="font-display text-xl font-bold text-navy mb-6">Configuração de comissão</h2>
       <div className="card p-6">
-        <p className="text-sm text-slate-500 mb-5">
-          A comissão é descontada automaticamente de cada pagamento. O profissional recebe o valor líquido.
-        </p>
+        <p className="text-sm text-slate-500 mb-5">A comissão é descontada automaticamente de cada pagamento.</p>
         <div className="mb-5">
           <label className="form-label">Taxa da plataforma (%)</label>
           <div className="flex gap-3">
-            <input className="form-input" type="number" min="1" max="99" value={input}
-              onChange={e => setInput(e.target.value)} />
+            <input className="form-input" type="number" min="1" max="99" value={input} onChange={e => setInput(e.target.value)} />
             <button onClick={save} className="btn-primary flex-shrink-0">Salvar</button>
           </div>
         </div>
@@ -343,32 +413,37 @@ const CommissionPanel = () => {
   );
 };
 
-// ── Main Admin Dashboard ──
+/* ── Main Admin Dashboard ── */
 const AdminDashboard = () => {
-  const [section, setSection] = useState("overview");
+  const [section,    setSection]    = useState("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const panels = { overview: <Overview />, professionals: <ProfessionalsPanel />,
-    users: <UsersPanel />, bookings: <BookingsPanel />, commission: <CommissionPanel /> };
+  const panels = {
+    overview:      <Overview />,
+    professionals: <ProfessionalsPanel />,
+    users:         <UsersPanel />,
+    bookings:      <BookingsPanel />,
+    commission:    <CommissionPanel />,
+  };
+
+  const sectionLabel = {
+    overview: "Visão geral", professionals: "Profissionais",
+    users: "Usuários", bookings: "Agendamentos", commission: "Comissão",
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar active={section} onNav={setSection} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
         <header className="bg-white border-b border-slate-100 px-4 sm:px-6 h-16 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg hover:bg-slate-100">
               <Menu size={20} />
             </button>
-            <h1 className="font-semibold text-navy text-sm capitalize">
-              {section === "overview" ? "Visão geral" : section === "professionals" ? "Profissionais" :
-               section === "users" ? "Usuários" : section === "bookings" ? "Agendamentos" : "Comissão"}
-            </h1>
+            <h1 className="font-semibold text-navy text-sm">{sectionLabel[section]}</h1>
           </div>
           <LanguageSwitcher />
         </header>
-        {/* Content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           {panels[section]}
         </main>

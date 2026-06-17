@@ -50,7 +50,11 @@ def update_user(user_id: str, body: UserUpdate, db: Session = Depends(get_db)):
 @router.patch("/{user_id}/professional-profile")
 def update_professional_profile(user_id: str, body: ProfessionalProfileUpdate, db: Session = Depends(get_db)):
     prof = db.query(Professional).filter(Professional.user_id == user_id).first()
-    if not prof: raise HTTPException(404, "Professional profile not found")
+    if not prof:
+        # Auto-create if missing
+        from app.models.models import DocStatus
+        prof = Professional(user_id=user_id, approval_status=DocStatus.pending, is_available=False)
+        db.add(prof)
     for k, v in body.dict(exclude_unset=True).items():
         setattr(prof, k, v)
     db.commit()
