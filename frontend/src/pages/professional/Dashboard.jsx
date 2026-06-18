@@ -29,27 +29,35 @@ const ProfessionalDashboard = () => {
   const token     = localStorage.getItem("token");
   const headers   = { Authorization: `Bearer ${token}` };
 
-  const [bookings,        setBookings]        = useState([]);
-  const [available,       setAvailable]       = useState(false);
-  const [approvalStatus,  setApprovalStatus]  = useState("pending");
-  const [loading,         setLoading]         = useState(true);
-  const [toggling,        setToggling]        = useState(false);
+  const [bookings,       setBookings]       = useState([]);
+  const [available,      setAvailable]      = useState(false);
+  const [approvalStatus, setApprovalStatus] = useState("pending");
+  const [profId,         setProfId]         = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [toggling,       setToggling]       = useState(false);
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
-    Promise.all([
-      axios.get(`${API}/api/professionals/${userId}`,        { headers }),
-      axios.get(`${API}/api/bookings/professional/${userId}`, { headers }),
-    ]).then(([profRes, bookRes]) => {
-      setAvailable(profRes.data.is_available || false);
-      setApprovalStatus(profRes.data.approval_status || "pending");
-      setBookings(Array.isArray(bookRes.data) ? bookRes.data : []);
-    }).catch(() => {})
-    .finally(() => setLoading(false));
+
+    // Step 1: get professional profile to get prof.id
+    axios.get(`${API}/api/professionals/${userId}`, { headers })
+      .then(profRes => {
+        const prof = profRes.data;
+        setAvailable(prof.is_available || false);
+        setApprovalStatus(prof.approval_status || "pending");
+        setProfId(prof.id);
+
+        // Step 2: use prof.id (not user_id) to fetch bookings
+        return axios.get(`${API}/api/bookings/professional/${prof.id}`, { headers });
+      })
+      .then(bookRes => {
+        setBookings(Array.isArray(bookRes.data) ? bookRes.data : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [userId]);
 
   const toggleAvailability = async () => {
-    // Check approval first
     if (approvalStatus !== "approved") {
       toast("Sua conta precisa ser verificada primeiro.", { icon: "⚠️" });
       navigate("/profile/professional");
@@ -100,10 +108,10 @@ const ProfessionalDashboard = () => {
   const pending   = bookings.filter(b => b.status === "pending");
 
   const stats = [
-    { icon: <DollarSign size={18} className="text-green-500" />,  label: "Ganhos",          value: `R$${earnings.toFixed(0)}`,                          accent: true },
-    { icon: <CalendarDays size={18} className="text-blue-500" />, label: "Atendimentos",     value: total },
-    { icon: <Star size={18} className="text-amber-500" />,        label: "Concluídos",       value: completed },
-    { icon: <CheckCircle size={18} className="text-green-500" />, label: "Taxa de conclusão",value: total ? `${Math.round(completed/total*100)}%` : "–", accent: true },
+    { icon: <DollarSign size={18} className="text-green-500" />,  label: "Ganhos",           value: `R$${earnings.toFixed(0)}`,                          accent: true },
+    { icon: <CalendarDays size={18} className="text-blue-500" />, label: "Atendimentos",      value: total },
+    { icon: <Star size={18} className="text-amber-500" />,        label: "Concluídos",        value: completed },
+    { icon: <CheckCircle size={18} className="text-green-500" />, label: "Taxa de conclusão", value: total ? `${Math.round(completed / total * 100)}%` : "–", accent: true },
   ];
 
   return (
@@ -115,7 +123,7 @@ const ProfessionalDashboard = () => {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Verification warning banner */}
+        {/* Verification warning */}
         {approvalStatus !== "approved" && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
             <AlertTriangle size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
@@ -126,7 +134,7 @@ const ProfessionalDashboard = () => {
               <p className="text-xs text-amber-600 mt-0.5">
                 {approvalStatus === "rejected"
                   ? "Seus documentos foram rejeitados. Acesse seu perfil e reenvie documentos válidos."
-                  : "Envie seus documentos no perfil para que nossa equipe aprove sua conta. Enquanto isso, você não aparece para clientes."}
+                  : "Envie seus documentos no perfil para que nossa equipe aprove sua conta."}
               </p>
             </div>
             <button onClick={() => navigate("/profile/professional")}
@@ -142,18 +150,13 @@ const ProfessionalDashboard = () => {
             <h1 className="font-display text-2xl font-bold text-navy">Olá, {firstName} 👩‍⚕️</h1>
             <p className="text-slate-500 text-sm mt-1">Gerencie seus atendimentos</p>
           </div>
-          {/* Availability toggle */}
           <div className="flex items-center gap-3">
             <span className={`text-sm font-medium ${available ? "text-green-600" : "text-slate-500"}`}>
               {available ? "Disponível" : "Indisponível"}
             </span>
-            <button
-              onClick={toggleAvailability}
-              disabled={toggling}
-              title={approvalStatus !== "approved" ? "Conta não verificada" : ""}
+            <button onClick={toggleAvailability} disabled={toggling}
               className={`w-12 h-6 rounded-full relative transition-colors duration-300 disabled:opacity-60
-                ${available ? "bg-green-500" : approvalStatus !== "approved" ? "bg-slate-200" : "bg-slate-300"}`}
-            >
+                ${available ? "bg-green-500" : approvalStatus !== "approved" ? "bg-slate-200" : "bg-slate-300"}`}>
               <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all duration-300 shadow
                 ${available ? "right-0.5" : "left-0.5"}`} />
             </button>
