@@ -30,8 +30,23 @@ const ClientDashboard = () => {
 
   useEffect(() => {
     axios.get(`${API}/api/users/${userId}/patient`, { headers })
-      .then(r => axios.get(`${API}/api/bookings/patient/${r.data.id}`, { headers }))
-      .then(r => setBookings(r.data))
+      .then(r => {
+        const patientId = r.data.id;
+        return axios.get(`${API}/api/bookings/patient/${patientId}`, { headers });
+      })
+      .then(r => {
+        const fetchedBookings = r.data;
+        setBookings(fetchedBookings);
+        // Pre-populate ratedIds: check which completed bookings already have a rating from this user
+        const completedIds = fetchedBookings.filter(b => b.status === "completed").map(b => b.id);
+        Promise.all(
+          completedIds.map(id =>
+            axios.get(`${API}/api/ratings/booking/${id}`, { headers })
+              .then(res => res.data.some(rating => rating.reviewer_id === userId) ? id : null)
+              .catch(() => null)
+          )
+        ).then(results => setRatedIds(results.filter(Boolean)));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
