@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { GoogleLogin } from "@react-oauth/google";
 import { Link, useNavigate } from "react-router-dom";
-import { Upload, CheckCircle, X, AlertCircle } from "lucide-react";
+import { Upload, CheckCircle, X, AlertCircle, ArrowLeft } from "lucide-react";
 import axios from "axios";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
@@ -534,9 +534,14 @@ const Register = () => {
       <div className="max-w-xl mx-auto">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-3">
           <Link to="/"><Logo size="md" /></Link>
           <LanguageSwitcher />
+        </div>
+        <div className="mb-6">
+          <Link to="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-500 transition-colors">
+            <ArrowLeft size={15} /> Voltar ao início
+          </Link>
         </div>
 
         <div className="text-center mb-6">

@@ -13,10 +13,12 @@ i18n
       en:      { translation: en },
     },
     fallbackLng: "pt-BR",
+    lng: "pt-BR",           // ← force pt-BR as default on first load
     supportedLngs: ["pt-BR", "en"],
     detection: {
       order: ["localStorage", "navigator"],
       caches: ["localStorage"],
+      lookupLocalStorage: "i18nextLng",
     },
     interpolation: { escapeValue: false },
   });
