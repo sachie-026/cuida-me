@@ -1,15 +1,47 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
 
+# Create tables
 Base.metadata.create_all(bind=engine)
+
+# ── Runtime migrations ─────────────────────────────────────────────────────
+# Safely add new columns if they don't exist yet (idempotent)
+def run_migrations():
+    migrations = [
+        # Professional table — new columns from pricing update
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS services_offered JSON DEFAULT '[]'::json",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS markup_pct INTEGER DEFAULT 0",
+        # Booking table — new pricing + scheduling columns
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS services JSON DEFAULT '[]'::json",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_hours INTEGER",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS shift VARCHAR DEFAULT 'day'",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_holiday BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS distance_km FLOAT DEFAULT 0.0",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS base_price FLOAT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS markup_pct INTEGER DEFAULT 0",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS surcharge_pct FLOAT DEFAULT 0.0",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                print(f"Migration skipped: {e}")
+        conn.commit()
+    print("✅ Migrations complete")
+
+run_migrations()
+# ─────────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Cuida.me API",
     version="1.0.0",
-    redirect_slashes=False,  # Fix trailing slash 503s
+    redirect_slashes=False,
 )
 
 app.add_middleware(
@@ -44,6 +76,7 @@ def seed_dev(db: Session = Depends(get_db)):
         Booking, Payment, Assessment, Document,
         DocStatus, BookingStatus, PaymentStatus
     )
+    from app.utils.pricing import CAREGIVER_SERVICES, TECHNICIAN_SERVICES, NURSE_SERVICES
     from datetime import datetime, timedelta
     now = datetime.utcnow()
 
@@ -67,12 +100,54 @@ def seed_dev(db: Session = Depends(get_db)):
     db.commit()
 
     db.add_all([
-        Professional(id="prof-nurse-001", user_id="user-nurse-001", council_number="123456", council_state="SP", council_type="COREN", specialties=["Cuidados domiciliares gerais","Pós-operatório / curativos","Cuidados com idosos"], service_radius=25, city="São Paulo", state="SP", latitude=-23.5505, longitude=-46.6333, hourly_rate=150.0, is_available=True, approval_status=DocStatus.approved, rating_avg=4.9, rating_count=87),
-        Professional(id="prof-nurse-002", user_id="user-nurse-002", council_number="789012", council_state="SP", council_type="COREN", specialties=["Paciente oncológico","UTI domiciliar"], service_radius=20, city="São Paulo", state="SP", latitude=-23.5605, longitude=-46.6433, hourly_rate=180.0, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=52),
-        Professional(id="prof-tech-001", user_id="user-tech-001", council_number="654321", council_state="SP", council_type="COREN", specialties=["Cuidados domiciliares gerais","Paciente oncológico"], service_radius=15, city="São Paulo", state="SP", latitude=-23.5705, longitude=-46.6533, hourly_rate=100.0, is_available=True, approval_status=DocStatus.approved, rating_avg=4.7, rating_count=43),
-        Professional(id="prof-tech-002", user_id="user-tech-002", council_number="345678", council_state="SP", council_type="COREN", specialties=["Cuidados com idosos"], service_radius=20, city="São Paulo", state="SP", latitude=-23.5805, longitude=-46.6633, hourly_rate=90.0, is_available=False, approval_status=DocStatus.approved, rating_avg=4.6, rating_count=28),
-        Professional(id="prof-care-001", user_id="user-care-001", council_number="", council_state="SP", council_type="CERTIFICADO", specialties=["Cuidados com idosos","Acompanhamento / companheirismo"], service_radius=20, city="São Paulo", state="SP", latitude=-23.5905, longitude=-46.6733, hourly_rate=70.0, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=31),
-        Professional(id="prof-care-002", user_id="user-care-002", council_number="", council_state="SP", council_type="CERTIFICADO", specialties=["Cuidados com idosos"], service_radius=15, city="São Paulo", state="SP", latitude=-23.6005, longitude=-46.6833, hourly_rate=65.0, is_available=False, approval_status=DocStatus.pending, rating_avg=0.0, rating_count=0),
+        Professional(id="prof-nurse-001", user_id="user-nurse-001",
+            council_number="123456", council_state="SP", council_type="COREN",
+            services_offered=NURSE_SERVICES,
+            markup_pct=10,
+            service_radius=25, city="São Paulo", state="SP",
+            latitude=-23.5505, longitude=-46.6333,
+            is_available=True, approval_status=DocStatus.approved,
+            rating_avg=4.9, rating_count=87),
+        Professional(id="prof-nurse-002", user_id="user-nurse-002",
+            council_number="789012", council_state="SP", council_type="COREN",
+            services_offered=NURSE_SERVICES,
+            markup_pct=20,
+            service_radius=20, city="São Paulo", state="SP",
+            latitude=-23.5605, longitude=-46.6433,
+            is_available=True, approval_status=DocStatus.approved,
+            rating_avg=4.8, rating_count=52),
+        Professional(id="prof-tech-001", user_id="user-tech-001",
+            council_number="654321", council_state="SP", council_type="COREN",
+            services_offered=TECHNICIAN_SERVICES,
+            markup_pct=0,
+            service_radius=15, city="São Paulo", state="SP",
+            latitude=-23.5705, longitude=-46.6533,
+            is_available=True, approval_status=DocStatus.approved,
+            rating_avg=4.7, rating_count=43),
+        Professional(id="prof-tech-002", user_id="user-tech-002",
+            council_number="345678", council_state="SP", council_type="COREN",
+            services_offered=TECHNICIAN_SERVICES,
+            markup_pct=5,
+            service_radius=20, city="São Paulo", state="SP",
+            latitude=-23.5805, longitude=-46.6633,
+            is_available=False, approval_status=DocStatus.approved,
+            rating_avg=4.6, rating_count=28),
+        Professional(id="prof-care-001", user_id="user-care-001",
+            council_number="", council_state="SP", council_type="CERTIFICADO",
+            services_offered=CAREGIVER_SERVICES,
+            markup_pct=0,
+            service_radius=20, city="São Paulo", state="SP",
+            latitude=-23.5905, longitude=-46.6733,
+            is_available=True, approval_status=DocStatus.approved,
+            rating_avg=4.8, rating_count=31),
+        Professional(id="prof-care-002", user_id="user-care-002",
+            council_number="", council_state="SP", council_type="CERTIFICADO",
+            services_offered=CAREGIVER_SERVICES,
+            markup_pct=0,
+            service_radius=15, city="São Paulo", state="SP",
+            latitude=-23.6005, longitude=-46.6833,
+            is_available=False, approval_status=DocStatus.pending,
+            rating_avg=0.0, rating_count=0),
     ])
 
     db.add_all([
@@ -83,22 +158,82 @@ def seed_dev(db: Session = Depends(get_db)):
     db.commit()
 
     db.add_all([
-        Booking(id="booking-001", patient_id="patient-001", professional_id="prof-nurse-001", service_type="Curativo complexo", procedures=["Troca de curativo","Monitoramento"], scheduled_start=now+timedelta(hours=3), scheduled_end=now+timedelta(hours=6), status=BookingStatus.accepted, total_price=450.0, platform_fee=54.0, pro_payout=396.0),
-        Booking(id="booking-002", patient_id="patient-001", professional_id="prof-tech-001", service_type="Banho no leito e higiene", procedures=["Banho no leito","Higiene oral"], scheduled_start=now-timedelta(days=2,hours=3), scheduled_end=now-timedelta(days=2,hours=1), actual_checkin=now-timedelta(days=2,hours=3), actual_checkout=now-timedelta(days=2,hours=1), checkin_lat=-23.5605, checkin_lng=-46.6433, status=BookingStatus.completed, total_price=200.0, platform_fee=24.0, pro_payout=176.0),
-        Booking(id="booking-003", patient_id="patient-001", professional_id="prof-nurse-001", service_type="Administração de medicamentos", procedures=["Administração de medicamentos","Glicemia capilar"], scheduled_start=now-timedelta(days=7), scheduled_end=now-timedelta(days=7)+timedelta(hours=2), actual_checkin=now-timedelta(days=7), actual_checkout=now-timedelta(days=7)+timedelta(hours=2), status=BookingStatus.completed, total_price=300.0, platform_fee=36.0, pro_payout=264.0),
-        Booking(id="booking-004", patient_id="patient-001", professional_id="prof-care-001", service_type="Acompanhamento / companheirismo", procedures=["Acompanhamento"], scheduled_start=now+timedelta(days=2), scheduled_end=now+timedelta(days=2,hours=4), status=BookingStatus.pending, total_price=280.0, platform_fee=33.6, pro_payout=246.4),
-        Booking(id="booking-005", patient_id="patient-002", professional_id="prof-nurse-002", service_type="Cuidados UTI domiciliar", procedures=["Aspiração de traqueostomia"], scheduled_start=now-timedelta(days=1), scheduled_end=now-timedelta(days=1)+timedelta(hours=12), actual_checkin=now-timedelta(days=1), actual_checkout=now-timedelta(days=1)+timedelta(hours=12), status=BookingStatus.completed, total_price=2160.0, platform_fee=259.2, pro_payout=1900.8),
-        Booking(id="booking-006", patient_id="patient-002", professional_id="prof-tech-001", service_type="Banho no leito e higiene", procedures=["Banho no leito"], scheduled_start=now+timedelta(days=1), scheduled_end=now+timedelta(days=1,hours=3), status=BookingStatus.accepted, total_price=300.0, platform_fee=36.0, pro_payout=264.0),
-        Booking(id="booking-007", patient_id="patient-003", professional_id="prof-nurse-001", service_type="Curativo / pós-operatório", procedures=["Troca de curativo cirúrgico"], scheduled_start=now-timedelta(days=3), scheduled_end=now-timedelta(days=3)+timedelta(hours=1), actual_checkin=now-timedelta(days=3), actual_checkout=now-timedelta(days=3)+timedelta(hours=1), status=BookingStatus.completed, total_price=150.0, platform_fee=18.0, pro_payout=132.0),
-        Booking(id="booking-008", patient_id="patient-003", professional_id="prof-nurse-001", service_type="Curativo / pós-operatório", procedures=["Troca de curativo cirúrgico"], scheduled_start=now+timedelta(days=4), scheduled_end=now+timedelta(days=4,hours=1), status=BookingStatus.pending, total_price=150.0, platform_fee=18.0, pro_payout=132.0),
+        Booking(id="booking-001", patient_id="patient-001", professional_id="prof-nurse-001",
+            service_type="Cuidado Pós-Hospitalar",
+            services=["Curativo complexo","Monitoramento de sinais vitais"],
+            duration_hours=3, shift="day",
+            scheduled_start=now+timedelta(hours=3), scheduled_end=now+timedelta(hours=6),
+            status=BookingStatus.accepted,
+            base_price=180.0, markup_pct=10, surcharge_pct=0,
+            total_price=198.0, platform_fee=23.76, pro_payout=174.24),
+        Booking(id="booking-002", patient_id="patient-001", professional_id="prof-tech-001",
+            service_type="Cuidado com Idosos",
+            services=["Banho e higiene pessoal","Alimentação assistida"],
+            duration_hours=2, shift="day",
+            scheduled_start=now-timedelta(days=2,hours=3), scheduled_end=now-timedelta(days=2,hours=1),
+            actual_checkin=now-timedelta(days=2,hours=3), actual_checkout=now-timedelta(days=2,hours=1),
+            status=BookingStatus.completed,
+            base_price=120.0, markup_pct=0, surcharge_pct=0,
+            total_price=120.0, platform_fee=14.4, pro_payout=105.6),
+        Booking(id="booking-003", patient_id="patient-001", professional_id="prof-nurse-001",
+            service_type="Cuidado de Doença Crônica",
+            services=["Administração de medicamentos","Glicemia capilar","Administração de insulina"],
+            duration_hours=2, shift="day",
+            scheduled_start=now-timedelta(days=7), scheduled_end=now-timedelta(days=7)+timedelta(hours=2),
+            actual_checkin=now-timedelta(days=7), actual_checkout=now-timedelta(days=7)+timedelta(hours=2),
+            status=BookingStatus.completed,
+            base_price=180.0, markup_pct=10, surcharge_pct=0,
+            total_price=198.0, platform_fee=23.76, pro_payout=174.24),
+        Booking(id="booking-004", patient_id="patient-001", professional_id="prof-care-001",
+            service_type="Cuidado Acompanhante",
+            services=["Acompanhamento / companheirismo","Alimentação assistida"],
+            duration_hours=6, shift="day",
+            scheduled_start=now+timedelta(days=2), scheduled_end=now+timedelta(days=2,hours=6),
+            status=BookingStatus.pending,
+            base_price=140.0, markup_pct=0, surcharge_pct=0,
+            total_price=140.0, platform_fee=16.8, pro_payout=123.2),
+        Booking(id="booking-005", patient_id="patient-002", professional_id="prof-nurse-002",
+            service_type="Cuidado Paliativo",
+            services=["Avaliação de enfermagem","Cuidados com traqueostomia","Monitoramento de sinais vitais"],
+            duration_hours=12, shift="day",
+            scheduled_start=now-timedelta(days=1), scheduled_end=now-timedelta(days=1)+timedelta(hours=12),
+            actual_checkin=now-timedelta(days=1), actual_checkout=now-timedelta(days=1)+timedelta(hours=12),
+            status=BookingStatus.completed,
+            base_price=500.0, markup_pct=20, surcharge_pct=0,
+            total_price=600.0, platform_fee=72.0, pro_payout=528.0),
+        Booking(id="booking-006", patient_id="patient-002", professional_id="prof-tech-001",
+            service_type="Cuidado com Idosos",
+            services=["Banho e higiene pessoal","Monitoramento de sinais vitais"],
+            duration_hours=6, shift="day",
+            scheduled_start=now+timedelta(days=1), scheduled_end=now+timedelta(days=1,hours=6),
+            status=BookingStatus.accepted,
+            base_price=170.0, markup_pct=0, surcharge_pct=0,
+            total_price=170.0, platform_fee=20.4, pro_payout=149.6),
+        Booking(id="booking-007", patient_id="patient-003", professional_id="prof-nurse-001",
+            service_type="Procedimentos de Enfermagem",
+            services=["Curativo complexo","Avaliação de enfermagem"],
+            duration_hours=2, shift="day",
+            scheduled_start=now-timedelta(days=3), scheduled_end=now-timedelta(days=3)+timedelta(hours=2),
+            actual_checkin=now-timedelta(days=3), actual_checkout=now-timedelta(days=3)+timedelta(hours=2),
+            status=BookingStatus.completed,
+            base_price=180.0, markup_pct=10, surcharge_pct=0,
+            total_price=198.0, platform_fee=23.76, pro_payout=174.24),
+        Booking(id="booking-008", patient_id="patient-003", professional_id="prof-nurse-001",
+            service_type="Procedimentos de Enfermagem",
+            services=["Curativo complexo"],
+            duration_hours=2, shift="day",
+            scheduled_start=now+timedelta(days=4), scheduled_end=now+timedelta(days=4,hours=2),
+            status=BookingStatus.pending,
+            base_price=180.0, markup_pct=10, surcharge_pct=0,
+            total_price=198.0, platform_fee=23.76, pro_payout=174.24),
     ])
     db.commit()
 
     db.add_all([
-        Payment(booking_id="booking-002", amount=200.0, commission=24.0, pro_payout=176.0, currency="BRL", method="pix", status=PaymentStatus.paid, paid_at=now-timedelta(days=2)),
-        Payment(booking_id="booking-003", amount=300.0, commission=36.0, pro_payout=264.0, currency="BRL", method="card", status=PaymentStatus.paid, paid_at=now-timedelta(days=7)),
-        Payment(booking_id="booking-005", amount=2160.0, commission=259.2, pro_payout=1900.8, currency="BRL", method="pix", status=PaymentStatus.paid, paid_at=now-timedelta(days=1)),
-        Payment(booking_id="booking-007", amount=150.0, commission=18.0, pro_payout=132.0, currency="BRL", method="card", status=PaymentStatus.paid, paid_at=now-timedelta(days=3)),
+        Payment(booking_id="booking-002", amount=120.0, commission=14.4, pro_payout=105.6, currency="BRL", method="pix", status=PaymentStatus.paid, paid_at=now-timedelta(days=2)),
+        Payment(booking_id="booking-003", amount=198.0, commission=23.76, pro_payout=174.24, currency="BRL", method="card", status=PaymentStatus.paid, paid_at=now-timedelta(days=7)),
+        Payment(booking_id="booking-005", amount=600.0, commission=72.0, pro_payout=528.0, currency="BRL", method="pix", status=PaymentStatus.paid, paid_at=now-timedelta(days=1)),
+        Payment(booking_id="booking-007", amount=198.0, commission=23.76, pro_payout=174.24, currency="BRL", method="card", status=PaymentStatus.paid, paid_at=now-timedelta(days=3)),
     ])
     db.add_all([
         Assessment(booking_id="booking-002", reviewer_id="user-client-001", reviewee_id="user-tech-001", rating=5, comment="João foi muito atencioso e pontual."),
@@ -115,8 +250,6 @@ def seed_dev(db: Session = Depends(get_db)):
         Document(user_id="user-nurse-001", doc_type="selfie",   file_url="https://placeholder.com/doc4.jpg", status=DocStatus.approved),
         Document(user_id="user-nurse-002", doc_type="photo_id", file_url="https://placeholder.com/doc5.jpg", status=DocStatus.approved),
         Document(user_id="user-nurse-002", doc_type="diploma",  file_url="https://placeholder.com/doc6.jpg", status=DocStatus.approved),
-        Document(user_id="user-nurse-002", doc_type="criminal", file_url="https://placeholder.com/doc7.jpg", status=DocStatus.approved),
-        Document(user_id="user-nurse-002", doc_type="selfie",   file_url="https://placeholder.com/doc8.jpg", status=DocStatus.approved),
         Document(user_id="user-care-002",  doc_type="photo_id", file_url="https://placeholder.com/doc9.jpg", status=DocStatus.pending),
     ])
     db.commit()
@@ -126,8 +259,8 @@ def seed_dev(db: Session = Depends(get_db)):
         "accounts": {
             "admin":       ["admin@cuida.me / admin123", "admin2@cuida.me / admin123"],
             "clients":     ["cliente@cuida.me / client123", "cliente2@cuida.me / client123", "cliente3@cuida.me / client123"],
-            "nurses":      ["enfermeira@cuida.me / pro123 (approved)", "enfermeira2@cuida.me / pro123 (approved)"],
-            "technicians": ["tecnico@cuida.me / pro123 (approved)", "tecnico2@cuida.me / pro123 (approved)"],
+            "nurses":      ["enfermeira@cuida.me / pro123 (approved, +10%)", "enfermeira2@cuida.me / pro123 (approved, +20%)"],
+            "technicians": ["tecnico@cuida.me / pro123 (approved, +0%)", "tecnico2@cuida.me / pro123 (approved, +5%)"],
             "caregivers":  ["cuidadora@cuida.me / pro123 (approved)", "cuidadora2@cuida.me / pro123 (PENDING)"],
         }
     }
