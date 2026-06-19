@@ -111,6 +111,24 @@ const Login = () => {
           </Link>
         </div>
         <div className="card p-8">
+          {/* Dev quick login — remove before production */}
+          <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <p className="text-xs font-semibold text-amber-700 mb-2">🛠 Dev — Quick login</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setError(""); setEmail("admin@cuida.me"); setPassword("admin123"); }}
+                className="flex-1 text-xs py-2 px-2 rounded-lg bg-red-100 text-red-700 font-semibold hover:bg-red-200 transition-colors">
+                🔧 Admin
+              </button>
+              <button onClick={() => { setError(""); setEmail("cliente@cuida.me"); setPassword("client123"); }}
+                className="flex-1 text-xs py-2 px-2 rounded-lg bg-blue-100 text-blue-700 font-semibold hover:bg-blue-200 transition-colors">
+                👤 Client
+              </button>
+              <button onClick={() => { setError(""); setEmail("enfermeira@cuida.me"); setPassword("pro123"); }}
+                className="flex-1 text-xs py-2 px-2 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200 transition-colors">
+                👩‍⚕️ Pro
+              </button>
+            </div>
+          </div>
           <h1 className="font-display text-2xl font-bold text-navy mb-1">{t("nav.login")}</h1>
           <p className="text-slate-500 text-sm mb-6">Acesse sua conta Cuida.me</p>
           <div className="flex justify-center mb-5">
