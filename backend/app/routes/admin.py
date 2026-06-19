@@ -122,3 +122,25 @@ def update_commission(rate: Optional[float] = None, body: Optional[dict] = None,
         raise HTTPException(400, "Rate must be between 0 and 100")
     _commission["rate"] = final_rate
     return _commission
+
+# ── Pricing table management ──────────────────────────────────────────────────
+from app.utils.pricing import MINIMUM_PRICES, VALID_DURATIONS
+
+@router.get("/pricing")
+def get_pricing_table():
+    """Return the full platform minimum pricing table."""
+    return MINIMUM_PRICES
+
+@router.patch("/pricing/{role}/{duration}/{shift}")
+def update_pricing(role: str, duration: int, shift: str, price: float):
+    """Admin updates a specific minimum price cell."""
+    if role not in MINIMUM_PRICES:
+        raise HTTPException(400, f"Invalid role. Must be: {list(MINIMUM_PRICES.keys())}")
+    if duration not in VALID_DURATIONS:
+        raise HTTPException(400, f"Invalid duration. Must be: {VALID_DURATIONS}")
+    if shift not in ("day", "night"):
+        raise HTTPException(400, "shift must be 'day' or 'night'")
+    if price <= 0:
+        raise HTTPException(400, "Price must be positive")
+    MINIMUM_PRICES[role][duration][shift] = round(price, 2)
+    return {"updated": True, "role": role, "duration": duration, "shift": shift, "price": price}

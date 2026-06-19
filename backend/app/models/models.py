@@ -8,11 +8,11 @@ def gen_uuid():
     return str(uuid.uuid4())
 
 class UserRole(str, enum.Enum):
-    client      = "client"
-    nurse       = "nurse"
-    technician  = "technician"
-    caregiver   = "caregiver"
-    admin       = "admin"  # ← added
+    client     = "client"
+    nurse      = "nurse"
+    technician = "technician"
+    caregiver  = "caregiver"
+    admin      = "admin"
 
 class DocStatus(str, enum.Enum):
     pending  = "pending"
@@ -54,24 +54,26 @@ class User(Base):
     documents     = relationship("Document",     back_populates="user")
 
 class Professional(Base):
-    __tablename__ = "professionals"
-    id             = Column(String, primary_key=True, default=gen_uuid)
-    user_id        = Column(String, ForeignKey("users.id"), unique=True)
-    council_number = Column(String, nullable=True)
-    council_state  = Column(String, nullable=True)
-    council_type   = Column(String, default="COREN")
-    specialties    = Column(JSON, default=list)
-    service_radius = Column(Integer, default=15)
-    city           = Column(String, nullable=True)
-    state          = Column(String, nullable=True)
-    latitude       = Column(Float, nullable=True)
-    longitude      = Column(Float, nullable=True)
-    hourly_rate    = Column(Float, nullable=True)
-    is_available   = Column(Boolean, default=False)
-    approval_status= Column(Enum(DocStatus), default=DocStatus.pending)
-    rating_avg     = Column(Float, default=0.0)
-    rating_count   = Column(Integer, default=0)
-    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    __tablename__    = "professionals"
+    id               = Column(String, primary_key=True, default=gen_uuid)
+    user_id          = Column(String, ForeignKey("users.id"), unique=True)
+    council_number   = Column(String, nullable=True)
+    council_state    = Column(String, nullable=True)
+    council_type     = Column(String, default="COREN")
+    # New: services the professional offers (replaces specialties)
+    services_offered = Column(JSON, default=list)
+    # New: markup percentage 0-30 in 5% steps
+    markup_pct       = Column(Integer, default=0)
+    service_radius   = Column(Integer, default=15)
+    city             = Column(String, nullable=True)
+    state            = Column(String, nullable=True)
+    latitude         = Column(Float, nullable=True)
+    longitude        = Column(Float, nullable=True)
+    is_available     = Column(Boolean, default=False)
+    approval_status  = Column(Enum(DocStatus), default=DocStatus.pending)
+    rating_avg       = Column(Float, default=0.0)
+    rating_count     = Column(Integer, default=0)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     user     = relationship("User",    back_populates="professional")
     bookings = relationship("Booking", back_populates="professional")
@@ -111,12 +113,14 @@ class Document(Base):
     user = relationship("User", back_populates="documents")
 
 class Booking(Base):
-    __tablename__ = "bookings"
+    __tablename__   = "bookings"
     id              = Column(String, primary_key=True, default=gen_uuid)
     patient_id      = Column(String, ForeignKey("patients.id"))
     professional_id = Column(String, ForeignKey("professionals.id"))
-    service_type    = Column(String)
-    procedures      = Column(JSON, default=list)
+    service_type    = Column(String)               # care type label
+    services        = Column(JSON, default=list)   # actual services requested
+    duration_hours  = Column(Integer, nullable=True)
+    shift           = Column(String, default="day") # "day" | "night"
     scheduled_start = Column(DateTime(timezone=True))
     scheduled_end   = Column(DateTime(timezone=True))
     actual_checkin  = Column(DateTime(timezone=True), nullable=True)
@@ -124,6 +128,13 @@ class Booking(Base):
     checkin_lat     = Column(Float, nullable=True)
     checkin_lng     = Column(Float, nullable=True)
     status          = Column(Enum(BookingStatus), default=BookingStatus.pending)
+    # Pricing fields
+    is_urgent       = Column(Boolean, default=False)
+    is_holiday      = Column(Boolean, default=False)
+    distance_km     = Column(Float, default=0.0)
+    base_price      = Column(Float, nullable=True)
+    markup_pct      = Column(Integer, default=0)
+    surcharge_pct   = Column(Float, default=0.0)
     total_price     = Column(Float)
     platform_fee    = Column(Float)
     pro_payout      = Column(Float)
@@ -137,7 +148,7 @@ class Booking(Base):
     assessments  = relationship("Assessment",   back_populates="booking")
 
 class Payment(Base):
-    __tablename__ = "payments"
+    __tablename__    = "payments"
     id               = Column(String, primary_key=True, default=gen_uuid)
     booking_id       = Column(String, ForeignKey("bookings.id"), unique=True)
     amount           = Column(Float)
