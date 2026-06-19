@@ -51,13 +51,6 @@ const Login = () => {
   const [pendingCred,   setPendingCred]   = useState(null);
   const [error,         setError]         = useState("");
 
-  const quickLogin = (role) => {
-    setError("");
-    if (role === "client") { setEmail("cliente@cuida.me");    setPassword("client123"); }
-    else if (role === "pro")   { setEmail("enfermeira@cuida.me"); setPassword("pro123");    }
-    else if (role === "admin") { setEmail("admin@cuida.me");      setPassword("admin123");  }
-  };
-
   const saveAndRedirect = (data) => {
     localStorage.setItem("token",     data.access_token);
     localStorage.setItem("role",      data.role);
@@ -70,8 +63,7 @@ const Login = () => {
 
   const handleLogin = async () => {
     if (!email || !password) { setError("Preencha e-mail e senha."); return; }
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const { data } = await axios.post(`${API}/api/auth/login`, { email, password });
       saveAndRedirect(data);
@@ -86,27 +78,20 @@ const Login = () => {
     setGoogleLoading(true);
     try {
       const { data } = await axios.post(`${API}/api/auth/google`, { credential: cred.credential, role: "check" });
-      if (!data.is_new_user) {
-        saveAndRedirect(data);
-      } else {
-        setGoogleLoading(false);
-        setPendingCred(cred.credential);
-      }
+      if (!data.is_new_user) { saveAndRedirect(data); }
+      else { setGoogleLoading(false); setPendingCred(cred.credential); }
     } catch {
-      setError("Erro ao entrar com Google.");
-      setGoogleLoading(false);
+      setError("Erro ao entrar com Google."); setGoogleLoading(false);
     }
   };
 
   const handleRolePick = async (role) => {
-    setPendingCred(null);
-    setGoogleLoading(true);
+    setPendingCred(null); setGoogleLoading(true);
     try {
       const { data } = await axios.post(`${API}/api/auth/google`, { credential: pendingCred, role });
       saveAndRedirect(data);
     } catch {
-      setError("Erro ao entrar com Google.");
-      setGoogleLoading(false);
+      setError("Erro ao entrar com Google."); setGoogleLoading(false);
     }
   };
 
@@ -115,7 +100,6 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-hero-gradient flex flex-col items-center justify-center px-4 py-12">
       {pendingCred && <RolePicker onPick={handleRolePick} />}
-
       <div className="w-full max-w-md">
         <div className="flex items-center justify-between mb-3">
           <Link to="/"><Logo size="md" /></Link>
@@ -126,44 +110,18 @@ const Login = () => {
             <ArrowLeft size={15} /> Voltar ao início
           </Link>
         </div>
-
         <div className="card p-8">
           <h1 className="font-display text-2xl font-bold text-navy mb-1">{t("nav.login")}</h1>
           <p className="text-slate-500 text-sm mb-6">Acesse sua conta Cuida.me</p>
-
-          {/* Dev quick login */}
-          <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-            <p className="text-xs font-semibold text-amber-700 mb-2">🛠 Dev — Quick login</p>
-            <div className="flex gap-2">
-              <button onClick={() => quickLogin("admin")}
-                className="flex-1 text-xs py-2 px-2 rounded-lg bg-red-100 text-red-700 font-semibold hover:bg-red-200 transition-colors">
-                🔧 Admin
-              </button>
-              <button onClick={() => quickLogin("client")}
-                className="flex-1 text-xs py-2 px-2 rounded-lg bg-blue-100 text-blue-700 font-semibold hover:bg-blue-200 transition-colors">
-                👤 Client
-              </button>
-              <button onClick={() => quickLogin("pro")}
-                className="flex-1 text-xs py-2 px-2 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200 transition-colors">
-                👩‍⚕️ Pro
-              </button>
-            </div>
-          </div>
-
           <div className="flex justify-center mb-5">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setError("Google login falhou.")}
-              width="100%" shape="rectangular" size="large"
-            />
+            <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => setError("Google login falhou.")}
+              width="100%" shape="rectangular" size="large" />
           </div>
-
           <div className="flex items-center gap-3 my-5">
             <hr className="flex-1 border-slate-200" />
             <span className="text-xs text-slate-400 font-medium">ou</span>
             <hr className="flex-1 border-slate-200" />
           </div>
-
           <div className="mb-4">
             <label className="form-label">E-mail</label>
             <input className="form-input" type="email" placeholder="seu@email.com"
@@ -176,15 +134,12 @@ const Login = () => {
               value={password} onChange={e => { setError(""); setPassword(e.target.value); }}
               onKeyDown={e => e.key === "Enter" && handleLogin()} />
           </div>
-
           {error && (
-            <div className="flex items-center gap-2 my-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+            <div className="p-3 my-3 bg-red-50 border border-red-200 rounded-xl">
               <span className="text-red-500 text-xs font-medium">{error}</span>
             </div>
           )}
-
-          <button onClick={handleLogin} disabled={loading}
-            className="btn-primary w-full mt-4 mb-4 disabled:opacity-60">
+          <button onClick={handleLogin} disabled={loading} className="btn-primary w-full mt-4 mb-4 disabled:opacity-60">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -192,12 +147,9 @@ const Login = () => {
               </span>
             ) : "Entrar"}
           </button>
-
           <p className="text-center text-xs text-slate-500">
             Não tem conta?{" "}
-            <Link to="/register" className="text-blue-500 font-semibold hover:underline">
-              Cadastre-se gratuitamente
-            </Link>
+            <Link to="/register" className="text-blue-500 font-semibold hover:underline">Cadastre-se gratuitamente</Link>
           </p>
         </div>
       </div>

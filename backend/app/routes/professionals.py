@@ -18,26 +18,16 @@ class ProfessionalUpdate(BaseModel):
     is_available:   Optional[bool] = None
 
 def get_or_create_profile(db: Session, user_id: str) -> Professional:
-    """Get professional profile, auto-creating pending one if missing."""
     prof = db.query(Professional).filter(Professional.user_id == user_id).first()
     if not prof:
-        prof = Professional(
-            user_id=user_id,
-            approval_status=DocStatus.pending,
-            is_available=False,
-        )
+        prof = Professional(user_id=user_id, approval_status=DocStatus.pending, is_available=False)
         db.add(prof)
         db.commit()
         db.refresh(prof)
     return prof
 
 @router.get("/nearby")
-def get_nearby(
-    lat:    float = -23.55,
-    lng:    float = -46.63,
-    radius: int   = 50,
-    db:     Session = Depends(get_db)
-):
+def get_nearby(lat: float = -23.55, lng: float = -46.63, radius: int = 50, db: Session = Depends(get_db)):
     """Returns only APPROVED and AVAILABLE professionals."""
     professionals = db.query(Professional).filter(
         Professional.approval_status == DocStatus.approved,
@@ -47,6 +37,7 @@ def get_nearby(
 
 @router.patch("/{user_id}/toggle-availability")
 def toggle_availability(user_id: str, db: Session = Depends(get_db)):
+    """Toggle by user_id — auto-creates profile if missing."""
     prof = get_or_create_profile(db, user_id)
     if prof.approval_status != DocStatus.approved:
         raise HTTPException(403, "ACCOUNT_NOT_VERIFIED")
@@ -71,5 +62,4 @@ def patch_professional(user_id: str, body: ProfessionalUpdate, db: Session = Dep
 
 @router.get("/{user_id}")
 def get_professional(user_id: str, db: Session = Depends(get_db)):
-    """Auto-creates pending profile if professional just registered."""
     return get_or_create_profile(db, user_id)

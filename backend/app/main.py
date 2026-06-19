@@ -1,13 +1,16 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from app.core.config import settings
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Cuida.me API", version="1.0.0")
+app = FastAPI(
+    title="Cuida.me API",
+    version="1.0.0",
+    redirect_slashes=False,  # Fix trailing slash 503s
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,6 +74,7 @@ def seed_dev(db: Session = Depends(get_db)):
         Professional(id="prof-care-001", user_id="user-care-001", council_number="", council_state="SP", council_type="CERTIFICADO", specialties=["Cuidados com idosos","Acompanhamento / companheirismo"], service_radius=20, city="São Paulo", state="SP", latitude=-23.5905, longitude=-46.6733, hourly_rate=70.0, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=31),
         Professional(id="prof-care-002", user_id="user-care-002", council_number="", council_state="SP", council_type="CERTIFICADO", specialties=["Cuidados com idosos"], service_radius=15, city="São Paulo", state="SP", latitude=-23.6005, longitude=-46.6833, hourly_rate=65.0, is_available=False, approval_status=DocStatus.pending, rating_avg=0.0, rating_count=0),
     ])
+
     db.add_all([
         Patient(id="patient-001", user_id="user-client-001", patient_name="Roberto Mendes", age=78, relation="Filho(a)", diagnoses="Diabetes tipo 2, hipertensão arterial", allergies="Penicilina", medications="Metformina 500mg, Losartana 50mg", devices=["catheter"], mobility="ambulatory", address="Rua das Flores, 123, Jardins, São Paulo - SP", latitude=-23.5605, longitude=-46.6433),
         Patient(id="patient-002", user_id="user-client-002", patient_name="Margarida Costa", age=82, relation="Cônjuge", diagnoses="AVC isquêmico, hemiplegia direita", allergies="Dipirona", medications="AAS 100mg, Clopidogrel 75mg", devices=["gastrostomy","catheter"], mobility="bedridden", address="Av. Paulista, 456, Bela Vista, São Paulo - SP", latitude=-23.5705, longitude=-46.6533),
@@ -124,6 +128,6 @@ def seed_dev(db: Session = Depends(get_db)):
             "clients":     ["cliente@cuida.me / client123", "cliente2@cuida.me / client123", "cliente3@cuida.me / client123"],
             "nurses":      ["enfermeira@cuida.me / pro123 (approved)", "enfermeira2@cuida.me / pro123 (approved)"],
             "technicians": ["tecnico@cuida.me / pro123 (approved)", "tecnico2@cuida.me / pro123 (approved)"],
-            "caregivers":  ["cuidadora@cuida.me / pro123 (approved)", "cuidadora2@cuida.me / pro123 (PENDING - test approval)"],
+            "caregivers":  ["cuidadora@cuida.me / pro123 (approved)", "cuidadora2@cuida.me / pro123 (PENDING)"],
         }
     }

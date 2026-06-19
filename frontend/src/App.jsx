@@ -11,6 +11,8 @@ import PublicOnlyRoute from "./components/common/PublicOnlyRoute";
 import Home                  from "./pages/Home";
 import Login                 from "./pages/auth/Login";
 import Register              from "./pages/auth/Register";
+import Terms                 from "./pages/Terms";
+import Privacy               from "./pages/Privacy";
 import NotFound              from "./pages/NotFound";
 import ClientDashboard       from "./pages/client/Dashboard";
 import ClientProfile         from "./pages/client/Profile";
@@ -20,9 +22,9 @@ import ProfessionalProfile   from "./pages/professional/Profile";
 import AdminDashboard        from "./pages/admin/Dashboard";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
-const CLIENT_ROLES = ["client"];
-const PRO_ROLES    = ["nurse", "technician", "caregiver"];
-const ADMIN_ROLES  = ["admin"];
+const CLIENT_ROLES     = ["client"];
+const PRO_ROLES        = ["nurse", "technician", "caregiver"];
+const ADMIN_ROLES      = ["admin"];
 
 const PublicLayout = ({ children }) => (
   <><Navbar />{children}<Footer /></>
@@ -34,8 +36,12 @@ function App() {
       <BrowserRouter>
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
-          {/* Public — redirects logged-in users to their dashboard */}
-          <Route path="/"         element={<PublicLayout><Home /></PublicLayout>} />
+          {/* Public */}
+          <Route path="/"        element={<PublicLayout><Home /></PublicLayout>} />
+          <Route path="/terms"   element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+
+          {/* Auth — redirect logged-in users away */}
           <Route path="/login"    element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
           <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
 
