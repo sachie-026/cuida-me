@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
+from app.core.auth_deps import require_admin as _require_admin
+from fastapi import Depends as _Depends
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -69,7 +71,7 @@ def health():
     return {"status": "ok"}
 
 @app.post("/api/seed-dev")
-def seed_dev(db: Session = Depends(get_db)):
+def seed_dev(db: Session = Depends(get_db), _=_Depends(_require_admin)):
     from app.core.security import hash_password
     from app.models.models import (
         User, UserRole, Professional, Patient,

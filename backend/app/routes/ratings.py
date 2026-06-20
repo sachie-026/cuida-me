@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from app.core.database import get_db
+from app.core.auth_deps import get_current_user, require_admin
 from app.models.models import Assessment, Booking, Professional, BookingStatus
 from sqlalchemy import func
 
@@ -11,12 +12,35 @@ router = APIRouter(prefix="/ratings", tags=["ratings"])
 class RatingCreate(BaseModel):
     booking_id:  str
     reviewer_id: str
-    reviewee_id: str  # accepts either user_id OR professional_id — we resolve below
+    reviewee_id: str
     rating:      int
     comment:     Optional[str] = None
 
-@router.post("/", status_code=201)
-def create_rating(body: RatingCreate, db: Session = Depends(get_db)):
+@router.get("")
+@router.get("/")
+def list_ratings(
+    reviewer_id: Optional[str] = None,
+    reviewee_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current=Depends(get_current_user),
+):
+    """List ratings. Admin sees all. Users see their own."""
+    q = db.query(Assessment)
+    if str(current.role) != "admin":
+        # Non-admins can only see ratings they gave or received
+        q = q.filter(
+            (Assessment.reviewer_id == current.id) |
+            (Assessment.reviewee_id == current.id)
+        )
+    if reviewer_id:
+        q = q.filter(Assessment.reviewer_id == reviewer_id)
+    if reviewee_id:
+        q = q.filter(Assessment.reviewee_id == reviewee_id)
+    return q.order_by(Assessment.created_at.desc()).all()
+
+@router.post("", status_code=201)
+@router.post("/", status_code=201, include_in_schema=False)
+def create_rating(body: RatingCreate, db: Session = Depends(get_db), current=Depends(get_current_user)):
     if not 1 <= body.rating <= 5:
         raise HTTPException(400, "Rating must be between 1 and 5")
 
@@ -61,13 +85,15 @@ def create_rating(body: RatingCreate, db: Session = Depends(get_db)):
     return assessment
 
 @router.get("/booking/{booking_id}")
-def get_booking_ratings(booking_id: str, db: Session = Depends(get_db)):
+def get_booking_ratings(booking_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
     return db.query(Assessment).filter(Assessment.booking_id == booking_id).all()
 
 @router.get("/professional/{user_id}")
-def get_professional_ratings(user_id: str, db: Session = Depends(get_db)):
+def get_professional_ratings(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
     return db.query(Assessment).filter(Assessment.reviewee_id == user_id).all()
 
 @router.get("/user/{user_id}/given")
-def get_ratings_given(user_id: str, db: Session = Depends(get_db)):
+def get_ratings_given(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
+    if current.id != user_id and str(current.role) != "admin":
+        raise HTTPException(403, "Access denied")
     return db.query(Assessment).filter(Assessment.reviewer_id == user_id).all()
