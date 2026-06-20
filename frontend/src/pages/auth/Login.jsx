@@ -147,7 +147,10 @@ const Login = () => {
               onKeyDown={e => e.key === "Enter" && handleLogin()} />
           </div>
           <div className="mb-2">
-            <label className="form-label">Senha</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="form-label mb-0">Senha</label>
+              <Link to="/forgot-password" className="text-xs text-blue-500 hover:underline">Esqueci minha senha</Link>
+            </div>
             <input className="form-input" type="password" placeholder="Sua senha"
               value={password} onChange={e => { setError(""); setPassword(e.target.value); }}
               onKeyDown={e => e.key === "Enter" && handleLogin()} />

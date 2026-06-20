@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.models.models import Professional, DocStatus
+from app.core.auth_deps import get_current_user, get_optional_user
+from app.models.models import Professional, DocStatus, User
 from app.utils.pricing import (
     professional_can_perform, minimum_role_for_services,
     SERVICES_BY_ROLE, calculate_price, VALID_MARKUPS
@@ -45,6 +46,7 @@ def get_or_create_profile(db: Session, user_id: str) -> Professional:
         db.refresh(prof)
     return prof
 
+# Public endpoints (no auth needed — clients browse before login)
 @router.get("/services")
 def get_services_catalog():
     return SERVICES_BY_ROLE
@@ -70,9 +72,12 @@ def get_nearby(
     lng:      float = -46.63,
     radius:   int   = 50,
     services: Optional[str] = None,
-    db:       Session = Depends(get_db)
+    db:       Session = Depends(get_db),
+    current:  Optional[User] = Depends(get_optional_user),
 ):
+    """Public endpoint — returns approved+available professionals, filtered by services if provided."""
     required_services = [s.strip() for s in services.split(",")] if services else []
+
     professionals = db.query(Professional).filter(
         Professional.approval_status == DocStatus.approved,
         Professional.is_available    == True,
@@ -82,22 +87,42 @@ def get_nearby(
         min_role = minimum_role_for_services(required_services)
         if min_role is None:
             raise HTTPException(400, "One or more requested services are not recognised")
-        from app.models.models import User
         filtered = []
         for prof in professionals:
             user = db.query(User).filter(User.id == prof.user_id).first()
-            if not user: continue
+            if not user:
+                continue
             role = user.role.value if hasattr(user.role, 'value') else str(user.role)
             prof_services = prof.services_offered or []
             if professional_can_perform(role, required_services) and \
                any(s in prof_services for s in required_services):
-                filtered.append(prof)
-        professionals = filtered
+                # Enrich with user data for display
+                filtered.append({
+                    **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
+                    "full_name": user.full_name,
+                    "role": role,
+                })
+        return {"professionals": filtered, "count": len(filtered)}
 
-    return {"professionals": professionals, "count": len(professionals)}
+    # No service filter — enrich all with user data
+    result = []
+    for prof in professionals:
+        user = db.query(User).filter(User.id == prof.user_id).first()
+        if not user:
+            continue
+        role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        result.append({
+            **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
+            "full_name": user.full_name,
+            "role": role,
+        })
+    return {"professionals": result, "count": len(result)}
 
+# Authenticated endpoints
 @router.patch("/{user_id}/toggle-availability")
-def toggle_availability(user_id: str, db: Session = Depends(get_db)):
+def toggle_availability(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
+    if current.id != user_id and str(current.role) != "admin":
+        raise HTTPException(403, "Access denied")
     prof = get_or_create_profile(db, user_id)
     if prof.approval_status != DocStatus.approved:
         raise HTTPException(403, "ACCOUNT_NOT_VERIFIED")
@@ -106,7 +131,9 @@ def toggle_availability(user_id: str, db: Session = Depends(get_db)):
     return {"is_available": prof.is_available}
 
 @router.put("/{user_id}")
-def update_professional(user_id: str, body: ProfessionalUpdate, db: Session = Depends(get_db)):
+def update_professional(user_id: str, body: ProfessionalUpdate, db: Session = Depends(get_db), current=Depends(get_current_user)):
+    if current.id != user_id and str(current.role) != "admin":
+        raise HTTPException(403, "Access denied")
     prof = get_or_create_profile(db, user_id)
     data = body.dict(exclude_unset=True)
     if "markup_pct" in data and data["markup_pct"] not in VALID_MARKUPS:
@@ -120,9 +147,9 @@ def update_professional(user_id: str, body: ProfessionalUpdate, db: Session = De
     return prof
 
 @router.patch("/{user_id}")
-def patch_professional(user_id: str, body: ProfessionalUpdate, db: Session = Depends(get_db)):
-    return update_professional(user_id, body, db)
+def patch_professional(user_id: str, body: ProfessionalUpdate, db: Session = Depends(get_db), current=Depends(get_current_user)):
+    return update_professional(user_id, body, db, current)
 
 @router.get("/{user_id}")
-def get_professional(user_id: str, db: Session = Depends(get_db)):
+def get_professional(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
     return get_or_create_profile(db, user_id)

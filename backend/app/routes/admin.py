@@ -2,13 +2,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.models.models import User, Professional, Booking, Payment, Document, Assessment, DocStatus, UserRole
-from app.schemas.user import UserResponse
+from app.core.auth_deps import require_admin
+from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole
+from app.utils.pricing import MINIMUM_PRICES, VALID_DURATIONS
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/stats")
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
     return {
         "total_users":         db.query(User).count(),
         "total_clients":       db.query(User).filter(User.role == UserRole.client).count(),
@@ -20,12 +21,11 @@ def get_stats(db: Session = Depends(get_db)):
     }
 
 @router.get("/users")
-def get_users(role: Optional[str] = None, db: Session = Depends(get_db)):
+def get_users(role: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
     q = db.query(User)
     if role:
         q = q.filter(User.role == role)
     users = q.order_by(User.created_at.desc()).all()
-    # Return safe user data without password_hash
     return [
         {
             "id": u.id, "email": u.email, "full_name": u.full_name,
@@ -36,18 +36,18 @@ def get_users(role: Optional[str] = None, db: Session = Depends(get_db)):
     ]
 
 @router.patch("/users/{user_id}/block")
-def block_user(user_id: str, db: Session = Depends(get_db)):
+def block_user(user_id: str, db: Session = Depends(get_db), current=Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
-    if user.role == "admin":
+    if user.role == UserRole.admin:
         raise HTTPException(400, "Cannot block admin users")
     user.is_active = not user.is_active
     db.commit()
     return {"id": user.id, "is_active": user.is_active}
 
 @router.get("/professionals")
-def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db)):
+def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
     q = db.query(Professional)
     if status:
         q = q.filter(Professional.approval_status == status)
@@ -57,31 +57,31 @@ def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db
         user = db.query(User).filter(User.id == prof.user_id).first()
         docs = db.query(Document).filter(Document.user_id == prof.user_id).all()
         result.append({
-            "id":              prof.id,
-            "user_id":         prof.user_id,
-            "full_name":       user.full_name if user else "—",
-            "email":           user.email     if user else "—",
-            "phone":           user.phone     if user else "—",
-            "role":            user.role      if user else "—",
-            "council_number":  prof.council_number,
-            "council_state":   prof.council_state,
-            "council_type":    prof.council_type,
-            "city":            prof.city,
-            "specialties":     prof.specialties,
-            "hourly_rate":     prof.hourly_rate,
-            "rating_avg":      prof.rating_avg,
-            "rating_count":    prof.rating_count,
-            "approval_status": prof.approval_status,
-            "is_available":    prof.is_available,
+            "id":               prof.id,
+            "user_id":          prof.user_id,
+            "full_name":        user.full_name if user else "—",
+            "email":            user.email     if user else "—",
+            "phone":            user.phone     if user else "—",
+            "role":             str(user.role) if user else "—",
+            "council_number":   prof.council_number,
+            "council_state":    prof.council_state,
+            "council_type":     prof.council_type,
+            "city":             prof.city,
+            "services_offered": prof.services_offered or [],
+            "markup_pct":       prof.markup_pct or 0,
+            "rating_avg":       prof.rating_avg,
+            "rating_count":     prof.rating_count,
+            "approval_status":  str(prof.approval_status),
+            "is_available":     prof.is_available,
             "documents": [
-                {"doc_type": d.doc_type, "file_url": d.file_url, "status": d.status}
+                {"doc_type": d.doc_type, "file_url": d.file_url, "status": str(d.status)}
                 for d in docs
             ],
         })
     return result
 
 @router.patch("/professionals/{prof_id}/approve")
-def approve_professional(prof_id: str, db: Session = Depends(get_db)):
+def approve_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     prof = db.query(Professional).filter(Professional.id == prof_id).first()
     if not prof:
         raise HTTPException(404, "Professional not found")
@@ -90,17 +90,17 @@ def approve_professional(prof_id: str, db: Session = Depends(get_db)):
     return {"id": prof_id, "status": "approved"}
 
 @router.patch("/professionals/{prof_id}/reject")
-def reject_professional(prof_id: str, db: Session = Depends(get_db)):
+def reject_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     prof = db.query(Professional).filter(Professional.id == prof_id).first()
     if not prof:
         raise HTTPException(404, "Professional not found")
     prof.approval_status = DocStatus.rejected
-    prof.is_available = False  # force offline when rejected
+    prof.is_available    = False
     db.commit()
     return {"id": prof_id, "status": "rejected"}
 
 @router.get("/bookings")
-def get_bookings(status: Optional[str] = None, db: Session = Depends(get_db)):
+def get_bookings(status: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
     q = db.query(Booking)
     if status:
         q = q.filter(Booking.status == status)
@@ -109,31 +109,22 @@ def get_bookings(status: Optional[str] = None, db: Session = Depends(get_db)):
 _commission = {"rate": 12.0}
 
 @router.get("/commission")
-def get_commission():
+def get_commission(_=Depends(require_admin)):
     return _commission
 
 @router.put("/commission")
-def update_commission(rate: Optional[float] = None, body: Optional[dict] = None, db: Session = Depends(get_db)):
-    # Accept both query param and JSON body
-    final_rate = rate
-    if final_rate is None and body:
-        final_rate = body.get("rate")
-    if final_rate is None or not (0 < final_rate < 100):
+def update_commission(rate: float, _=Depends(require_admin)):
+    if not (0 < rate < 100):
         raise HTTPException(400, "Rate must be between 0 and 100")
-    _commission["rate"] = final_rate
+    _commission["rate"] = rate
     return _commission
 
-# ── Pricing table management ──────────────────────────────────────────────────
-from app.utils.pricing import MINIMUM_PRICES, VALID_DURATIONS
-
 @router.get("/pricing")
-def get_pricing_table():
-    """Return the full platform minimum pricing table."""
+def get_pricing_table(_=Depends(require_admin)):
     return MINIMUM_PRICES
 
 @router.patch("/pricing/{role}/{duration}/{shift}")
-def update_pricing(role: str, duration: int, shift: str, price: float):
-    """Admin updates a specific minimum price cell."""
+def update_pricing(role: str, duration: int, shift: str, price: float, _=Depends(require_admin)):
     if role not in MINIMUM_PRICES:
         raise HTTPException(400, f"Invalid role. Must be: {list(MINIMUM_PRICES.keys())}")
     if duration not in VALID_DURATIONS:
