@@ -33,21 +33,38 @@ class PatientUpdate(BaseModel):
     medications:  Optional[str] = None
     address:      Optional[str] = None
 
-def _check_own_or_admin(current_user: User, user_id: str):
-    """Allow access only to own data or if admin."""
-    if current_user.id != user_id and str(current_user.role) != "admin":
+def _check_own_or_admin(current: User, user_id: str):
+    role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    if current.id != user_id and role != "admin":
         raise HTTPException(403, "Access denied")
 
-@router.get("/{user_id}", response_model=UserResponse)
-def get_user(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
+def _safe_user(u: User) -> dict:
+    """Return user dict with enum values serialized correctly."""
+    return {
+        "id":           u.id,
+        "email":        u.email,
+        "full_name":    u.full_name,
+        "phone":        u.phone,
+        "cpf":          u.cpf,
+        "role":         u.role.value if hasattr(u.role, 'value') else str(u.role),
+        "is_active":    u.is_active,
+        "is_verified":  u.is_verified,
+        "country_code": u.country_code,
+        "language":     u.language,
+        "created_at":   u.created_at,
+        "updated_at":   u.updated_at,
+    }
+
+@router.get("/{user_id}")
+def get_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     _check_own_or_admin(current, user_id)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
-    return user
+    return _safe_user(user)
 
-@router.patch("/{user_id}", response_model=UserResponse)
-def update_user(user_id: str, body: UserUpdate, db: Session = Depends(get_db), current=Depends(get_current_user)):
+@router.patch("/{user_id}")
+def update_user(user_id: str, body: UserUpdate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     _check_own_or_admin(current, user_id)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -56,10 +73,10 @@ def update_user(user_id: str, body: UserUpdate, db: Session = Depends(get_db), c
         setattr(user, k, v)
     db.commit()
     db.refresh(user)
-    return user
+    return _safe_user(user)
 
 @router.patch("/{user_id}/professional-profile")
-def update_professional_profile(user_id: str, body: ProfessionalProfileUpdate, db: Session = Depends(get_db), current=Depends(get_current_user)):
+def update_professional_profile(user_id: str, body: ProfessionalProfileUpdate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     _check_own_or_admin(current, user_id)
     prof = db.query(Professional).filter(Professional.user_id == user_id).first()
     if not prof:
@@ -70,10 +87,13 @@ def update_professional_profile(user_id: str, body: ProfessionalProfileUpdate, d
         setattr(prof, k, v)
     db.commit()
     db.refresh(prof)
-    return prof
+    return {
+        **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
+        "approval_status": prof.approval_status.value if hasattr(prof.approval_status, 'value') else str(prof.approval_status),
+    }
 
 @router.get("/{user_id}/patient")
-def get_patient(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
+def get_patient(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     _check_own_or_admin(current, user_id)
     patient = db.query(Patient).filter(Patient.user_id == user_id).first()
     if not patient:
@@ -81,7 +101,7 @@ def get_patient(user_id: str, db: Session = Depends(get_db), current=Depends(get
     return patient
 
 @router.patch("/{user_id}/patient")
-def update_patient(user_id: str, body: PatientUpdate, db: Session = Depends(get_db), current=Depends(get_current_user)):
+def update_patient(user_id: str, body: PatientUpdate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     _check_own_or_admin(current, user_id)
     patient = db.query(Patient).filter(Patient.user_id == user_id).first()
     if not patient:
