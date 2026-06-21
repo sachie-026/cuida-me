@@ -2,21 +2,23 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
-from app.models.models import Booking, BookingStatus, User, Professional, Patient
+from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus
 from app.utils.pricing import calculate_price, MINIMUM_PRICES
+from app.utils.holidays import check_date_for_holiday
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
-PRICE_TOLERANCE = 1.0  # allow R$1 rounding difference
+PRICE_TOLERANCE = 1.0
 
 class BookingCreate(BaseModel):
     patient_id:      str
     professional_id: str
     service_type:    str
     services:        List[str]     = []
+    care_level:      Optional[int] = None
     duration_hours:  Optional[int] = None
     shift:           str           = "day"
     scheduled_start: datetime
@@ -25,7 +27,6 @@ class BookingCreate(BaseModel):
     is_holiday:      bool          = False
     distance_km:     float         = 0.0
     markup_pct:      int           = 0
-    # Client-supplied prices — will be validated server-side
     total_price:     float
     platform_fee:    float
     pro_payout:      float
@@ -34,6 +35,9 @@ class BookingCreate(BaseModel):
 class CheckInOut(BaseModel):
     lat: float
     lng: float
+
+class CancelRequest(BaseModel):
+    reason: Optional[str] = None
 
 def _check_booking_access(booking: Booking, current: User, db: Session):
     if current.role.value == "admin":
@@ -47,33 +51,22 @@ def _check_booking_access(booking: Booking, current: User, db: Session):
     raise HTTPException(403, "Access denied")
 
 def _validate_price(body: BookingCreate, db: Session):
-    """
-    Fix 3 — Recalculate price server-side and reject if client price doesn't match.
-    Uses professional's role and markup from DB — client cannot manipulate price.
-    """
     if not body.duration_hours:
-        return  # no duration = no server-side check possible (legacy bookings)
-
+        return None
     prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
     if not prof:
         raise HTTPException(404, "Professional not found")
-
     user = db.query(User).filter(User.id == prof.user_id).first()
     if not user:
         raise HTTPException(404, "Professional user not found")
-
     role = user.role.value if hasattr(user.role, 'value') else str(user.role)
     if role not in MINIMUM_PRICES:
-        return  # admin/client roles — skip price check
-
+        return None
     try:
         server_price = calculate_price(
-            role=role,
-            duration_hours=body.duration_hours,
-            shift=body.shift,
-            markup_pct=prof.markup_pct or 0,  # use DB markup, not client-supplied
-            is_urgent=body.is_urgent,
-            is_holiday=body.is_holiday,
+            role=role, duration_hours=body.duration_hours,
+            shift=body.shift, markup_pct=prof.markup_pct or 0,
+            is_urgent=body.is_urgent, is_holiday=body.is_holiday,
             distance_km=body.distance_km,
         )
     except ValueError as e:
@@ -81,35 +74,61 @@ def _validate_price(body: BookingCreate, db: Session):
 
     if abs(server_price["total"] - body.total_price) > PRICE_TOLERANCE:
         raise HTTPException(400,
-            f"Price mismatch. Expected R${server_price['total']:.2f}, got R${body.total_price:.2f}. "
-            f"Please recalculate the price."
-        )
-
-    # Return server-calculated values to use in DB
+            f"Price mismatch. Expected R${server_price['total']:.2f}, got R${body.total_price:.2f}.")
     return server_price
+
+def _get_refund_policy(booking: Booking, cancelled_by: str) -> dict:
+    """
+    Point 5 — Cancellation refund rules:
+    Patient: >24h = full refund, <24h = partial (50%), <6h = no refund
+    Professional: platform records, repeated = suspension risk
+    """
+    now = datetime.now(timezone.utc)
+    start = booking.scheduled_start
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+
+    hours_until = (start - now).total_seconds() / 3600
+
+    if cancelled_by == "professional":
+        return {
+            "refund_pct":    100,
+            "refund_reason": "Cancelamento pelo profissional — reembolso integral ao cliente",
+        }
+    # Client cancellation
+    if hours_until > 24:
+        return {"refund_pct": 100, "refund_reason": "Cancelamento com mais de 24h de antecedência"}
+    elif hours_until > 6:
+        return {"refund_pct": 50, "refund_reason": "Cancelamento entre 6–24h — reembolso de 50%"}
+    else:
+        return {"refund_pct": 0, "refund_reason": "Cancelamento com menos de 6h — sem reembolso"}
 
 @router.post("", status_code=201)
 @router.post("/", status_code=201, include_in_schema=False)
 def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    # Verify patient belongs to this user
     patient = db.query(Patient).filter(Patient.id == body.patient_id).first()
     if not patient:
         raise HTTPException(404, "Patient not found")
     if patient.user_id != current.id and current.role.value != "admin":
-        raise HTTPException(403, "Access denied — patient does not belong to you")
+        raise HTTPException(403, "Access denied")
 
-    # Fix 3 — validate and recalculate price server-side
+    # Auto-detect holiday if not already set
+    date_str = body.scheduled_start.strftime("%Y-%m-%d")
+    holiday_info = check_date_for_holiday(date_str, db)
+    is_holiday = body.is_holiday or holiday_info["is_holiday"]
+
     server_price = _validate_price(body, db)
-
     booking_data = body.dict()
-    # Override with server-calculated prices if available
+    booking_data["is_holiday"] = is_holiday
     if server_price:
-        booking_data["total_price"]  = server_price["total"]
-        booking_data["platform_fee"] = server_price["platform_fee"]
-        booking_data["pro_payout"]   = server_price["pro_payout"]
-        booking_data["base_price"]   = server_price["base_price"]
-        booking_data["markup_pct"]   = server_price["markup_pct"]
-        booking_data["surcharge_pct"]= server_price["surcharge_pct"]
+        booking_data.update({
+            "total_price":  server_price["total"],
+            "platform_fee": server_price["platform_fee"],
+            "pro_payout":   server_price["pro_payout"],
+            "base_price":   server_price["base_price"],
+            "markup_pct":   server_price["markup_pct"],
+            "surcharge_pct":server_price["surcharge_pct"],
+        })
 
     booking = Booking(**booking_data)
     db.add(booking)
@@ -120,20 +139,16 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
 @router.get("/{booking_id}")
 def get_booking(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not b:
-        raise HTTPException(404, "Booking not found")
+    if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
     return b
 
 @router.get("/patient/{patient_or_user_id}")
 def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    # Fix 6 — accept either patient_id or user_id
     patient = db.query(Patient).filter(Patient.id == patient_or_user_id).first()
     if not patient:
-        # Try looking up by user_id
         patient = db.query(Patient).filter(Patient.user_id == patient_or_user_id).first()
-    if not patient:
-        raise HTTPException(404, "Patient not found")
+    if not patient: raise HTTPException(404, "Patient not found")
     if patient.user_id != current.id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
     return db.query(Booking).filter(
@@ -143,8 +158,7 @@ def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db),
 @router.get("/professional/{professional_id}")
 def get_professional_bookings(professional_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     prof = db.query(Professional).filter(Professional.id == professional_id).first()
-    if not prof:
-        raise HTTPException(404, "Professional not found")
+    if not prof: raise HTTPException(404, "Professional not found")
     if prof.user_id != current.id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
     return db.query(Booking).filter(
@@ -154,26 +168,24 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
 @router.patch("/{booking_id}/accept")
 def accept_booking(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not b:
-        raise HTTPException(404, "Booking not found")
+    if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
     if b.status != BookingStatus.pending:
         raise HTTPException(400, "Can only accept pending bookings")
     b.status = BookingStatus.accepted
     db.commit()
     db.refresh(b)
-    return b  # Fix 9 — return full booking object
+    return b
 
 @router.patch("/{booking_id}/checkin")
 def checkin(booking_id: str, body: CheckInOut, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not b:
-        raise HTTPException(404, "Booking not found")
+    if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
-    b.status         = BookingStatus.checked_in
+    b.status = BookingStatus.checked_in
     b.actual_checkin = datetime.utcnow()
-    b.checkin_lat    = body.lat
-    b.checkin_lng    = body.lng
+    b.checkin_lat = body.lat
+    b.checkin_lng = body.lng
     db.commit()
     db.refresh(b)
     return b
@@ -181,25 +193,58 @@ def checkin(booking_id: str, body: CheckInOut, db: Session = Depends(get_db), cu
 @router.patch("/{booking_id}/checkout")
 def checkout(booking_id: str, body: CheckInOut, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not b:
-        raise HTTPException(404, "Booking not found")
+    if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
-    b.status          = BookingStatus.completed
+    b.status = BookingStatus.completed
     b.actual_checkout = datetime.utcnow()
     db.commit()
     db.refresh(b)
     return b
 
 @router.patch("/{booking_id}/cancel")
-def cancel_booking(booking_id: str, reason: Optional[str] = None, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def cancel_booking(
+    booking_id: str,
+    body:        CancelRequest = CancelRequest(),
+    db:          Session = Depends(get_db),
+    current:     User    = Depends(get_current_user),
+):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not b:
-        raise HTTPException(404, "Booking not found")
+    if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
     if b.status == BookingStatus.completed:
         raise HTTPException(400, "Cannot cancel a completed booking")
-    b.status        = BookingStatus.cancelled
-    b.cancel_reason = reason
+
+    # Determine who is cancelling
+    role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+    cancelled_by = "professional" if (prof and prof.user_id == current.id) else "client"
+
+    # Apply refund policy
+    refund_policy = _get_refund_policy(b, cancelled_by)
+
+    b.status       = BookingStatus.cancelled
+    b.cancel_reason = body.reason
+    b.cancelled_by  = cancelled_by
+    b.cancelled_at  = datetime.utcnow()
+
+    # Update payment if exists
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+    if payment and payment.status == PaymentStatus.held:
+        if refund_policy["refund_pct"] == 100:
+            payment.status = PaymentStatus.refunded
+            payment.refunded_at = datetime.utcnow()
+            payment.refund_reason = refund_policy["refund_reason"]
+        elif refund_policy["refund_pct"] == 0:
+            # No refund — release to professional
+            payment.status = PaymentStatus.released
+            payment.released_at = datetime.utcnow()
+        else:
+            # Partial refund — mark for manual processing
+            payment.status = PaymentStatus.refunded
+            payment.refund_reason = f"Reembolso parcial {refund_policy['refund_pct']}% — {refund_policy['refund_reason']}"
+
     db.commit()
     db.refresh(b)
-    return b
+    return {**{c.key: getattr(b, c.key) for c in b.__table__.columns if c.key != "status"},
+            "status": b.status.value,
+            "refund_policy": refund_policy}

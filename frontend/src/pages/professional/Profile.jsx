@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import AvailabilityCalendar from "../../components/professional/AvailabilityCalendar";
 
 const API    = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const STATES = ["SP","RJ","MG","RS","PR","BA","CE","GO","DF","SC","PE","Outro"];
@@ -279,6 +280,11 @@ const ProfessionalProfile = () => {
                   <p className="text-xs text-blue-600 mt-3 font-medium">✓ {prof.services_offered.length} serviço(s) selecionado(s)</p>
                 )}
               </div>
+            </div>
+
+            {/* Availability Calendar */}
+            <div className="card p-6">
+              <AvailabilityCalendar userId={userId} />
             </div>
 
             {/* Documents */}
