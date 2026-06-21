@@ -9,8 +9,8 @@ import httpx, secrets, datetime
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# In-memory reset token store (replace with DB/Redis in production)
-_reset_tokens: dict = {}  # token -> {user_id, expires_at}
+# In-memory reset token store (replace with DB/Redis + email service in production)
+_reset_tokens: dict = {}
 
 PRO_ROLES = {"nurse", "technician", "caregiver"}
 
@@ -98,15 +98,16 @@ async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
     db.refresh(user)
     token = create_access_token({"sub": user.id, "role": user.role})
     return TokenResponse(
-        access_token=token, role=user.role,
+        access_token=token, role=user.role.value,
         user_id=user.id, full_name=user.full_name,
         email=user.email, is_new_user=is_new,
     )
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
+    # Fix 4 — enforce uniqueness, return 409
     if db.query(User).filter(User.email == body.email).first():
-        raise HTTPException(status_code=400, detail="Email já cadastrado.")
+        raise HTTPException(status_code=409, detail="E-mail já cadastrado. Faça login ou use outro e-mail.")
     user = User(
         email=body.email, password_hash=hash_password(body.password),
         full_name=body.full_name, phone=body.phone, cpf=body.cpf,
@@ -119,7 +120,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         _create_professional_profile(db, user.id)
     token = create_access_token({"sub": user.id, "role": user.role})
     return TokenResponse(
-        access_token=token, role=user.role,
+        access_token=token, role=user.role.value,
         user_id=user.id, full_name=user.full_name, email=user.email,
     )
 
@@ -132,31 +133,25 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Conta desativada. Entre em contato com o suporte.")
     token = create_access_token({"sub": user.id, "role": user.role})
     return TokenResponse(
-        access_token=token, role=user.role,
+        access_token=token, role=user.role.value,
         user_id=user.id, full_name=user.full_name, email=user.email,
     )
 
 @router.post("/forgot-password")
 def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
-    # Always return 200 — don't reveal if email exists (security best practice)
-    if not user or not user.password_hash:
-        return {"message": "Se este e-mail estiver cadastrado, você receberá as instruções em breve."}
+    # Fix 1 — always return 200, never reveal if email exists
+    # Never return the token in the response — send via email only
+    if user and user.password_hash:
+        token = secrets.token_urlsafe(32)
+        expires = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        _reset_tokens[token] = {"user_id": user.id, "expires_at": expires}
+        # TODO: Send email with reset link: /reset-password?token={token}
+        # Wire to SendGrid/Resend/SES before production
+        reset_url = f"https://cuida-me-frontend.vercel.app/reset-password?token={token}"
+        print(f"[DEV PASSWORD RESET] {body.email} → {reset_url}")
 
-    token = secrets.token_urlsafe(32)
-    expires = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
-    _reset_tokens[token] = {"user_id": user.id, "expires_at": expires}
-
-    # TODO: Send email with reset link: /reset-password?token={token}
-    # For now, return the token directly in dev mode
-    reset_url = f"https://cuida-me-frontend.vercel.app/reset-password?token={token}"
-    print(f"[DEV] Password reset link for {body.email}: {reset_url}")
-
-    return {
-        "message": "Se este e-mail estiver cadastrado, você receberá as instruções em breve.",
-        # Remove dev_reset_url before production
-        "dev_reset_url": reset_url,
-    }
+    return {"message": "Se este e-mail estiver cadastrado, você receberá as instruções em breve."}
 
 @router.post("/reset-password")
 def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
@@ -168,13 +163,10 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
         raise HTTPException(400, "Token expirado. Solicite um novo link.")
     if len(body.new_password) < 8:
         raise HTTPException(400, "A senha deve ter no mínimo 8 caracteres.")
-
     user = db.query(User).filter(User.id == entry["user_id"]).first()
     if not user:
         raise HTTPException(404, "Usuário não encontrado.")
-
     user.password_hash = hash_password(body.new_password)
     db.commit()
-    del _reset_tokens[body.token]  # one-time use
-
+    del _reset_tokens[body.token]
     return {"message": "Senha alterada com sucesso. Faça login com sua nova senha."}

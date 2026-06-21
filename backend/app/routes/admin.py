@@ -8,6 +8,47 @@ from app.utils.pricing import MINIMUM_PRICES, VALID_DURATIONS
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+def _ser_user(u: User) -> dict:
+    """Serialize user safely — no password_hash, enum as string value."""
+    return {
+        "id":         u.id,
+        "email":      u.email,
+        "full_name":  u.full_name,
+        "phone":      u.phone,
+        "role":       u.role.value if hasattr(u.role, 'value') else str(u.role),
+        "is_active":  u.is_active,
+        "is_verified":u.is_verified,
+        "created_at": u.created_at,
+    }
+
+def _ser_prof(prof: Professional, user: User, docs: list) -> dict:
+    return {
+        "id":               prof.id,
+        "user_id":          prof.user_id,
+        "full_name":        user.full_name if user else "—",
+        "email":            user.email     if user else "—",
+        "phone":            user.phone     if user else "—",
+        "role":             user.role.value if user and hasattr(user.role, 'value') else "—",
+        "council_number":   prof.council_number,
+        "council_state":    prof.council_state,
+        "council_type":     prof.council_type,
+        "city":             prof.city,
+        "services_offered": prof.services_offered or [],
+        "markup_pct":       prof.markup_pct or 0,
+        "rating_avg":       prof.rating_avg,
+        "rating_count":     prof.rating_count,
+        "approval_status":  prof.approval_status.value if hasattr(prof.approval_status, 'value') else str(prof.approval_status),
+        "is_available":     prof.is_available,
+        "documents": [
+            {
+                "doc_type": d.doc_type,
+                "file_url": d.file_url,
+                "status":   d.status.value if hasattr(d.status, 'value') else str(d.status),
+            }
+            for d in docs
+        ],
+    }
+
 @router.get("/stats")
 def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
     return {
@@ -25,18 +66,10 @@ def get_users(role: Optional[str] = None, db: Session = Depends(get_db), _=Depen
     q = db.query(User)
     if role:
         q = q.filter(User.role == role)
-    users = q.order_by(User.created_at.desc()).all()
-    return [
-        {
-            "id": u.id, "email": u.email, "full_name": u.full_name,
-            "phone": u.phone, "role": u.role, "is_active": u.is_active,
-            "is_verified": u.is_verified, "created_at": u.created_at,
-        }
-        for u in users
-    ]
+    return [_ser_user(u) for u in q.order_by(User.created_at.desc()).all()]
 
 @router.patch("/users/{user_id}/block")
-def block_user(user_id: str, db: Session = Depends(get_db), current=Depends(require_admin)):
+def block_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
@@ -56,28 +89,7 @@ def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db
     for prof in professionals:
         user = db.query(User).filter(User.id == prof.user_id).first()
         docs = db.query(Document).filter(Document.user_id == prof.user_id).all()
-        result.append({
-            "id":               prof.id,
-            "user_id":          prof.user_id,
-            "full_name":        user.full_name if user else "—",
-            "email":            user.email     if user else "—",
-            "phone":            user.phone     if user else "—",
-            "role":             str(user.role) if user else "—",
-            "council_number":   prof.council_number,
-            "council_state":    prof.council_state,
-            "council_type":     prof.council_type,
-            "city":             prof.city,
-            "services_offered": prof.services_offered or [],
-            "markup_pct":       prof.markup_pct or 0,
-            "rating_avg":       prof.rating_avg,
-            "rating_count":     prof.rating_count,
-            "approval_status":  str(prof.approval_status),
-            "is_available":     prof.is_available,
-            "documents": [
-                {"doc_type": d.doc_type, "file_url": d.file_url, "status": str(d.status)}
-                for d in docs
-            ],
-        })
+        result.append(_ser_prof(prof, user, docs))
     return result
 
 @router.patch("/professionals/{prof_id}/approve")
@@ -104,7 +116,14 @@ def get_bookings(status: Optional[str] = None, db: Session = Depends(get_db), _=
     q = db.query(Booking)
     if status:
         q = q.filter(Booking.status == status)
-    return q.order_by(Booking.created_at.desc()).all()
+    bookings = q.order_by(Booking.created_at.desc()).all()
+    return [
+        {
+            **{c.key: getattr(b, c.key) for c in b.__table__.columns},
+            "status": b.status.value if hasattr(b.status, 'value') else str(b.status),
+        }
+        for b in bookings
+    ]
 
 _commission = {"rate": 12.0}
 
