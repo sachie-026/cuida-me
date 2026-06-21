@@ -22,11 +22,13 @@ import NewBooking            from "./pages/client/NewBooking";
 import ProfessionalDashboard from "./pages/professional/Dashboard";
 import ProfessionalProfile   from "./pages/professional/Profile";
 import AdminDashboard        from "./pages/admin/Dashboard";
+import Messages              from "./pages/messages/Messages";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
 const PRO_ROLES        = ["nurse", "technician", "caregiver"];
 const ADMIN_ROLES      = ["admin"];
+const ALL_ROLES        = [...CLIENT_ROLES, ...PRO_ROLES, ...ADMIN_ROLES];
 
 const PublicLayout = ({ children }) => (
   <><Navbar />{children}<Footer /></>
@@ -39,27 +41,30 @@ function App() {
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
           {/* Public */}
-          <Route path="/"                element={<PublicLayout><Home /></PublicLayout>} />
-          <Route path="/terms"           element={<Terms />} />
-          <Route path="/privacy"         element={<Privacy />} />
+          <Route path="/"        element={<PublicLayout><Home /></PublicLayout>} />
+          <Route path="/terms"   element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
 
-          {/* Auth — redirect logged-in users away */}
+          {/* Auth */}
           <Route path="/login"           element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
           <Route path="/register"        element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
           <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
           <Route path="/reset-password"  element={<ResetPassword />} />
 
-          {/* Client only */}
+          {/* Client */}
           <Route path="/dashboard/client" element={<ProtectedRoute allowedRoles={CLIENT_ROLES}><ClientDashboard /></ProtectedRoute>} />
           <Route path="/profile/client"   element={<ProtectedRoute allowedRoles={CLIENT_ROLES}><ClientProfile /></ProtectedRoute>} />
           <Route path="/booking/new"      element={<ProtectedRoute allowedRoles={CLIENT_ROLES}><NewBooking /></ProtectedRoute>} />
 
-          {/* Professional only */}
+          {/* Professional */}
           <Route path="/dashboard/professional" element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalDashboard /></ProtectedRoute>} />
           <Route path="/profile/professional"   element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalProfile /></ProtectedRoute>} />
 
-          {/* Admin only */}
+          {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminDashboard /></ProtectedRoute>} />
+
+          {/* Messages — all authenticated users */}
+          <Route path="/messages" element={<ProtectedRoute allowedRoles={ALL_ROLES}><Messages /></ProtectedRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

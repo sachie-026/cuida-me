@@ -19,7 +19,11 @@ const ClientProfile = () => {
 
   const [user, setUser] = useState({ full_name: "", phone: "", cpf: "", email: "" });
   const [patient, setPatient] = useState({
-    patient_name: "", age: "", relation: "", diagnoses: "", allergies: "", medications: "", address: ""
+    patient_name: "", date_of_birth: "", age: "", relation: "", diagnoses: "", allergies: "",
+    medications: "", address: "",
+    is_own_account: true,
+    representative_name: "", representative_relation: "", representative_phone: "",
+    emergency_contact_name: "", emergency_contact_phone: "", emergency_contact_relation: ""
   });
 
   useEffect(() => {
@@ -42,8 +46,15 @@ const ClientProfile = () => {
         full_name: user.full_name, phone: user.phone, cpf: user.cpf,
       }, { headers });
       await axios.patch(`${API}/api/users/${userId}/patient`, {
-        patient_name: patient.patient_name, age: parseInt(patient.age),
-        relation: patient.relation, diagnoses: patient.diagnoses,
+        patient_name: patient.patient_name, date_of_birth: patient.date_of_birth,
+        age: parseInt(patient.age), relation: patient.relation, diagnoses: patient.diagnoses,
+        is_own_account: patient.is_own_account,
+        representative_name: patient.representative_name,
+        representative_relation: patient.representative_relation,
+        representative_phone: patient.representative_phone,
+        emergency_contact_name: patient.emergency_contact_name,
+        emergency_contact_phone: patient.emergency_contact_phone,
+        emergency_contact_relation: patient.emergency_contact_relation,
         allergies: patient.allergies, medications: patient.medications,
         address: patient.address,
       }, { headers });
@@ -102,7 +113,35 @@ const ClientProfile = () => {
               <div><label className="form-label">Medicamentos em uso</label><textarea className="form-input min-h-[60px]" value={patient.medications || ""} onChange={setP("medications")} /></div>
             </div>
 
-            <button onClick={handleSave} disabled={saving}
+            {/* Representative info */}
+          <div className="card p-6 mt-5">
+            <h3 className="font-semibold text-navy mb-4">Responsável pelo paciente</h3>
+            <div className="mb-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={patient.is_own_account} onChange={e => setPatient(p => ({...p, is_own_account: e.target.checked}))} className="accent-blue-500 w-4 h-4" />
+                <span className="text-sm text-slate-600">O paciente é o próprio titular da conta</span>
+              </label>
+            </div>
+            {!patient.is_own_account && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><label className="form-label">Nome do responsável legal</label><input className="form-input" value={patient.representative_name || ""} onChange={setP("representative_name")} placeholder="Nome completo" /></div>
+                <div><label className="form-label">Relação com o paciente</label><input className="form-input" value={patient.representative_relation || ""} onChange={setP("representative_relation")} placeholder="Filho(a), Cônjuge..." /></div>
+                <div><label className="form-label">Telefone do responsável</label><input className="form-input" type="tel" value={patient.representative_phone || ""} onChange={setP("representative_phone")} placeholder="(11) 99999-9999" /></div>
+              </div>
+            )}
+          </div>
+
+          {/* Emergency contact */}
+          <div className="card p-6 mt-5">
+            <h3 className="font-semibold text-navy mb-4">Contato de emergência</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label className="form-label">Nome</label><input className="form-input" value={patient.emergency_contact_name || ""} onChange={setP("emergency_contact_name")} placeholder="Nome do contato" /></div>
+              <div><label className="form-label">Telefone</label><input className="form-input" type="tel" value={patient.emergency_contact_phone || ""} onChange={setP("emergency_contact_phone")} placeholder="(11) 99999-9999" /></div>
+              <div><label className="form-label">Relação</label><input className="form-input" value={patient.emergency_contact_relation || ""} onChange={setP("emergency_contact_relation")} placeholder="Médico, Familiar..." /></div>
+            </div>
+          </div>
+
+          <button onClick={handleSave} disabled={saving}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60">
               <Save size={16} /> {saving ? "Salvando..." : "Salvar alterações"}
             </button>

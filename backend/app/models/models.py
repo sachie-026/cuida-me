@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, Float, DateTime, ForeignKey, Enum, Text, JSON
+from sqlalchemy import Column, String, Integer, Boolean, Float, DateTime, Date, Time, ForeignKey, Enum, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -27,10 +27,15 @@ class BookingStatus(str, enum.Enum):
     cancelled  = "cancelled"
 
 class PaymentStatus(str, enum.Enum):
-    pending  = "pending"
-    paid     = "paid"
-    refunded = "refunded"
-    failed   = "failed"
+    pending   = "pending"
+    held      = "held"       # escrow
+    released  = "released"   # paid out to professional
+    refunded  = "refunded"
+    failed    = "failed"
+
+class AvailabilityType(str, enum.Enum):
+    available = "available"
+    blocked   = "blocked"
 
 class User(Base):
     __tablename__ = "users"
@@ -40,6 +45,7 @@ class User(Base):
     full_name     = Column(String, nullable=False)
     phone         = Column(String, nullable=True)
     cpf           = Column(String, unique=True, nullable=True)
+    date_of_birth = Column(String, nullable=True)   # ISO date string
     role          = Column(Enum(UserRole), nullable=False)
     is_active     = Column(Boolean, default=True)
     is_verified   = Column(Boolean, default=False)
@@ -60,9 +66,7 @@ class Professional(Base):
     council_number   = Column(String, nullable=True)
     council_state    = Column(String, nullable=True)
     council_type     = Column(String, default="COREN")
-    # New: services the professional offers (replaces specialties)
     services_offered = Column(JSON, default=list)
-    # New: markup percentage 0-30 in 5% steps
     markup_pct       = Column(Integer, default=0)
     service_radius   = Column(Integer, default=15)
     city             = Column(String, nullable=True)
@@ -73,27 +77,45 @@ class Professional(Base):
     approval_status  = Column(Enum(DocStatus), default=DocStatus.pending)
     rating_avg       = Column(Float, default=0.0)
     rating_count     = Column(Integer, default=0)
+    years_experience = Column(Integer, nullable=True)
+    bio              = Column(Text, nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
-    user     = relationship("User",    back_populates="professional")
-    bookings = relationship("Booking", back_populates="professional")
+    user          = relationship("User",         back_populates="professional")
+    bookings      = relationship("Booking",      back_populates="professional")
+    availability  = relationship("Availability", back_populates="professional")
 
 class Patient(Base):
     __tablename__ = "patients"
-    id           = Column(String, primary_key=True, default=gen_uuid)
-    user_id      = Column(String, ForeignKey("users.id"))
-    patient_name = Column(String, nullable=False)
-    age          = Column(Integer, nullable=True)
-    relation     = Column(String, nullable=True)
-    diagnoses    = Column(Text,   nullable=True)
-    allergies    = Column(Text,   nullable=True)
-    medications  = Column(Text,   nullable=True)
-    devices      = Column(JSON,   default=list)
-    mobility     = Column(String, nullable=True)
-    address      = Column(Text,   nullable=True)
-    latitude     = Column(Float,  nullable=True)
-    longitude    = Column(Float,  nullable=True)
-    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+    id            = Column(String, primary_key=True, default=gen_uuid)
+    user_id       = Column(String, ForeignKey("users.id"))
+    # Basic info
+    patient_name  = Column(String, nullable=False)
+    date_of_birth = Column(String, nullable=True)
+    age           = Column(Integer, nullable=True)
+    relation      = Column(String, nullable=True)
+    # Clinical info
+    diagnoses     = Column(Text, nullable=True)
+    allergies     = Column(Text, nullable=True)
+    medications   = Column(Text, nullable=True)
+    mobility      = Column(String, nullable=True)
+    communication_needs = Column(Text, nullable=True)
+    devices       = Column(JSON, default=list)
+    additional_notes = Column(Text, nullable=True)
+    # Address
+    address       = Column(Text, nullable=True)
+    latitude      = Column(Float, nullable=True)
+    longitude     = Column(Float, nullable=True)
+    # Representative fields (Point 1)
+    is_own_account       = Column(Boolean, default=True)   # is patient the account owner?
+    representative_name  = Column(String, nullable=True)
+    representative_relation = Column(String, nullable=True)
+    representative_phone = Column(String, nullable=True)
+    # Emergency contact
+    emergency_contact_name  = Column(String, nullable=True)
+    emergency_contact_phone = Column(String, nullable=True)
+    emergency_contact_relation = Column(String, nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
 
     user     = relationship("User",    back_populates="patient")
     bookings = relationship("Booking", back_populates="patient")
@@ -106,21 +128,40 @@ class Document(Base):
     file_url    = Column(String)
     status      = Column(Enum(DocStatus), default=DocStatus.pending)
     reviewed_by = Column(String, nullable=True)
-    notes       = Column(Text,   nullable=True)
+    notes       = Column(Text, nullable=True)
     expires_at  = Column(DateTime(timezone=True), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="documents")
+
+class Availability(Base):
+    """Professional availability slots — Point 1: Availability Calendar."""
+    __tablename__   = "availability"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    professional_id = Column(String, ForeignKey("professionals.id"))
+    type            = Column(Enum(AvailabilityType), default=AvailabilityType.available)
+    # For recurring slots: day_of_week 0=Mon … 6=Sun
+    is_recurring    = Column(Boolean, default=False)
+    day_of_week     = Column(Integer, nullable=True)   # 0-6 for recurring
+    # For specific date slots
+    specific_date   = Column(String, nullable=True)    # ISO date "2026-07-01"
+    start_time      = Column(String, nullable=False)   # "08:00"
+    end_time        = Column(String, nullable=False)   # "18:00"
+    notes           = Column(String, nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    professional = relationship("Professional", back_populates="availability")
 
 class Booking(Base):
     __tablename__   = "bookings"
     id              = Column(String, primary_key=True, default=gen_uuid)
     patient_id      = Column(String, ForeignKey("patients.id"))
     professional_id = Column(String, ForeignKey("professionals.id"))
-    service_type    = Column(String)               # care type label
-    services        = Column(JSON, default=list)   # actual services requested
+    service_type    = Column(String)
+    services        = Column(JSON, default=list)
+    care_level      = Column(Integer, nullable=True)   # 1-4
     duration_hours  = Column(Integer, nullable=True)
-    shift           = Column(String, default="day") # "day" | "night"
+    shift           = Column(String, default="day")
     scheduled_start = Column(DateTime(timezone=True))
     scheduled_end   = Column(DateTime(timezone=True))
     actual_checkin  = Column(DateTime(timezone=True), nullable=True)
@@ -128,7 +169,7 @@ class Booking(Base):
     checkin_lat     = Column(Float, nullable=True)
     checkin_lng     = Column(Float, nullable=True)
     status          = Column(Enum(BookingStatus), default=BookingStatus.pending)
-    # Pricing fields
+    # Pricing
     is_urgent       = Column(Boolean, default=False)
     is_holiday      = Column(Boolean, default=False)
     distance_km     = Column(Float, default=0.0)
@@ -138,8 +179,11 @@ class Booking(Base):
     total_price     = Column(Float)
     platform_fee    = Column(Float)
     pro_payout      = Column(Float)
+    # Cancellation
     notes           = Column(Text, nullable=True)
     cancel_reason   = Column(Text, nullable=True)
+    cancelled_by    = Column(String, nullable=True)   # "client" | "professional"
+    cancelled_at    = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
     patient      = relationship("Patient",      back_populates="bookings")
@@ -155,10 +199,14 @@ class Payment(Base):
     commission       = Column(Float)
     pro_payout       = Column(Float)
     currency         = Column(String, default="BRL")
-    method           = Column(String)
+    method           = Column(String, nullable=True)   # "pix" | "credit_card" | "debit_card"
     stripe_intent_id = Column(String, nullable=True)
+    pix_code         = Column(String, nullable=True)
     status           = Column(Enum(PaymentStatus), default=PaymentStatus.pending)
-    paid_at          = Column(DateTime(timezone=True), nullable=True)
+    held_at          = Column(DateTime(timezone=True), nullable=True)
+    released_at      = Column(DateTime(timezone=True), nullable=True)
+    refunded_at      = Column(DateTime(timezone=True), nullable=True)
+    refund_reason    = Column(String, nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     booking = relationship("Booking", back_populates="payment")
@@ -174,6 +222,28 @@ class Assessment(Base):
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
     booking = relationship("Booking", back_populates="assessments")
+
+class HolidayCalendar(Base):
+    """Point 3: Automatic holiday detection."""
+    __tablename__ = "holidays"
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    date        = Column(String, nullable=False, index=True)   # "2026-12-25"
+    name        = Column(String, nullable=False)
+    scope       = Column(String, default="national")   # "national" | "state" | "municipal"
+    state       = Column(String, nullable=True)
+    city        = Column(String, nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+class Message(Base):
+    """Point 7: Internal messaging."""
+    __tablename__   = "messages"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    booking_id      = Column(String, ForeignKey("bookings.id"), nullable=True)
+    sender_id       = Column(String, ForeignKey("users.id"))
+    recipient_id    = Column(String, ForeignKey("users.id"))
+    content         = Column(Text, nullable=False)
+    is_read         = Column(Boolean, default=False)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
 class Occurrence(Base):
     __tablename__ = "occurrences"
