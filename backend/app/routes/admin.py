@@ -57,7 +57,7 @@ def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
         "total_professionals": db.query(User).filter(User.role != UserRole.client, User.role != UserRole.admin).count(),
         "pending_approvals":   db.query(Professional).filter(Professional.approval_status == DocStatus.pending).count(),
         "total_bookings":      db.query(Booking).count(),
-        "total_revenue":       db.query(Payment).filter(Payment.status == "paid").with_entities(
+        "total_revenue":       db.query(Payment).filter(Payment.status.in_(["held", "released"])).with_entities(
                                    __import__("sqlalchemy").func.sum(Payment.commission)).scalar() or 0,
     }
 
