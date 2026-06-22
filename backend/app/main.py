@@ -13,6 +13,11 @@ Base.metadata.create_all(bind=engine)
 def run_migrations():
     """Idempotent migrations — safe to run on every startup."""
     migrations = [
+        # Fix PaymentStatus enum — add new values
+        "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'held'",
+        "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'released'",
+        # Fix AvailabilityType enum
+        "DO $$ BEGIN CREATE TYPE availabilitytype AS ENUM ('available', 'blocked'); EXCEPTION WHEN duplicate_object THEN null; END $$",
         # Users table
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth VARCHAR",
         # Professional table
