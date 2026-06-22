@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, MapPin, Star, CreditCard, User, Plus } from "lucide-react";
+import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -37,7 +37,6 @@ const ClientDashboard = () => {
       .then(r => {
         const fetchedBookings = r.data;
         setBookings(fetchedBookings);
-        // Pre-populate ratedIds: check which completed bookings already have a rating from this user
         const completedIds = fetchedBookings.filter(b => b.status === "completed").map(b => b.id);
         Promise.all(
           completedIds.map(id =>
@@ -71,10 +70,16 @@ const ClientDashboard = () => {
             <h1 className="font-display text-2xl font-bold text-navy">Olá, {firstName} 👋</h1>
             <p className="text-slate-500 text-sm mt-1">Como podemos cuidar hoje?</p>
           </div>
-          <button onClick={() => navigate("/booking/new")}
-            className="btn-primary flex items-center gap-2 flex-shrink-0">
-            <Plus size={16} /> Novo agendamento
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => navigate("/messages")}
+              className="btn-outline flex items-center gap-2">
+              <MessageSquare size={16} /> Mensagens
+            </button>
+            <button onClick={() => navigate("/booking/new")}
+              className="btn-primary flex items-center gap-2">
+              <Plus size={16} /> Novo agendamento
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -120,6 +125,12 @@ const ClientDashboard = () => {
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor(b.status)}`}>
                       {statusLabel(b.status)}
                     </span>
+                    {b.status === "accepted" && (
+                      <button onClick={() => navigate(`/booking/new?pay=${b.id}`)}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
+                        <CreditCard size={11} /> Pagar
+                      </button>
+                    )}
                     {b.status === "completed" && !ratedIds.includes(b.id) && (
                       <button onClick={() => setRatingBooking(b)}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors">

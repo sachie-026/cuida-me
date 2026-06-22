@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DollarSign, CalendarDays, Star, CheckCircle, AlertTriangle } from "lucide-react";
+import { DollarSign, CalendarDays, Star, CheckCircle, AlertTriangle, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -39,15 +39,12 @@ const ProfessionalDashboard = () => {
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
 
-    // Step 1: get professional profile to get prof.id
     axios.get(`${API}/api/professionals/${userId}`, { headers })
       .then(profRes => {
         const prof = profRes.data;
         setAvailable(prof.is_available || false);
         setApprovalStatus(prof.approval_status || "pending");
         setProfId(prof.id);
-
-        // Step 2: use prof.id (not user_id) to fetch bookings
         return axios.get(`${API}/api/bookings/professional/${prof.id}`, { headers });
       })
       .then(bookRes => {
@@ -151,6 +148,10 @@ const ProfessionalDashboard = () => {
             <p className="text-slate-500 text-sm mt-1">Gerencie seus atendimentos</p>
           </div>
           <div className="flex items-center gap-3">
+            <button onClick={() => navigate("/messages")}
+              className="btn-outline flex items-center gap-2 text-sm">
+              <MessageSquare size={16} /> Mensagens
+            </button>
             <span className={`text-sm font-medium ${available ? "text-green-600" : "text-slate-500"}`}>
               {available ? "Disponível" : "Indisponível"}
             </span>

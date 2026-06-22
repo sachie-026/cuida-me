@@ -57,6 +57,9 @@ const Navbar = () => {
               <Link to={dashboardPath} className="text-sm font-medium text-slate-600 hover:text-blue-500 transition-colors px-3 py-1.5">
                 Dashboard
               </Link>
+              <Link to="/messages" className="text-sm font-medium text-slate-600 hover:text-blue-500 transition-colors px-3 py-1.5">
+                Mensagens
+              </Link>
               <ProfileMenu />
             </>
           ) : (
@@ -92,9 +95,14 @@ const Navbar = () => {
             </a>
           ))}
           {token ? (
-            <Link to={dashboardPath} className="btn-primary text-sm py-2.5 text-center">
-              Dashboard
-            </Link>
+            <>
+              <Link to={dashboardPath} onClick={() => setMenuOpen(false)} className="btn-primary text-sm py-2.5 text-center">
+                Dashboard
+              </Link>
+              <Link to="/messages" onClick={() => setMenuOpen(false)} className="btn-outline text-sm py-2.5 text-center">
+                Mensagens
+              </Link>
+            </>
           ) : (
             <div className="flex flex-col gap-2 pt-2">
               <Link to="/login" className="btn-outline text-sm py-2.5 text-center">

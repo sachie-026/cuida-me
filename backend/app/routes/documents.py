@@ -56,7 +56,7 @@ def get_my_documents(db: Session = Depends(get_db), current: User = Depends(get_
 
 @router.get("/status/{user_id}")
 def get_document_status(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    if current.id != user_id and str(current.role) != "admin":
+    if current.id != user_id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
     docs = db.query(Document).filter(Document.user_id == user_id).all()
     return {
