@@ -1,0 +1,517 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, CalendarDays, RefreshCw, Info } from "lucide-react";
+import axios from "axios";
+import toast from "react-hot-toast";
+import Logo from "../../components/common/Logo";
+import LanguageSwitcher from "../../components/common/LanguageSwitcher";
+import ProfileMenu from "../../components/common/ProfileMenu";
+
+const API     = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const TIMES   = Array.from({ length: 32 }, (_, i) => {
+  const h = Math.floor(i / 2) + 6;
+  const m = i % 2 === 0 ? "00" : "30";
+  return `${String(h).padStart(2, "0")}:${m}`;
+});
+const DAYS_PT   = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const toDateStr = (y, m, d) =>
+  `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+const firstDayOfMonth = (y, m) => {
+  const d = new Date(y, m, 1).getDay(); // 0=Sun
+  return d === 0 ? 6 : d - 1;           // shift to Mon=0
+};
+
+const today = () => new Date().toISOString().split("T")[0];
+
+// ── Slot Time Modal ────────────────────────────────────────────────────────────
+
+const SlotModal = ({ date, existingSlots, onClose, onAdd, onDelete }) => {
+  const [start, setStart] = useState("08:00");
+  const [end,   setEnd]   = useState("18:00");
+  const [type,  setType]  = useState("available");
+  const [saving, setSaving] = useState(false);
+
+  const label = new Date(date + "T12:00:00").toLocaleDateString("pt-BR", {
+    weekday: "long", day: "numeric", month: "long",
+  });
+
+  const handleAdd = async () => {
+    if (start >= end) { toast.error("Horário de fim deve ser após o início."); return; }
+    setSaving(true);
+    await onAdd({ specific_date: date, start_time: start, end_time: end, type, is_recurring: false });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-slate-100">
+          <div>
+            <p className="font-bold text-navy capitalize">{label}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Adicione um ou mais horários para este dia</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+            <X size={18} className="text-slate-500" />
+          </button>
+        </div>
+
+        {/* Existing slots */}
+        {existingSlots.length > 0 && (
+          <div className="px-5 pt-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Horários cadastrados</p>
+            <div className="space-y-2">
+              {existingSlots.map(s => (
+                <div key={s.id} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium
+                  ${s.type === "available" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+                  <span className="flex items-center gap-2">
+                    <Clock size={13} />
+                    {s.start_time} – {s.end_time}
+                    <span className="text-xs opacity-70">· {s.type === "available" ? "Disponível" : "Bloqueado"}</span>
+                  </span>
+                  <button onClick={() => onDelete(s.id)} className="hover:opacity-60 transition-opacity">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-slate-100 mt-4" />
+          </div>
+        )}
+
+        {/* Add new slot */}
+        <div className="p-5 space-y-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Adicionar horário</p>
+
+          {/* Type toggle */}
+          <div className="flex gap-2">
+            {["available", "blocked"].map(t => (
+              <button key={t} onClick={() => setType(t)}
+                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors
+                  ${type === t
+                    ? t === "available" ? "bg-green-500 text-white border-green-500" : "bg-red-500 text-white border-red-500"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                {t === "available" ? "✓ Disponível" : "✗ Bloqueado"}
+              </button>
+            ))}
+          </div>
+
+          {/* Time pickers */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">Início</label>
+              <select className="form-input" value={start} onChange={e => setStart(e.target.value)}>
+                {TIMES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Fim</label>
+              <select className="form-input" value={end} onChange={e => setEnd(e.target.value)}>
+                {TIMES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={handleAdd} disabled={saving} className="btn-primary flex-1 flex items-center justify-center gap-2">
+              <Plus size={15} /> {saving ? "Salvando..." : "Adicionar horário"}
+            </button>
+            <button onClick={onClose} className="btn-outline px-4">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Calendar Tab ───────────────────────────────────────────────────────────────
+
+const CalendarTab = ({ userId, profId }) => {
+  const token   = localStorage.getItem("token");
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const now = new Date();
+  const [year,         setYear]         = useState(now.getFullYear());
+  const [month,        setMonth]        = useState(now.getMonth());
+  const [slots,        setSlots]        = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [loading,      setLoading]      = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    axios.get(`${API}/api/availability/professional/${userId}`, { headers })
+      .then(r => setSlots(r.data.slots || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const specificSlots = slots.filter(s => !s.is_recurring);
+
+  const slotsForDate = date => specificSlots.filter(s => s.specific_date === date);
+
+  const handleAddSlot = async (body) => {
+    try {
+      const { data } = await axios.post(`${API}/api/availability/professional/${userId}`, body, { headers });
+      setSlots(prev => [...prev, data]);
+      toast.success("Horário adicionado!");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao adicionar horário.");
+    }
+  };
+
+  const handleDeleteSlot = async (slotId) => {
+    try {
+      await axios.delete(`${API}/api/availability/slots/${slotId}`, { headers });
+      setSlots(prev => prev.filter(s => s.id !== slotId));
+      toast.success("Horário removido.");
+    } catch {
+      toast.error("Erro ao remover.");
+    }
+  };
+
+  const prevMonth = () => {
+    if (month === 0) { setYear(y => y - 1); setMonth(11); }
+    else setMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (month === 11) { setYear(y => y + 1); setMonth(0); }
+    else setMonth(m => m + 1);
+  };
+
+  const totalDays  = daysInMonth(year, month);
+  const startDay   = firstDayOfMonth(year, month);
+  const todayStr   = today();
+
+  const cells = [];
+  for (let i = 0; i < startDay; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <Info size={14} className="text-blue-400 flex-shrink-0" />
+        <p className="text-xs text-slate-500">
+          Clique em qualquer data para adicionar horários disponíveis. Datas com horários aparecem em verde.
+        </p>
+      </div>
+
+      {/* Month navigation */}
+      <div className="flex items-center justify-between py-4">
+        <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+          <ChevronLeft size={18} className="text-slate-600" />
+        </button>
+        <h3 className="font-bold text-navy text-lg">
+          {MONTHS_PT[month]} {year}
+        </h3>
+        <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+          <ChevronRight size={18} className="text-slate-600" />
+        </button>
+      </div>
+
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-2">
+        {["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(d => (
+          <div key={d} className="text-center text-xs font-semibold text-slate-400 py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      {loading ? (
+        <div className="text-center py-12 text-slate-400 text-sm">Carregando...</div>
+      ) : (
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((day, i) => {
+            if (!day) return <div key={`empty-${i}`} />;
+            const dateStr    = toDateStr(year, month, day);
+            const isPast     = dateStr < todayStr;
+            const isToday    = dateStr === todayStr;
+            const daySlots   = slotsForDate(dateStr);
+            const hasAvail   = daySlots.some(s => s.type === "available");
+            const hasBlocked = daySlots.some(s => s.type === "blocked");
+            const isSelected = selectedDate === dateStr;
+
+            return (
+              <button key={day} disabled={isPast}
+                onClick={() => setSelectedDate(dateStr)}
+                className={`relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm font-medium transition-all
+                  ${isPast ? "text-slate-300 cursor-not-allowed" : "hover:bg-blue-50 cursor-pointer"}
+                  ${isToday ? "ring-2 ring-blue-400" : ""}
+                  ${isSelected ? "bg-blue-500 text-white hover:bg-blue-500" : ""}
+                  ${!isSelected && hasAvail ? "bg-green-50 text-green-700" : ""}
+                  ${!isSelected && hasBlocked && !hasAvail ? "bg-red-50 text-red-500" : ""}
+                  ${!isSelected && !hasAvail && !hasBlocked && !isPast ? "text-slate-700" : ""}
+                `}>
+                {day}
+                {daySlots.length > 0 && !isSelected && (
+                  <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full
+                    ${hasAvail ? "bg-green-400" : "bg-red-400"}`} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100">
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-green-400 inline-block" /> Disponível
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-red-400 inline-block" /> Bloqueado
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-400 inline-block" /> Hoje
+        </span>
+      </div>
+
+      {/* Upcoming slots summary */}
+      {specificSlots.filter(s => s.specific_date >= todayStr).length > 0 && (
+        <div className="mt-6">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Próximas disponibilidades cadastradas</p>
+          <div className="space-y-2">
+            {specificSlots
+              .filter(s => s.specific_date >= todayStr)
+              .sort((a, b) => a.specific_date.localeCompare(b.specific_date))
+              .map(s => (
+                <div key={s.id} className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm
+                  ${s.type === "available" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+                  <span className="flex items-center gap-2">
+                    <CalendarDays size={13} />
+                    {new Date(s.specific_date + "T12:00:00").toLocaleDateString("pt-BR", { weekday:"short", day:"numeric", month:"short" })}
+                    · <Clock size={11} /> {s.start_time} – {s.end_time}
+                  </span>
+                  <button onClick={() => handleDeleteSlot(s.id)} className="hover:opacity-60 transition-opacity ml-2">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Date modal */}
+      {selectedDate && (
+        <SlotModal
+          date={selectedDate}
+          existingSlots={slotsForDate(selectedDate)}
+          onClose={() => setSelectedDate(null)}
+          onAdd={handleAddSlot}
+          onDelete={async (id) => { await handleDeleteSlot(id); }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ── Recurring Tab ─────────────────────────────────────────────────────────────
+
+const RecurringTab = ({ userId }) => {
+  const token   = localStorage.getItem("token");
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const [slots,   setSlots]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding,  setAdding]  = useState(null); // day index being added, or null
+  const [form,    setForm]    = useState({ start_time: "08:00", end_time: "18:00", type: "available" });
+  const [saving,  setSaving]  = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    axios.get(`${API}/api/availability/professional/${userId}`, { headers })
+      .then(r => setSlots((r.data.slots || []).filter(s => s.is_recurring)))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const handleAdd = async (dow) => {
+    if (form.start_time >= form.end_time) { toast.error("Horário de fim deve ser após o início."); return; }
+    setSaving(true);
+    try {
+      const { data } = await axios.post(`${API}/api/availability/professional/${userId}`, {
+        is_recurring: true, day_of_week: dow,
+        start_time: form.start_time, end_time: form.end_time, type: form.type,
+      }, { headers });
+      setSlots(prev => [...prev, data]);
+      setAdding(null);
+      toast.success("Horário padrão adicionado!");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao adicionar.");
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (slotId) => {
+    try {
+      await axios.delete(`${API}/api/availability/slots/${slotId}`, { headers });
+      setSlots(prev => prev.filter(s => s.id !== slotId));
+      toast.success("Horário removido.");
+    } catch { toast.error("Erro ao remover."); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Info size={14} className="text-blue-400 flex-shrink-0" />
+        <p className="text-xs text-slate-500">
+          Horários padrão se repetem toda semana. Datas específicas no calendário sempre têm prioridade sobre estes horários.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-slate-400 text-sm text-center py-6">Carregando...</p>
+      ) : (
+        <div className="space-y-3">
+          {DAYS_PT.map((dayName, dow) => {
+            const daySlots = slots.filter(s => s.day_of_week === dow);
+            const isAdding = adding === dow;
+
+            return (
+              <div key={dow} className="border border-slate-200 rounded-xl overflow-hidden">
+                {/* Day header */}
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+                  <span className="font-semibold text-navy text-sm">{dayName}</span>
+                  <button onClick={() => { setAdding(isAdding ? null : dow); setForm({ start_time: "08:00", end_time: "18:00", type: "available" }); }}
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <Plus size={13} /> Adicionar
+                  </button>
+                </div>
+
+                {/* Slots */}
+                {daySlots.length > 0 && (
+                  <div className="px-4 py-2 space-y-1.5">
+                    {daySlots.map(s => (
+                      <div key={s.id} className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium
+                        ${s.type === "available" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+                        <span className="flex items-center gap-2">
+                          <Clock size={11} /> {s.start_time} – {s.end_time}
+                          <span className="opacity-60">· {s.type === "available" ? "Disponível" : "Bloqueado"}</span>
+                        </span>
+                        <button onClick={() => handleDelete(s.id)} className="hover:opacity-60 transition-opacity">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {daySlots.length === 0 && !isAdding && (
+                  <div className="px-4 py-2">
+                    <p className="text-xs text-slate-400">Nenhum horário padrão</p>
+                  </div>
+                )}
+
+                {/* Inline add form */}
+                {isAdding && (
+                  <div className="px-4 py-3 border-t border-slate-100 space-y-3">
+                    <div className="flex gap-2">
+                      {["available", "blocked"].map(t => (
+                        <button key={t} onClick={() => setForm(f => ({ ...f, type: t }))}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors
+                            ${form.type === t
+                              ? t === "available" ? "bg-green-500 text-white border-green-500" : "bg-red-500 text-white border-red-500"
+                              : "border-slate-200 text-slate-500"}`}>
+                          {t === "available" ? "✓ Disponível" : "✗ Bloqueado"}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="form-label">Início</label>
+                        <select className="form-input text-sm" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}>
+                          {TIMES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="form-label">Fim</label>
+                        <select className="form-input text-sm" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))}>
+                          {TIMES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleAdd(dow)} disabled={saving}
+                        className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1">
+                        <Plus size={12} /> {saving ? "Salvando..." : "Salvar"}
+                      </button>
+                      <button onClick={() => setAdding(null)} className="btn-outline text-xs px-3 py-1.5">Cancelar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+const AvailabilityPage = () => {
+  const navigate = useNavigate();
+  const userId   = localStorage.getItem("user_id");
+  const [tab,    setTab]    = useState("calendar"); // "calendar" | "recurring"
+  const [profId, setProfId] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    axios.get(`${API}/api/professionals/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => setProfId(r.data.id))
+      .catch(() => {});
+  }, [userId]);
+
+  const tabs = [
+    { key: "calendar",  label: "Meu Calendário",   icon: <CalendarDays size={16} /> },
+    { key: "recurring", label: "Horário Padrão",    icon: <RefreshCw size={16} /> },
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <nav className="bg-white border-b border-slate-100 px-4 sm:px-6 h-16 flex items-center justify-between sticky top-0 z-40 shadow-sm">
+        <Logo size="sm" />
+        <div className="flex items-center gap-3"><LanguageSwitcher /><ProfileMenu /></div>
+      </nav>
+
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+        {/* Page header */}
+        <div className="mb-6 flex items-center gap-3">
+          <button onClick={() => navigate("/dashboard/professional")}
+            className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+            <ChevronLeft size={20} />
+          </button>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-navy">Disponibilidade</h1>
+            <p className="text-sm text-slate-500 mt-0.5">Gerencie seus horários disponíveis para atendimentos</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex bg-slate-100 rounded-xl p-1 mb-6">
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all
+                ${tab === t.key ? "bg-white text-navy shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="card p-6">
+          {tab === "calendar"  && <CalendarTab userId={userId} profId={profId} />}
+          {tab === "recurring" && <RecurringTab userId={userId} />}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AvailabilityPage;

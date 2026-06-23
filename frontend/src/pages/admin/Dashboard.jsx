@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink } from "lucide-react";
+import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -27,7 +27,169 @@ const DOC_STATUS_COLOR = {
   rejected: "text-red-600",
 };
 
-/* ── Sidebar ── */
+/* ── Holidays Panel ── */
+const SCOPE_LABELS = { national: "Nacional", state: "Estadual", municipal: "Municipal" };
+const SCOPE_COLORS = { national: "bg-blue-100 text-blue-700", state: "bg-purple-100 text-purple-700", municipal: "bg-amber-100 text-amber-700" };
+
+const HolidaysPanel = () => {
+  const { headers } = useAdmin();
+  const [holidays, setHolidays] = useState([]);
+  const [yearView, setYearView] = useState(new Date().getFullYear());
+  const [loading,  setLoading]  = useState(true);
+  const [form, setForm] = useState({ date: "", name: "", scope: "national", state: "", city: "" });
+  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  const loadHolidays = () => {
+    setLoading(true);
+    Promise.all([
+      axios.get(`${API}/api/holidays/year/${yearView}`),
+      axios.get(`${API}/api/holidays/admin/custom`, { headers }),
+    ]).then(([yearRes, customRes]) => {
+      // Merge: year view gives national + custom; mark which are deletable (have an id from DB)
+      const customIds = new Set(customRes.data.map(h => h.date + h.name));
+      const all = yearRes.data.map(h => ({
+        ...h,
+        deletable_id: customRes.data.find(c => c.date === h.date && c.name === h.name)?.id || null,
+      }));
+      setHolidays(all);
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadHolidays(); }, [yearView]);
+
+  const handleAdd = async () => {
+    if (!form.date || !form.name) { toast.error("Data e nome são obrigatórios."); return; }
+    if (form.scope === "state" && !form.state) { toast.error("Informe o estado."); return; }
+    if (form.scope === "municipal" && (!form.state || !form.city)) { toast.error("Informe estado e cidade."); return; }
+    setSaving(true);
+    try {
+      await axios.post(`${API}/api/holidays/admin/custom`, form, { headers });
+      toast.success("Feriado adicionado!");
+      setForm({ date: "", name: "", scope: "national", state: "", city: "" });
+      setShowForm(false);
+      loadHolidays();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao adicionar feriado.");
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`${API}/api/holidays/admin/custom/${id}`, { headers });
+      toast.success("Feriado removido.");
+      loadHolidays();
+    } catch { toast.error("Erro ao remover."); }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 max-w-3xl">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h2 className="font-bold text-navy text-lg">Feriados</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Feriados nacionais são automáticos. Adicione feriados estaduais ou municipais abaixo.</p>
+        </div>
+        <button onClick={() => setShowForm(v => !v)}
+          className="btn-primary flex items-center gap-2 text-sm">
+          <Plus size={15} /> Adicionar feriado
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showForm && (
+        <div className="card p-5 mb-6 border border-blue-200 bg-blue-50/40">
+          <p className="font-semibold text-navy text-sm mb-4">Novo feriado personalizado</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="form-label">Data</label>
+              <input type="date" className="form-input" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Nome</label>
+              <input type="text" className="form-input" placeholder="Ex: Aniversário da cidade" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Abrangência</label>
+              <select className="form-input" value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value, state: "", city: "" }))}>
+                <option value="national">Nacional</option>
+                <option value="state">Estadual</option>
+                <option value="municipal">Municipal</option>
+              </select>
+            </div>
+            {(form.scope === "state" || form.scope === "municipal") && (
+              <div>
+                <label className="form-label">Estado (sigla)</label>
+                <input type="text" className="form-input" placeholder="Ex: SP" maxLength={2} value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value.toUpperCase() }))} />
+              </div>
+            )}
+            {form.scope === "municipal" && (
+              <div className="sm:col-span-2">
+                <label className="form-label">Cidade</label>
+                <input type="text" className="form-input" placeholder="Ex: São Paulo" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAdd} disabled={saving} className="btn-primary text-sm flex items-center gap-2">
+              <Plus size={14} /> {saving ? "Salvando..." : "Salvar feriado"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="btn-outline text-sm">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Year navigation */}
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={() => setYearView(y => y - 1)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+          <CalendarDays size={16} className="text-slate-500" />
+        </button>
+        <span className="font-bold text-navy">{yearView}</span>
+        <button onClick={() => setYearView(y => y + 1)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+          <CalendarDays size={16} className="text-slate-500" />
+        </button>
+        <span className="text-xs text-slate-400 ml-1">{holidays.length} feriados</span>
+      </div>
+
+      {/* Holiday list */}
+      {loading ? (
+        <p className="text-slate-400 text-sm text-center py-8">Carregando...</p>
+      ) : holidays.length === 0 ? (
+        <p className="text-slate-400 text-sm text-center py-8">Nenhum feriado encontrado para {yearView}.</p>
+      ) : (
+        <div className="space-y-2">
+          {holidays.map((h, i) => (
+            <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-100 hover:border-slate-200 transition-colors">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-400 w-20 flex-shrink-0">
+                  {new Date(h.date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-navy">{h.name}</p>
+                  {(h.state || h.city) && (
+                    <p className="text-xs text-slate-400">{[h.city, h.state].filter(Boolean).join(" · ")}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SCOPE_COLORS[h.scope] || "bg-slate-100 text-slate-500"}`}>
+                  {SCOPE_LABELS[h.scope] || h.scope}
+                </span>
+                {h.deletable_id ? (
+                  <button onClick={() => handleDelete(h.deletable_id)}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-300 px-2">automático</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
   const navigate = useNavigate();
   const links = [
@@ -36,6 +198,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "users",         label: "Usuários",      icon: <Users size={18} /> },
     { key: "bookings",      label: "Agendamentos",  icon: <CalendarDays size={18} /> },
     { key: "commission",    label: "Comissão",      icon: <DollarSign size={18} /> },
+    { key: "holidays",      label: "Feriados",      icon: <CalendarRange size={18} /> },
   ];
 
   const content = (
@@ -424,11 +587,13 @@ const AdminDashboard = () => {
     users:         <UsersPanel />,
     bookings:      <BookingsPanel />,
     commission:    <CommissionPanel />,
+    holidays:      <HolidaysPanel />,
   };
 
   const sectionLabel = {
     overview: "Visão geral", professionals: "Profissionais",
     users: "Usuários", bookings: "Agendamentos", commission: "Comissão",
+    holidays: "Feriados",
   };
 
   return (

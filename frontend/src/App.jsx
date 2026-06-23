@@ -21,6 +21,7 @@ import ClientProfile         from "./pages/client/Profile";
 import NewBooking            from "./pages/client/NewBooking";
 import ProfessionalDashboard from "./pages/professional/Dashboard";
 import ProfessionalProfile   from "./pages/professional/Profile";
+import Availability          from "./pages/professional/Availability";
 import AdminDashboard        from "./pages/admin/Dashboard";
 import Messages              from "./pages/messages/Messages";
 
@@ -59,6 +60,7 @@ function App() {
           {/* Professional */}
           <Route path="/dashboard/professional" element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalDashboard /></ProtectedRoute>} />
           <Route path="/profile/professional"   element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalProfile /></ProtectedRoute>} />
+          <Route path="/availability"           element={<ProtectedRoute allowedRoles={PRO_ROLES}><Availability /></ProtectedRoute>} />
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminDashboard /></ProtectedRoute>} />
