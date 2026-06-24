@@ -34,6 +34,7 @@ class SlotUpdate(BaseModel):
     type:       Optional[str] = None
 
 def _get_prof_or_403(user_id: str, db: Session, current: User) -> Professional:
+    """Write guard — owner or admin only."""
     prof = db.query(Professional).filter(Professional.user_id == user_id).first()
     if not prof:
         raise HTTPException(404, "Professional not found")
@@ -42,13 +43,19 @@ def _get_prof_or_403(user_id: str, db: Session, current: User) -> Professional:
         raise HTTPException(403, "Access denied")
     return prof
 
+def _get_prof_or_404(user_id: str, db: Session) -> Professional:
+    """Read guard — any authenticated user can read."""
+    prof = db.query(Professional).filter(Professional.user_id == user_id).first()
+    if not prof:
+        raise HTTPException(404, "Professional not found")
+    return prof
+
 # ── Professional manages own availability ─────────────────────────────────────
 
 @router.get("/professional/{user_id}")
 def get_availability(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Get all availability slots for a professional."""
-    _get_prof_or_403(user_id, db, current)
-    prof = db.query(Professional).filter(Professional.user_id == user_id).first()
+    """Get all availability slots for a professional. Readable by any authenticated user."""
+    prof = _get_prof_or_404(user_id, db)
     slots = db.query(Availability).filter(Availability.professional_id == prof.id).all()
     return {
         "slots": slots,
