@@ -138,6 +138,7 @@ def get_care_level_for_services(services: list) -> int:
 MINIMUM_PRICES = {
     "caregiver": {
         2:  {"day": 80.0,   "night": 100.0},
+        4:  {"day": 110.0,  "night": 130.0},
         6:  {"day": 140.0,  "night": 165.0},
         8:  {"day": 190.0,  "night": 220.0},
         12: {"day": 220.0,  "night": 265.0},
@@ -145,6 +146,7 @@ MINIMUM_PRICES = {
     },
     "technician": {
         2:  {"day": 120.0,  "night": 140.0},
+        4:  {"day": 145.0,  "night": 170.0},
         6:  {"day": 170.0,  "night": 200.0},
         8:  {"day": 220.0,  "night": 260.0},
         12: {"day": 280.0,  "night": 330.0},
@@ -152,6 +154,7 @@ MINIMUM_PRICES = {
     },
     "nurse": {
         2:  {"day": 180.0,  "night": 220.0},
+        4:  {"day": 240.0,  "night": 285.0},
         6:  {"day": 300.0,  "night": 350.0},
         8:  {"day": 380.0,  "night": 450.0},
         12: {"day": 500.0,  "night": 600.0},
@@ -159,7 +162,7 @@ MINIMUM_PRICES = {
     },
 }
 
-VALID_DURATIONS = [2, 6, 8, 12, 24]
+VALID_DURATIONS = [2, 4, 6, 8, 12, 24]
 VALID_MARKUPS   = [0, 5, 10, 15, 20, 25, 30]
 COMMISSION_RATE = 12.0
 

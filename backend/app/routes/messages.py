@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from pydantic import BaseModel
+from datetime import datetime
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Message, User, Booking
@@ -25,6 +26,18 @@ class MessageCreate(BaseModel):
 
 class MessageRead(BaseModel):
     message_ids: List[str]
+
+class MessageOut(BaseModel):
+    id:           str
+    sender_id:    str
+    recipient_id: str
+    content:      str
+    is_read:      bool
+    created_at:   datetime
+    booking_id:   Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 @router.post("", status_code=201)
 @router.post("/", status_code=201, include_in_schema=False)
@@ -90,7 +103,7 @@ def get_conversations(db: Session = Depends(get_db), current: User = Depends(get
             })
     return conversations
 
-@router.get("/thread/{partner_id}")
+@router.get("/thread/{partner_id}", response_model=List[MessageOut])
 def get_thread(
     partner_id: str,
     booking_id: Optional[str] = None,
