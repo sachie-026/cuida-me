@@ -31,13 +31,14 @@ class LoginRequest(BaseModel):
     password: str
 
 class TokenResponse(BaseModel):
-    access_token: str
-    token_type:   str  = "bearer"
-    role:         str
-    user_id:      str
-    full_name:    str
-    email:        str
-    is_new_user:  bool = False
+    access_token:    str
+    token_type:      str  = "bearer"
+    role:            str
+    user_id:         str
+    full_name:       str
+    email:           str
+    is_new_user:     bool = False
+    approval_status: Optional[str] = None
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -119,9 +120,14 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if body.role in PRO_ROLES:
         _create_professional_profile(db, user.id)
     token = create_access_token({"sub": user.id, "role": user.role})
+    approval_status = None
+    if body.role in PRO_ROLES:
+        prof = db.query(Professional).filter(Professional.user_id == user.id).first()
+        approval_status = prof.approval_status.value if prof and hasattr(prof.approval_status, "value") else "pending"
     return TokenResponse(
         access_token=token, role=user.role.value,
         user_id=user.id, full_name=user.full_name, email=user.email,
+        approval_status=approval_status,
     )
 
 @router.post("/login", response_model=TokenResponse)

@@ -21,6 +21,7 @@ class ProfessionalUpdate(BaseModel):
     state:            Optional[str]       = None
     markup_pct:       Optional[int]       = None
     is_available:     Optional[bool]      = None
+    bio:              Optional[str]       = None
 
 class PriceCalcRequest(BaseModel):
     role:           str
