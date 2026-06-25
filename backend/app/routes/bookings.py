@@ -11,8 +11,6 @@ from app.utils.holidays import check_date_for_holiday
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
-PRICE_TOLERANCE = 1.0
-
 class BookingCreate(BaseModel):
     patient_id:      str
     professional_id: str
@@ -27,9 +25,6 @@ class BookingCreate(BaseModel):
     is_holiday:      bool          = False
     distance_km:     float         = 0.0
     markup_pct:      int           = 0
-    total_price:     float
-    platform_fee:    float
-    pro_payout:      float
     notes:           Optional[str] = None
 
 class CheckInOut(BaseModel):
@@ -50,7 +45,7 @@ def _check_booking_access(booking: Booking, current: User, db: Session):
         return
     raise HTTPException(403, "Access denied")
 
-def _validate_price(body: BookingCreate, db: Session):
+def _compute_price(body: BookingCreate, db: Session):
     if not body.duration_hours:
         return None
     prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
@@ -63,7 +58,7 @@ def _validate_price(body: BookingCreate, db: Session):
     if role not in MINIMUM_PRICES:
         return None
     try:
-        server_price = calculate_price(
+        return calculate_price(
             role=role, duration_hours=body.duration_hours,
             shift=body.shift, markup_pct=prof.markup_pct or 0,
             is_urgent=body.is_urgent, is_holiday=body.is_holiday,
@@ -71,11 +66,6 @@ def _validate_price(body: BookingCreate, db: Session):
         )
     except ValueError as e:
         raise HTTPException(400, f"Invalid booking parameters: {e}")
-
-    if abs(server_price["total"] - body.total_price) > PRICE_TOLERANCE:
-        raise HTTPException(400,
-            f"Price mismatch. Expected R${server_price['total']:.2f}, got R${body.total_price:.2f}.")
-    return server_price
 
 def _get_refund_policy(booking: Booking, cancelled_by: str) -> dict:
     """
@@ -117,7 +107,7 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     holiday_info = check_date_for_holiday(date_str, db)
     is_holiday = body.is_holiday or holiday_info["is_holiday"]
 
-    server_price = _validate_price(body, db)
+    server_price = _compute_price(body, db)
     booking_data = body.dict()
     booking_data["is_holiday"] = is_holiday
     if server_price:

@@ -15,8 +15,8 @@ const CARE_TYPES = [
 ];
 
 const DURATIONS = [
-  {hours:2,label:"2 horas"},{hours:6,label:"6 horas"},{hours:8,label:"8 horas"},
-  {hours:12,label:"12 horas"},{hours:24,label:"24 horas"},
+  {hours:2,label:"2 horas"},{hours:4,label:"4 horas"},{hours:6,label:"6 horas"},
+  {hours:8,label:"8 horas"},{hours:12,label:"12 horas"},{hours:24,label:"24 horas"},
 ];
 
 const ROLE_LABELS = {
@@ -126,9 +126,8 @@ const NewBooking = () => {
         duration_hours: duration, shift,
         scheduled_start: start.toISOString(), scheduled_end: end.toISOString(),
         is_urgent: isUrgent, is_holiday: isHoliday, distance_km: 0,
-        base_price: priceResult.base_price, markup_pct: priceResult.markup_pct,
-        surcharge_pct: priceResult.surcharge_pct, total_price: priceResult.total,
-        platform_fee: priceResult.platform_fee, pro_payout: priceResult.pro_payout, notes,
+        markup_pct: priceResult.markup_pct,
+        notes,
       }, {headers});
       toast.success("Agendamento criado com sucesso!");
       navigate("/dashboard/client");
