@@ -43,7 +43,7 @@
   "professionals": {
     "label": "Profissionais",
     "title": "Quem cuida de quem você ama",
-    "subtitle": "Três categorias de profissionais verificados, cada uma com escopo de atuação bem definido.",
+    "subtitle": "Quatro categorias de profissionais verificados, cada uma com escopo de atuação bem definido.",
     "nurse": {
       "title": "Enfermeiro(a)",
       "badge": "COREN ativo obrigatório",
@@ -52,7 +52,12 @@
     "technician": {
       "title": "Técnico de Enfermagem",
       "badge": "COREN técnico ativo",
-      "services": ["Banho no leito e higiene", "Prevenção de escaras", "Monitoramento de sinais vitais", "Curativos autorizados", "Apoio ao paciente e família"]
+      "services": ["Administração de medicamentos IM/IV", "Curativos complexos", "Cuidados com sondas", "Aspiração de vias aéreas", "Cuidados paliativos"]
+    },
+    "nursing_assistant": {
+      "title": "Auxiliar de Enfermagem",
+      "badge": "COREN auxiliar ativo",
+      "services": ["Monitoramento de sinais vitais", "Glicemia capilar", "Curativo simples", "Cuidados básicos com ostomia", "Administração de medicamentos orais"]
     },
     "caregiver": {
       "title": "Cuidador(a)",
@@ -122,6 +127,7 @@
     "roles": {
       "nurse": { "title": "Enfermeiro(a)", "subtitle": "COREN graduado" },
       "technician": { "title": "Técnico de Enf.", "subtitle": "COREN técnico" },
+      "nursing_assistant": { "title": "Auxiliar de Enf.", "subtitle": "COREN auxiliar" },
       "caregiver": { "title": "Cuidador(a)", "subtitle": "Certificado" }
     },
     "terms": "Li e aceito os Termos de Uso e a Política de Privacidade da Cuida.me",

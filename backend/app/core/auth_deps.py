@@ -20,7 +20,7 @@ from app.models.models import User, UserRole
 
 security = HTTPBearer(auto_error=False)
 
-PRO_ROLES = {UserRole.nurse, UserRole.technician, UserRole.caregiver}
+PRO_ROLES = {UserRole.nurse, UserRole.technician, UserRole.nursing_assistant, UserRole.caregiver}
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),

@@ -13,9 +13,10 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const ROLE_HOME = {
   client:     "/dashboard/client",
-  nurse:      "/dashboard/professional",
-  technician: "/dashboard/professional",
-  caregiver:  "/dashboard/professional",
+  nurse:             "/dashboard/professional",
+  technician:        "/dashboard/professional",
+  nursing_assistant: "/dashboard/professional",
+  caregiver:         "/dashboard/professional",
   admin:      "/admin",
 };
 
@@ -34,7 +35,7 @@ const RolePicker = ({ onPick }) => (
         <button onClick={() => onPick("nurse")}
           className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-green-500 hover:bg-green-50 transition-all text-left">
           <p className="font-semibold text-navy">👩‍⚕️ Profissional de saúde</p>
-          <p className="text-xs text-slate-500 mt-0.5">Sou enfermeiro(a), técnico ou cuidador</p>
+          <p className="text-xs text-slate-500 mt-0.5">Sou enfermeiro(a), técnico(a), auxiliar ou cuidador(a)</p>
         </button>
       </div>
     </div>

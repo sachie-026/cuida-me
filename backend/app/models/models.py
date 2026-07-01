@@ -8,10 +8,11 @@ def gen_uuid():
     return str(uuid.uuid4())
 
 class UserRole(str, enum.Enum):
-    client     = "client"
-    nurse      = "nurse"
-    technician = "technician"
-    caregiver  = "caregiver"
+    client            = "client"
+    nurse             = "nurse"
+    technician        = "technician"
+    nursing_assistant = "nursing_assistant"
+    caregiver         = "caregiver"
     admin      = "admin"
 
 class DocStatus(str, enum.Enum):

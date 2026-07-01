@@ -11,14 +11,14 @@ const ProfileMenu = () => {
   const fullName = localStorage.getItem("full_name") || "Usuário";
   const role     = localStorage.getItem("role") || "";
   const initials = fullName.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
-  const isPro    = ["nurse","technician","caregiver"].includes(role);
+  const isPro    = ["nurse","technician","nursing_assistant","caregiver"].includes(role);
 
   const dashPath    = isPro ? "/dashboard/professional" : "/dashboard/client";
   const profilePath = isPro ? "/profile/professional"   : "/profile/client";
 
   const roleLabel = {
     client: "Cliente", nurse: "Enfermeiro(a)",
-    technician: "Técnico de Enfermagem", caregiver: "Cuidador(a)", admin: "Admin",
+    technician: "Técnico de Enfermagem", nursing_assistant: "Auxiliar de Enfermagem", caregiver: "Cuidador(a)", admin: "Admin",
   }[role] || role;
 
   useEffect(() => {

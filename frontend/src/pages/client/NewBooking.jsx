@@ -20,7 +20,7 @@ const DURATIONS = [
 ];
 
 const ROLE_LABELS = {
-  nurse:"Enfermeiro(a)",technician:"Técnico(a) de Enfermagem",caregiver:"Cuidador(a)",
+  nurse:"Enfermeiro(a)",technician:"Técnico(a) de Enfermagem",nursing_assistant:"Auxiliar de Enfermagem",caregiver:"Cuidador(a)",
 };
 
 const StepDots = ({total,current}) => (
@@ -168,7 +168,8 @@ const NewBooking = () => {
                 <div className="mt-2 space-y-4">
                   {[
                     {label:"Cuidados básicos (Cuidador)",key:"caregiver",filter:(s)=>s},
-                    {label:"Procedimentos técnicos (Técnico de Enfermagem)",key:"technician",filter:(s)=>!(servicesMap.caregiver||[]).includes(s)},
+                    {label:"Cuidados básicos de enfermagem (Auxiliar)",key:"nursing_assistant",filter:(s)=>!(servicesMap.caregiver||[]).includes(s)},
+                    {label:"Procedimentos técnicos (Técnico de Enfermagem)",key:"technician",filter:(s)=>!(servicesMap.nursing_assistant||[]).includes(s)},
                     {label:"Procedimentos especializados (Enfermeiro)",key:"nurse",filter:(s)=>!(servicesMap.technician||[]).includes(s)},
                   ].map(group=>(
                     <div key={group.key}>

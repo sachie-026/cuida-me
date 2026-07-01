@@ -12,7 +12,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # In-memory reset token store (replace with DB/Redis + email service in production)
 _reset_tokens: dict = {}
 
-PRO_ROLES = {"nurse", "technician", "caregiver"}
+PRO_ROLES = {"nurse", "technician", "nursing_assistant", "caregiver"}
 
 class GoogleAuthRequest(BaseModel):
     credential: str
