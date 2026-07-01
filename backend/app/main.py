@@ -16,6 +16,7 @@ def run_migrations():
         # Fix PaymentStatus enum — add new values
         "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'held'",
         "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'released'",
+        "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'nursing_assistant'",
         # Fix AvailabilityType enum
         "DO $$ BEGIN CREATE TYPE availabilitytype AS ENUM ('available', 'blocked'); EXCEPTION WHEN duplicate_object THEN null; END $$",
         # Users table
@@ -165,7 +166,7 @@ def seed_dev(
         Assessment, Document, DocStatus, BookingStatus, PaymentStatus,
         Availability, AvailabilityType
     )
-    from app.utils.pricing import CAREGIVER_SERVICES, TECHNICIAN_SERVICES, NURSE_SERVICES
+    from app.utils.pricing import CAREGIVER_SERVICES, NURSING_ASSISTANT_SERVICES, TECHNICIAN_SERVICES, NURSE_SERVICES
     from datetime import datetime, timedelta
     now = datetime.utcnow()
 
@@ -183,6 +184,7 @@ def seed_dev(
         User(id="user-nurse-002", email="enfermeira2@cuida.me", password_hash=hash_password("pro123"), full_name="Patricia Lima Rodrigues", phone="(11) 91234-0002", cpf="333.333.333-02", role=UserRole.nurse, is_active=True, is_verified=True),
         User(id="user-tech-001", email="tecnico@cuida.me", password_hash=hash_password("pro123"), full_name="João Lima Costa", phone="(11) 92345-0001", cpf="444.444.444-01", role=UserRole.technician, is_active=True, is_verified=True),
         User(id="user-tech-002", email="tecnico2@cuida.me", password_hash=hash_password("pro123"), full_name="André Pereira Nunes", phone="(11) 92345-0002", cpf="444.444.444-02", role=UserRole.technician, is_active=True, is_verified=True),
+        User(id="user-assist-001", email="auxiliar@cuida.me", password_hash=hash_password("pro123"), full_name="Beatriz Costa Almeida", phone="(11) 92456-0001", cpf="666.666.666-01", role=UserRole.nursing_assistant, is_active=True, is_verified=True),
         User(id="user-care-001", email="cuidadora@cuida.me", password_hash=hash_password("pro123"), full_name="Luciana Ferreira Dias", phone="(11) 93456-0001", cpf="555.555.555-01", role=UserRole.caregiver, is_active=True, is_verified=True),
         User(id="user-care-002", email="cuidadora2@cuida.me", password_hash=hash_password("pro123"), full_name="Claudia Moreira Santos", phone="(11) 93456-0002", cpf="555.555.555-02", role=UserRole.caregiver, is_active=True, is_verified=True),
     ])
@@ -193,12 +195,13 @@ def seed_dev(
         Professional(id="prof-nurse-002", user_id="user-nurse-002", council_number="789012", council_state="SP", council_type="COREN", services_offered=NURSE_SERVICES, markup_pct=20, service_radius=20, city="São Paulo", state="SP", latitude=-23.5605, longitude=-46.6433, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=52, years_experience=5, bio="Especialista em UTI domiciliar e cuidados paliativos."),
         Professional(id="prof-tech-001", user_id="user-tech-001", council_number="654321", council_state="SP", council_type="COREN", services_offered=TECHNICIAN_SERVICES, markup_pct=0, service_radius=15, city="São Paulo", state="SP", latitude=-23.5705, longitude=-46.6533, is_available=True, approval_status=DocStatus.approved, rating_avg=4.7, rating_count=43),
         Professional(id="prof-tech-002", user_id="user-tech-002", council_number="345678", council_state="SP", council_type="COREN", services_offered=TECHNICIAN_SERVICES, markup_pct=5, service_radius=20, city="São Paulo", state="SP", latitude=-23.5805, longitude=-46.6633, is_available=False, approval_status=DocStatus.approved, rating_avg=4.6, rating_count=28),
+        Professional(id="prof-assist-001", user_id="user-assist-001", council_number="998877", council_state="SP", council_type="COREN", services_offered=NURSING_ASSISTANT_SERVICES, markup_pct=0, service_radius=20, city="São Paulo", state="SP", latitude=-23.5755, longitude=-46.6583, is_available=True, approval_status=DocStatus.approved, rating_avg=4.7, rating_count=18, bio="Auxiliar de enfermagem com experiência em cuidados domiciliares."),
         Professional(id="prof-care-001", user_id="user-care-001", council_number="", council_state="SP", council_type="CERTIFICADO", services_offered=CAREGIVER_SERVICES, markup_pct=0, service_radius=20, city="São Paulo", state="SP", latitude=-23.5905, longitude=-46.6733, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=31),
         Professional(id="prof-care-002", user_id="user-care-002", council_number="", council_state="SP", council_type="CERTIFICADO", services_offered=CAREGIVER_SERVICES, markup_pct=0, service_radius=15, city="São Paulo", state="SP", latitude=-23.6005, longitude=-46.6833, is_available=False, approval_status=DocStatus.pending, rating_avg=0.0, rating_count=0),
     ])
 
     # Seed availability for approved professionals (Mon-Fri 7:00-19:00)
-    for prof_id in ["prof-nurse-001","prof-nurse-002","prof-tech-001","prof-care-001"]:
+    for prof_id in ["prof-nurse-001","prof-nurse-002","prof-tech-001","prof-assist-001","prof-care-001"]:
         for dow in range(5):  # 0=Mon to 4=Fri
             db.add(Availability(id=f"avail-{prof_id}-{dow}", professional_id=prof_id, type=AvailabilityType.available, is_recurring=True, day_of_week=dow, start_time="07:00", end_time="19:00"))
         # Saturday half day
@@ -251,9 +254,10 @@ def seed_dev(
         "accounts": {
             "admin":       ["admin@cuida.me / admin123", "admin2@cuida.me / admin123"],
             "clients":     ["cliente@cuida.me / client123", "cliente2@cuida.me / client123", "cliente3@cuida.me / client123"],
-            "nurses":      ["enfermeira@cuida.me / pro123 (approved)", "enfermeira2@cuida.me / pro123 (approved)"],
-            "technicians": ["tecnico@cuida.me / pro123 (approved)", "tecnico2@cuida.me / pro123 (approved)"],
-            "caregivers":  ["cuidadora@cuida.me / pro123 (approved)", "cuidadora2@cuida.me / pro123 (PENDING)"],
+            "nurses":             ["enfermeira@cuida.me / pro123 (approved)", "enfermeira2@cuida.me / pro123 (approved)"],
+            "technicians":        ["tecnico@cuida.me / pro123 (approved)", "tecnico2@cuida.me / pro123 (approved)"],
+            "nursing_assistants": ["auxiliar@cuida.me / pro123 (approved)"],
+            "caregivers":         ["cuidadora@cuida.me / pro123 (approved)", "cuidadora2@cuida.me / pro123 (PENDING)"],
         },
         "new_features": ["availability calendar seeded", "representative fields seeded", "escrow payments seeded", "4-level service catalog"]
     }

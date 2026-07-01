@@ -257,7 +257,8 @@ const ProfessionalProfile = () => {
                   <div className="space-y-4">
                     {[
                       {label:"Cuidados básicos",svcs:servicesMap.caregiver||[]},
-                      {label:"Procedimentos técnicos",svcs:(servicesMap.technician||[]).filter(s=>!(servicesMap.caregiver||[]).includes(s))},
+                      {label:"Cuidados básicos de enfermagem",svcs:(servicesMap.nursing_assistant||[]).filter(s=>!(servicesMap.caregiver||[]).includes(s))},
+                      {label:"Procedimentos técnicos",svcs:(servicesMap.technician||[]).filter(s=>!(servicesMap.nursing_assistant||[]).includes(s))},
                       {label:"Procedimentos especializados",svcs:(servicesMap.nurse||[]).filter(s=>!(servicesMap.technician||[]).includes(s))},
                     ].filter(g=>g.svcs.some(s=>availableServices.includes(s))).map(group=>(
                       <div key={group.label}>

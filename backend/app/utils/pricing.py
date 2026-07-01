@@ -20,8 +20,8 @@ LEVEL_1_SERVICES = [
     "Cuidados com idosos (Alzheimer, Parkinson, pós-AVC)",
 ]
 
-# ── Care Level 2 — Nursing Care ───────────────────────────────────────────────
-# Allowed: technician, nurse
+# ── Care Level 2 — Basic Nursing Care ─────────────────────────────────────────
+# Allowed: nursing_assistant, technician, nurse
 LEVEL_2_SERVICES = [
     "Monitoramento de sinais vitais",
     "Monitoramento de pressão arterial",
@@ -29,13 +29,16 @@ LEVEL_2_SERVICES = [
     "Administração de medicamentos orais",
     "Administração de medicamentos tópicos",
     "Lembrete de medicamentos",
+    "Curativo simples",
+    "Cuidados básicos com ostomia",
     "Administração de insulina",
 ]
 
 # ── Care Level 3 — Specialized Care ──────────────────────────────────────────
 # Allowed: technician, nurse
 LEVEL_3_SERVICES = [
-    "Curativo simples",
+    "Administração de medicamentos intramusculares",
+    "Administração de medicamentos endovenosos",
     "Curativo complexo / lesão por pressão",
     "Curativo cirúrgico",
     "Cuidados com traqueostomia",
@@ -65,14 +68,16 @@ LEVEL_4_SERVICES = [
 ]
 
 # ── Combined catalogs by role ─────────────────────────────────────────────────
-CAREGIVER_SERVICES   = LEVEL_1_SERVICES
-TECHNICIAN_SERVICES  = LEVEL_1_SERVICES + LEVEL_2_SERVICES + LEVEL_3_SERVICES
-NURSE_SERVICES       = LEVEL_1_SERVICES + LEVEL_2_SERVICES + LEVEL_3_SERVICES + LEVEL_4_SERVICES
+CAREGIVER_SERVICES         = LEVEL_1_SERVICES
+NURSING_ASSISTANT_SERVICES = LEVEL_1_SERVICES + LEVEL_2_SERVICES
+TECHNICIAN_SERVICES        = LEVEL_1_SERVICES + LEVEL_2_SERVICES + LEVEL_3_SERVICES
+NURSE_SERVICES             = LEVEL_1_SERVICES + LEVEL_2_SERVICES + LEVEL_3_SERVICES + LEVEL_4_SERVICES
 
 SERVICES_BY_ROLE = {
-    "caregiver":  CAREGIVER_SERVICES,
-    "technician": TECHNICIAN_SERVICES,
-    "nurse":      NURSE_SERVICES,
+    "caregiver":         CAREGIVER_SERVICES,
+    "nursing_assistant": NURSING_ASSISTANT_SERVICES,
+    "technician":        TECHNICIAN_SERVICES,
+    "nurse":             NURSE_SERVICES,
 }
 
 SERVICES_BY_LEVEL = {
@@ -83,14 +88,14 @@ SERVICES_BY_LEVEL = {
 }
 
 # ── Role ranking ──────────────────────────────────────────────────────────────
-ROLE_RANK = {"caregiver": 0, "technician": 1, "nurse": 2}
+ROLE_RANK = {"caregiver": 0, "nursing_assistant": 1, "technician": 2, "nurse": 3}
 
 def _build_service_role_map():
     m = {}
     for svc in LEVEL_1_SERVICES:
         m[svc] = "caregiver"
     for svc in LEVEL_2_SERVICES:
-        m[svc] = "technician"
+        m[svc] = "nursing_assistant"
     for svc in LEVEL_3_SERVICES:
         m[svc] = "technician"
     for svc in LEVEL_4_SERVICES:
@@ -135,6 +140,9 @@ def get_care_level_for_services(services: list) -> int:
     return max_level
 
 # ── Platform minimum prices ───────────────────────────────────────────────────
+# ── Platform minimum prices ───────────────────────────────────────────────────
+# Values from CuidaNow Pricing Specification (Day/Night Shift doc).
+# 4h tier interpolated (mid-point between 2h and 6h).
 MINIMUM_PRICES = {
     "caregiver": {
         2:  {"day": 80.0,   "night": 100.0},
@@ -142,7 +150,15 @@ MINIMUM_PRICES = {
         6:  {"day": 140.0,  "night": 165.0},
         8:  {"day": 190.0,  "night": 220.0},
         12: {"day": 220.0,  "night": 265.0},
-        24: {"day": 430.0,  "night": 500.0},
+        24: {"day": 450.0,  "night": 530.0},
+    },
+    "nursing_assistant": {
+        2:  {"day": 100.0,  "night": 120.0},
+        4:  {"day": 128.0,  "night": 150.0},
+        6:  {"day": 155.0,  "night": 180.0},
+        8:  {"day": 205.0,  "night": 240.0},
+        12: {"day": 250.0,  "night": 295.0},
+        24: {"day": 520.0,  "night": 610.0},
     },
     "technician": {
         2:  {"day": 120.0,  "night": 140.0},
@@ -150,7 +166,7 @@ MINIMUM_PRICES = {
         6:  {"day": 170.0,  "night": 200.0},
         8:  {"day": 220.0,  "night": 260.0},
         12: {"day": 280.0,  "night": 330.0},
-        24: {"day": 540.0,  "night": 640.0},
+        24: {"day": 580.0,  "night": 690.0},
     },
     "nurse": {
         2:  {"day": 180.0,  "night": 220.0},
@@ -158,7 +174,7 @@ MINIMUM_PRICES = {
         6:  {"day": 300.0,  "night": 350.0},
         8:  {"day": 380.0,  "night": 450.0},
         12: {"day": 500.0,  "night": 600.0},
-        24: {"day": 950.0,  "night": 1100.0},
+        24: {"day": 980.0,  "night": 1150.0},
     },
 }
 

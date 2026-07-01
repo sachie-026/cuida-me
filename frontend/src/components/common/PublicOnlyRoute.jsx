@@ -2,9 +2,10 @@ import { Navigate } from "react-router-dom";
 
 const ROLE_HOME = {
   client:     "/dashboard/client",
-  nurse:      "/dashboard/professional",
-  technician: "/dashboard/professional",
-  caregiver:  "/dashboard/professional",
+  nurse:             "/dashboard/professional",
+  technician:        "/dashboard/professional",
+  nursing_assistant: "/dashboard/professional",
+  caregiver:         "/dashboard/professional",
   admin:      "/admin",
 };
 

@@ -20,7 +20,7 @@ const Navbar = () => {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const dashboardPath = ["nurse","technician","caregiver"].includes(role)
+  const dashboardPath = ["nurse","technician","nursing_assistant","caregiver"].includes(role)
     ? "/dashboard/professional"
     : "/dashboard/client";
 

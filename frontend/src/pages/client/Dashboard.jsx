@@ -37,6 +37,7 @@ const ClientDashboard = () => {
       .then(r => {
         const fetchedBookings = r.data;
         setBookings(fetchedBookings);
+        // Pre-populate ratedIds: check which completed bookings already have a rating from this user
         const completedIds = fetchedBookings.filter(b => b.status === "completed").map(b => b.id);
         Promise.all(
           completedIds.map(id =>

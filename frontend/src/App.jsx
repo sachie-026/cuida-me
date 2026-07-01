@@ -27,7 +27,7 @@ import Messages              from "./pages/messages/Messages";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
-const PRO_ROLES        = ["nurse", "technician", "caregiver"];
+const PRO_ROLES        = ["nurse", "technician", "nursing_assistant", "caregiver"];
 const ADMIN_ROLES      = ["admin"];
 const ALL_ROLES        = [...CLIENT_ROLES, ...PRO_ROLES, ...ADMIN_ROLES];
 
