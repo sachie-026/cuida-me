@@ -113,6 +113,7 @@ const ProfessionalProfile = () => {
   const [prof,           setProf]           = useState({council_number:"",council_state:"",services_offered:[],service_radius:15,city:"",state:"",markup_pct:0});
   const [docs,           setDocs]           = useState([]);
   const [approvalStatus, setApprovalStatus] = useState("pending");
+  const [pricingTable,   setPricingTable]   = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -123,6 +124,10 @@ const ProfessionalProfile = () => {
     ]).then(([svcRes,uRes,pRes,dRes]) => {
       setServicesMap(svcRes.data);
       setUser(uRes.data);
+      // Fetch pricing table for this role
+      if (uRes.data.role && uRes.data.role !== "client" && uRes.data.role !== "admin") {
+        axios.get(`${API}/api/professionals/pricing-table/${uRes.data.role}`).then(r => setPricingTable(r.data)).catch(()=>{});
+      }
       if (pRes.data?.id) {
         setProf({
           council_number:   pRes.data.council_number||"",
@@ -246,6 +251,41 @@ const ProfessionalProfile = () => {
                   <p className="text-xs text-slate-400 mt-1">O valor mínimo é definido pela plataforma</p>
                 </div>
               </div>
+
+              {/* Platform pricing table */}
+              {pricingTable && (
+                <div className="mt-6">
+                  <label className="form-label">Tabela de preços mínimos da plataforma</label>
+                  <p className="text-xs text-slate-400 mb-3">Estes são os valores base para a sua categoria. Seu acréscimo de {prof.markup_pct||0}% é aplicado sobre estes valores.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500">Duração</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Diurno</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Noturno</th>
+                          {prof.markup_pct > 0 && <th className="text-right px-3 py-2 text-xs font-semibold text-green-600">Seu valor (dia)</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pricingTable.durations.map(d => {
+                          const p = pricingTable.prices[d];
+                          if (!p) return null;
+                          const markup = 1 + (prof.markup_pct || 0) / 100;
+                          return (
+                            <tr key={d} className="border-t border-slate-100">
+                              <td className="px-3 py-2 font-medium text-navy">{d}h</td>
+                              <td className="px-3 py-2 text-right text-slate-600">R${p.day.toFixed(0)}</td>
+                              <td className="px-3 py-2 text-right text-slate-600">R${p.night.toFixed(0)}</td>
+                              {prof.markup_pct > 0 && <td className="px-3 py-2 text-right font-semibold text-green-600">R${(p.day * markup).toFixed(0)}</td>}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* Services offered */}
               <div>

@@ -101,14 +101,11 @@ const NewBooking = () => {
     setSelectedPro(pro);
     setLoading(true);
     try {
-      const userRes = await axios.get(`${API}/api/users/${pro.user_id}`, {headers});
-      const role = userRes.data.role;
       const priceRes = await axios.post(`${API}/api/professionals/calculate-price`, {
-        role, duration_hours: duration, shift,
-        markup_pct: pro.markup_pct||0, is_urgent: isUrgent,
-        is_holiday: isHoliday, distance_km: 0,
+        professional_id: pro.id, duration_hours: duration, shift,
+        is_urgent: isUrgent, is_holiday: isHoliday, distance_km: 0,
       }, {headers});
-      setPriceResult({...priceRes.data, pro_role: role});
+      setPriceResult(priceRes.data);
       setStep(3);
     } catch { toast.error("Erro ao calcular preço."); }
     finally { setLoading(false); }

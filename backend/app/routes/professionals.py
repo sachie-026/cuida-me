@@ -7,7 +7,8 @@ from app.core.auth_deps import get_current_user, get_optional_user
 from app.models.models import Professional, DocStatus, User
 from app.utils.pricing import (
     professional_can_perform, minimum_role_for_services,
-    SERVICES_BY_ROLE, calculate_price, VALID_MARKUPS
+    SERVICES_BY_ROLE, calculate_price, VALID_MARKUPS,
+    MINIMUM_PRICES, VALID_DURATIONS
 )
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
@@ -24,13 +25,14 @@ class ProfessionalUpdate(BaseModel):
     bio:              Optional[str]       = None
 
 class PriceCalcRequest(BaseModel):
-    role:           str
-    duration_hours: int
-    shift:          str
-    markup_pct:     int   = 0
-    is_urgent:      bool  = False
-    is_holiday:     bool  = False
-    distance_km:    float = 0.0
+    role:             Optional[str] = None
+    professional_id:  Optional[str] = None
+    duration_hours:   int
+    shift:            str
+    markup_pct:       int   = 0
+    is_urgent:        bool  = False
+    is_holiday:       bool  = False
+    distance_km:      float = 0.0
 
 def get_or_create_profile(db: Session, user_id: str) -> Professional:
     prof = db.query(Professional).filter(Professional.user_id == user_id).first()
@@ -53,13 +55,30 @@ def get_services_catalog():
     return SERVICES_BY_ROLE
 
 @router.post("/calculate-price")
-def calculate_booking_price(body: PriceCalcRequest):
+def calculate_booking_price(body: PriceCalcRequest, db: Session = Depends(get_db)):
+    role = body.role
+    markup = body.markup_pct
+
+    # If professional_id is provided, resolve role and markup from DB
+    if body.professional_id:
+        prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
+        if not prof:
+            raise HTTPException(404, "Professional not found")
+        user = db.query(User).filter(User.id == prof.user_id).first()
+        if not user:
+            raise HTTPException(404, "Professional user not found")
+        role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        markup = prof.markup_pct or 0
+
+    if not role:
+        raise HTTPException(400, "Either 'role' or 'professional_id' is required")
+
     try:
         return calculate_price(
-            role=body.role,
+            role=role,
             duration_hours=body.duration_hours,
             shift=body.shift,
-            markup_pct=body.markup_pct,
+            markup_pct=markup,
             is_urgent=body.is_urgent,
             is_holiday=body.is_holiday,
             distance_km=body.distance_km,
@@ -154,3 +173,14 @@ def patch_professional(user_id: str, body: ProfessionalUpdate, db: Session = Dep
 @router.get("/{user_id}")
 def get_professional(user_id: str, db: Session = Depends(get_db), current=Depends(get_current_user)):
     return get_or_create_profile(db, user_id)
+
+@router.get("/pricing-table/{role}")
+def get_pricing_table(role: str):
+    """Return platform minimum prices for a given role. Public endpoint."""
+    if role not in MINIMUM_PRICES:
+        raise HTTPException(400, f"Invalid role. Must be one of: {list(MINIMUM_PRICES.keys())}")
+    return {
+        "role": role,
+        "durations": VALID_DURATIONS,
+        "prices": MINIMUM_PRICES[role],
+    }
