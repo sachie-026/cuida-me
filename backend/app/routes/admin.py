@@ -53,9 +53,11 @@ def _ser_prof(prof: Professional, user: User, docs: list) -> dict:
         "is_available":     prof.is_available,
         "documents": [
             {
+                "id":       d.id,
                 "doc_type": d.doc_type,
                 "file_url": d.file_url,
                 "status":   d.status.value if hasattr(d.status, 'value') else str(d.status),
+                "rejection_reason": d.rejection_reason,
             }
             for d in docs
         ],
@@ -171,3 +173,47 @@ def update_pricing(role: str, duration: int, shift: str, price: float, _=Depends
         raise HTTPException(400, "Price must be positive")
     MINIMUM_PRICES[role][duration][shift] = round(price, 2)
     return {"updated": True, "role": role, "duration": duration, "shift": shift, "price": price}
+# ── Document Verification ─────────────────────────────────────────────────────
+
+REQUIRED_DOCS = {"photo_id", "diploma", "criminal", "selfie"}
+
+@router.patch("/documents/{doc_id}/approve")
+def approve_document(doc_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    doc.status = DocStatus.approved
+    doc.rejection_reason = None
+    db.commit()
+
+    # Auto-approve professional if all required docs are approved
+    _check_auto_approve(doc.user_id, db)
+
+    return {"id": doc_id, "status": "approved"}
+
+@router.patch("/documents/{doc_id}/reject")
+def reject_document(doc_id: str, reason: str = "Documento inválido ou ilegível", db: Session = Depends(get_db), _=Depends(require_admin)):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    doc.status = DocStatus.rejected
+    doc.rejection_reason = reason
+    db.commit()
+
+    # If any doc is rejected, professional stays/goes to pending
+    prof = db.query(Professional).filter(Professional.user_id == doc.user_id).first()
+    if prof and prof.approval_status == DocStatus.approved:
+        prof.approval_status = DocStatus.pending
+        db.commit()
+
+    return {"id": doc_id, "status": "rejected", "reason": reason}
+
+def _check_auto_approve(user_id: str, db: Session):
+    """Auto-approve professional when ALL required docs are approved."""
+    docs = db.query(Document).filter(Document.user_id == user_id).all()
+    approved_types = {d.doc_type for d in docs if d.status == DocStatus.approved}
+    if REQUIRED_DOCS.issubset(approved_types):
+        prof = db.query(Professional).filter(Professional.user_id == user_id).first()
+        if prof and prof.approval_status != DocStatus.approved:
+            prof.approval_status = DocStatus.approved
+            db.commit()

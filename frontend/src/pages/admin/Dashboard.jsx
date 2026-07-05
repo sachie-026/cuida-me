@@ -240,50 +240,152 @@ const Overview = () => {
   );
 };
 
+/* ── COREN Links ── */
+const COREN_URLS = {
+  AC:"https://coren-ac.gov.br",AL:"https://coren-al.gov.br",AP:"https://coren-ap.gov.br",
+  AM:"https://coren-am.gov.br",BA:"https://www.coren-ba.gov.br",CE:"https://www.coren-ce.org.br",
+  DF:"https://www.coren-df.gov.br",ES:"https://www.coren-es.org.br",GO:"https://www.coren-go.org.br",
+  MA:"https://coren-ma.gov.br",MT:"https://www.coren-mt.gov.br",MS:"https://www.coren-ms.gov.br",
+  MG:"https://www.corenmg.gov.br",PA:"https://www.corenpa.org.br",PB:"https://coren-pb.gov.br",
+  PR:"https://www.corenpr.gov.br",PE:"https://www.coren-pe.gov.br",PI:"https://coren-pi.gov.br",
+  RJ:"https://www.coren-rj.org.br",RN:"https://www.coren-rn.org.br",RS:"https://www.portalcoren-rs.gov.br",
+  RO:"https://www.coren-ro.org.br",RR:"https://corenrr.gov.br",SC:"https://www.corensc.gov.br",
+  SP:"https://portal.coren-sp.gov.br",SE:"https://coren-se.gov.br",TO:"https://www.corentocantins.org.br",
+};
+const COFEN_LOOKUP = "https://sigen.cofen.gov.br/profissional/consultar";
+
 /* ── Document Viewer Modal ── */
-const DocModal = ({ prof, onClose }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-    <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-    <div className="relative bg-white rounded-2xl shadow-hover w-full max-w-lg max-h-[85vh] overflow-y-auto z-10 p-6">
-      <h3 className="font-display text-lg font-bold text-navy mb-1">{prof.full_name}</h3>
-      <p className="text-xs text-slate-500 mb-4">{prof.email} · {prof.council_type} {prof.council_number}-{prof.council_state}</p>
+const DocModal = ({ prof, onClose, onDocUpdate }) => {
+  const { headers } = useAdmin();
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [actionLoading, setActionLoading] = useState(null);
 
-      {(!prof.documents || prof.documents.length === 0) ? (
-        <div className="text-center py-8 text-slate-400">
-          <FileText size={40} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">Nenhum documento enviado ainda.</p>
+  const handleApprove = async (docId) => {
+    setActionLoading(docId);
+    try {
+      await axios.patch(`${API}/api/admin/documents/${docId}/approve`, {}, { headers });
+      toast.success("Documento aprovado!");
+      onDocUpdate();
+    } catch { toast.error("Erro ao aprovar."); }
+    finally { setActionLoading(null); }
+  };
+
+  const handleReject = async (docId) => {
+    if (!rejectReason.trim()) { toast.error("Informe o motivo da rejeição."); return; }
+    setActionLoading(docId);
+    try {
+      await axios.patch(`${API}/api/admin/documents/${docId}/reject?reason=${encodeURIComponent(rejectReason)}`, {}, { headers });
+      toast.success("Documento rejeitado.");
+      setRejectingId(null);
+      setRejectReason("");
+      onDocUpdate();
+    } catch { toast.error("Erro ao rejeitar."); }
+    finally { setActionLoading(null); }
+  };
+
+  const corenState = prof.council_state?.toUpperCase();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-hover w-full max-w-lg max-h-[85vh] overflow-y-auto z-10 p-6">
+        <h3 className="font-display text-lg font-bold text-navy mb-1">{prof.full_name}</h3>
+        <p className="text-xs text-slate-500 mb-3">{prof.email} · {prof.council_type} {prof.council_number}-{corenState}</p>
+
+        {/* COREN verification links */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <a href={COFEN_LOOKUP} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+            <ExternalLink size={12} /> Verificar no COFEN (nacional)
+          </a>
+          {corenState && COREN_URLS[corenState] && (
+            <a href={COREN_URLS[corenState]} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1.5 text-xs font-semibold text-green-600 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors">
+              <ExternalLink size={12} /> Site COREN-{corenState}
+            </a>
+          )}
         </div>
-      ) : (
-        <div className="space-y-3">
-          {prof.documents.map((doc, i) => (
-            <div key={i} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50">
-              <div>
-                <p className="text-sm font-semibold text-navy">{DOC_LABELS[doc.doc_type] || doc.doc_type}</p>
-                <p className={`text-xs font-medium mt-0.5 ${DOC_STATUS_COLOR[doc.status]}`}>
-                  {doc.status === "approved" ? "✓ Aprovado" : doc.status === "pending" ? "⏳ Em análise" : "✗ Rejeitado"}
-                </p>
+
+        {(!prof.documents || prof.documents.length === 0) ? (
+          <div className="text-center py-8 text-slate-400">
+            <FileText size={40} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">Nenhum documento enviado ainda.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {prof.documents.map((doc, i) => (
+              <div key={i} className="p-3 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-semibold text-navy">{DOC_LABELS[doc.doc_type] || doc.doc_type}</p>
+                    <p className={`text-xs font-medium mt-0.5 ${DOC_STATUS_COLOR[doc.status]}`}>
+                      {doc.status === "approved" ? "✓ Aprovado" : doc.status === "pending" ? "⏳ Em análise" : "✗ Rejeitado"}
+                    </p>
+                    {doc.rejection_reason && doc.status === "rejected" && (
+                      <p className="text-xs text-red-500 mt-0.5">Motivo: {doc.rejection_reason}</p>
+                    )}
+                  </div>
+                  {doc.file_url && !doc.file_url.includes("placeholder.com") && (
+                    <a href={doc.file_url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+                      <ExternalLink size={13} /> Ver arquivo
+                    </a>
+                  )}
+                </div>
+                {/* Approve/Reject actions */}
+                {doc.status !== "approved" && doc.file_url && !doc.file_url.includes("placeholder.com") && (
+                  <div className="mt-2 pt-2 border-t border-slate-200">
+                    {rejectingId === doc.id ? (
+                      <div className="space-y-2">
+                        <input type="text" className="form-input text-sm" placeholder="Motivo da rejeição..." value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+                        <div className="flex gap-2">
+                          <button onClick={() => handleReject(doc.id)} disabled={actionLoading === doc.id}
+                            className="text-xs px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold disabled:opacity-50">
+                            {actionLoading === doc.id ? "..." : "Confirmar rejeição"}
+                          </button>
+                          <button onClick={() => { setRejectingId(null); setRejectReason(""); }}
+                            className="text-xs px-3 py-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 font-semibold">Cancelar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleApprove(doc.id)} disabled={actionLoading === doc.id}
+                          className="flex items-center gap-1 text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold disabled:opacity-50">
+                          <CheckCircle size={12} /> Aprovar
+                        </button>
+                        <button onClick={() => setRejectingId(doc.id)}
+                          className="flex items-center gap-1 text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-semibold">
+                          <XCircle size={12} /> Rejeitar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {doc.status === "approved" && (
+                  <div className="mt-2 pt-2 border-t border-slate-200 flex gap-2">
+                    <button onClick={() => setRejectingId(doc.id)}
+                      className="flex items-center gap-1 text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-semibold">
+                      <XCircle size={12} /> Revogar aprovação
+                    </button>
+                  </div>
+                )}
               </div>
-              {doc.file_url && doc.file_url !== "https://placeholder.com/doc1.jpg" && (
-                <a href={doc.file_url} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-                  <ExternalLink size={13} /> Ver arquivo
-                </a>
-              )}
-              {(!doc.file_url || doc.file_url.includes("placeholder.com")) && (
-                <span className="text-xs text-slate-400 italic">Arquivo placeholder</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      <div className="mt-5 pt-4 border-t border-slate-100 text-xs text-slate-400">
-        {prof.documents?.length || 0} de 4 documentos obrigatórios enviados
-        {prof.documents?.length >= 4 && " ✓"}
+        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+          <span className="text-xs text-slate-400">
+            {prof.documents?.filter(d => d.status === "approved").length || 0} de 4 documentos aprovados
+            {prof.documents?.filter(d => d.status === "approved").length >= 4 && " ✓ Profissional auto-aprovado"}
+          </span>
+          <button onClick={onClose} className="btn-outline text-xs px-4">Fechar</button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ── Professionals Panel ── */
 const ProfessionalsPanel = () => {
@@ -292,26 +394,28 @@ const ProfessionalsPanel = () => {
   const [filter,     setFilter]     = useState("pending");
   const [viewingDoc, setViewingDoc] = useState(null);
 
-  useEffect(() => {
+  const loadProfessionals = () => {
     axios.get(`${API}/api/admin/professionals?status=${filter}`, { headers })
       .then(r => setList(r.data)).catch(() => {});
-  }, [filter]);
+  };
+
+  useEffect(() => { loadProfessionals(); }, [filter]);
 
   const approve = async (id) => {
     await axios.patch(`${API}/api/admin/professionals/${id}/approve`, {}, { headers });
-    setList(prev => prev.filter(p => p.id !== id));
+    loadProfessionals();
     toast.success("Profissional aprovado!");
   };
 
   const reject = async (id) => {
     await axios.patch(`${API}/api/admin/professionals/${id}/reject`, {}, { headers });
-    setList(prev => prev.filter(p => p.id !== id));
+    loadProfessionals();
     toast("Profissional rejeitado.", { icon: "❌" });
   };
 
   return (
     <div>
-      {viewingDoc && <DocModal prof={viewingDoc} onClose={() => setViewingDoc(null)} />}
+      {viewingDoc && <DocModal prof={viewingDoc} onClose={() => setViewingDoc(null)} onDocUpdate={() => { loadProfessionals(); setViewingDoc(null); }} />}
 
       <h2 className="font-display text-xl font-bold text-navy mb-4">Profissionais</h2>
       <div className="flex gap-2 mb-5">

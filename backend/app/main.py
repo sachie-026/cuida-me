@@ -20,6 +20,7 @@ def run_migrations():
         # Professional enhancements
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS specialties JSON DEFAULT '[]'",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS rest_until TIMESTAMPTZ",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
         # Reports table
         """CREATE TABLE IF NOT EXISTS reports (
             id VARCHAR PRIMARY KEY,

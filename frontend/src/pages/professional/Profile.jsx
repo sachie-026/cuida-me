@@ -66,6 +66,12 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded}) => {
       {existingDoc?.file_url && !existingDoc.file_url.includes("placeholder.com") && (
         <a href={existingDoc.file_url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline block mb-2">Ver documento ↗</a>
       )}
+      {existingDoc?.status === "rejected" && existingDoc?.rejection_reason && (
+        <div className="flex items-start gap-2 p-2 mb-2 bg-red-50 border border-red-200 rounded-lg">
+          <XCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5"/>
+          <p className="text-xs text-red-600"><span className="font-semibold">Motivo da rejeição:</span> {existingDoc.rejection_reason}</p>
+        </div>
+      )}
       <label className={`flex items-center gap-2 cursor-pointer w-fit px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
         uploading?"bg-slate-200 text-slate-400 cursor-not-allowed":"bg-blue-100 text-blue-700 hover:bg-blue-200"}`}>
         <Upload size={13}/>
@@ -76,23 +82,29 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded}) => {
   );
 };
 
-const VerificationBanner = ({approvalStatus,hasAllDocs}) => {
+const VerificationBanner = ({approvalStatus,hasAllDocs,docs=[]}) => {
   if (approvalStatus==="approved") return null;
+  const rejectedDocs = docs.filter(d=>d.status==="rejected");
+  const approvedDocs = docs.filter(d=>d.status==="approved");
   return (
     <div className={`rounded-xl p-4 mb-6 flex items-start gap-3 ${
-      approvalStatus==="rejected"?"bg-red-50 border border-red-200":"bg-amber-50 border border-amber-200"}`}>
-      <AlertTriangle size={20} className={approvalStatus==="rejected"?"text-red-500":"text-amber-500"}/>
+      approvalStatus==="rejected"||rejectedDocs.length>0?"bg-red-50 border border-red-200":"bg-amber-50 border border-amber-200"}`}>
+      <AlertTriangle size={20} className={approvalStatus==="rejected"||rejectedDocs.length>0?"text-red-500":"text-amber-500"}/>
       <div>
-        <p className={`font-semibold text-sm ${approvalStatus==="rejected"?"text-red-700":"text-amber-700"}`}>
-          {approvalStatus==="rejected"?"Cadastro rejeitado":"Conta pendente de verificação"}
+        <p className={`font-semibold text-sm ${approvalStatus==="rejected"||rejectedDocs.length>0?"text-red-700":"text-amber-700"}`}>
+          {rejectedDocs.length>0?`${rejectedDocs.length} documento(s) rejeitado(s)`
+            :approvalStatus==="rejected"?"Cadastro rejeitado":"Conta pendente de verificação"}
         </p>
-        <p className={`text-xs mt-0.5 ${approvalStatus==="rejected"?"text-red-600":"text-amber-600"}`}>
-          {approvalStatus==="rejected"
-            ?"Seus documentos foram rejeitados. Reenvie documentos válidos abaixo."
+        <p className={`text-xs mt-0.5 ${approvalStatus==="rejected"||rejectedDocs.length>0?"text-red-600":"text-amber-600"}`}>
+          {rejectedDocs.length>0
+            ?"Corrija e reenvie os documentos rejeitados abaixo. Veja o motivo da rejeição em cada documento."
             :!hasAllDocs
             ?"Envie todos os documentos obrigatórios abaixo para que nossa equipe analise sua conta."
             :"Documentos enviados. Nossa equipe irá analisar em até 48 horas."}
         </p>
+        {approvedDocs.length>0 && (
+          <p className="text-xs text-green-600 mt-1">{approvedDocs.length} de 4 documentos aprovados</p>
+        )}
       </div>
     </div>
   );
@@ -209,7 +221,7 @@ const ProfessionalProfile = () => {
           <p className="text-slate-400 text-center py-10">Carregando...</p>
         ) : (
           <div className="space-y-5">
-            <VerificationBanner approvalStatus={approvalStatus} hasAllDocs={hasAllDocs}/>
+            <VerificationBanner approvalStatus={approvalStatus} hasAllDocs={hasAllDocs} docs={docs}/>
 
             {/* Personal info */}
             <div className="card p-6">
