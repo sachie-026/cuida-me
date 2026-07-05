@@ -162,6 +162,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "bookings",      label: "Agendamentos",  icon: <CalendarDays size={18} /> },
     { key: "commission",    label: "Comissão",      icon: <DollarSign size={18} /> },
     { key: "holidays",      label: "Feriados",      icon: <CalendarRange size={18} /> },
+    { key: "reports",       label: "Denúncias",     icon: <FileText size={18} /> },
   ];
 
   const content = (
@@ -215,6 +216,10 @@ const Overview = () => {
     { label: "Total usuários",      value: stats.total_users,         bg: "bg-blue-100",  icon: <Users size={20} className="text-blue-500" /> },
     { label: "Clientes",            value: stats.total_clients,       bg: "bg-green-100", icon: <Users size={20} className="text-green-500" /> },
     { label: "Profissionais",       value: stats.total_professionals, bg: "bg-blue-100",  icon: <ShieldCheck size={20} className="text-blue-500" /> },
+    { label: "Enfermeiros",          value: stats.total_nurses || 0,   bg: "bg-blue-50",   icon: <ShieldCheck size={18} className="text-blue-400" /> },
+    { label: "Técnicos",            value: stats.total_technicians || 0, bg: "bg-blue-50", icon: <ShieldCheck size={18} className="text-blue-400" /> },
+    { label: "Auxiliares",           value: stats.total_nursing_assistants || 0, bg: "bg-blue-50", icon: <ShieldCheck size={18} className="text-blue-400" /> },
+    { label: "Cuidadores",          value: stats.total_caregivers || 0, bg: "bg-blue-50",  icon: <ShieldCheck size={18} className="text-blue-400" /> },
     { label: "Aguardando aprovação",value: stats.pending_approvals,   bg: "bg-amber-100", icon: <ShieldCheck size={20} className="text-amber-500" /> },
     { label: "Agendamentos",        value: stats.total_bookings,      bg: "bg-blue-100",  icon: <CalendarDays size={20} className="text-blue-500" /> },
     { label: "Receita (comissão)",  value: `R$${Number(stats.total_revenue).toFixed(2)}`, bg: "bg-green-100", icon: <DollarSign size={20} className="text-green-500" /> },
@@ -403,7 +408,7 @@ const UsersPanel = () => {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {["Nome","E-mail","Papel","Status","Ação"].map(h => (
+                {["Nome","E-mail","Papel","Cidade/UF","Status","Ação"].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500">{h}</th>
                 ))}
               </tr>
@@ -419,6 +424,7 @@ const UsersPanel = () => {
                       {u.role}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{[u.city, u.state].filter(Boolean).join(", ") || "—"}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
                       ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
@@ -540,6 +546,69 @@ const CommissionPanel = () => {
 };
 
 /* ── Main Admin Dashboard ── */
+/* ── Reports Panel ── */
+const STATUS_LABELS_R = { pending: "Pendente", under_review: "Em análise", resolved: "Resolvido" };
+const STATUS_COLORS_R = { pending: "bg-amber-100 text-amber-700", under_review: "bg-blue-100 text-blue-700", resolved: "bg-green-100 text-green-700" };
+const REASON_LABELS = { no_show: "Não compareceu", unprofessional_behavior: "Comportamento inadequado", poor_quality: "Qualidade insatisfatória", safety_concern: "Preocupação com segurança", other: "Outro" };
+
+const ReportsPanel = () => {
+  const { headers } = useAdmin();
+  const [reports, setReports] = useState([]);
+  const [filterStatus, setFilterStatus] = useState("");
+  useEffect(() => {
+    const url = filterStatus ? `${API}/api/reports?status=${filterStatus}` : `${API}/api/reports`;
+    axios.get(url, { headers }).then(r => setReports(r.data)).catch(() => {});
+  }, [filterStatus]);
+
+  const updateStatus = async (id, newStatus) => {
+    await axios.patch(`${API}/api/reports/${id}/status?new_status=${newStatus}`, {}, { headers });
+    setReports(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
+    toast.success("Status atualizado.");
+  };
+
+  return (
+    <div className="p-4 sm:p-6">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h2 className="font-bold text-navy text-lg">Denúncias e Relatórios</h2>
+        <div className="flex gap-2">
+          {["", "pending", "under_review", "resolved"].map(s => (
+            <button key={s} onClick={() => setFilterStatus(s)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${filterStatus === s ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {s ? STATUS_LABELS_R[s] : "Todos"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {reports.length === 0 ? (
+        <p className="text-slate-400 text-sm text-center py-8">Nenhuma denúncia encontrada.</p>
+      ) : (
+        <div className="space-y-3">
+          {reports.map(r => (
+            <div key={r.id} className="card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS_R[r.status] || "bg-slate-100"}`}>{STATUS_LABELS_R[r.status]}</span>
+                    <span className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString("pt-BR")}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-navy">{REASON_LABELS[r.reason] || r.reason}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Denunciante: {r.reporter_name} → Denunciado: {r.reported_name}</p>
+                  {r.booking_id && <p className="text-xs text-slate-400 mt-0.5">Agendamento: {r.booking_id.slice(0,8)}...</p>}
+                  {r.description && <p className="text-xs text-slate-600 mt-1 p-2 bg-slate-50 rounded-lg">{r.description}</p>}
+                </div>
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                  {r.status === "pending" && <button onClick={() => updateStatus(r.id, "under_review")} className="text-xs px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-semibold">Analisar</button>}
+                  {r.status !== "resolved" && <button onClick={() => updateStatus(r.id, "resolved")} className="text-xs px-2.5 py-1 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 font-semibold">Resolver</button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminDashboard = () => {
   const [section,    setSection]    = useState("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -551,12 +620,13 @@ const AdminDashboard = () => {
     bookings:      <BookingsPanel />,
     commission:    <CommissionPanel />,
     holidays:      <HolidaysPanel />,
+    reports:       <ReportsPanel />,
   };
 
   const sectionLabel = {
     overview: "Visão geral", professionals: "Profissionais",
     users: "Usuários", bookings: "Agendamentos", commission: "Comissão",
-    holidays: "Feriados",
+    holidays: "Feriados", reports: "Denúncias",
   };
 
   return (

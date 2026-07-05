@@ -80,6 +80,8 @@ class Professional(Base):
     rating_count     = Column(Integer, default=0)
     years_experience = Column(Integer, nullable=True)
     bio              = Column(Text, nullable=True)
+    specialties      = Column(JSON, default=list)
+    rest_until       = Column(DateTime(timezone=True), nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     user          = relationship("User",         back_populates="professional")
@@ -255,3 +257,16 @@ class Occurrence(Base):
     description = Column(Text)
     resolved    = Column(Boolean, default=False)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
+class Report(Base):
+    """User reports (professional or client) linked to bookings."""
+    __tablename__   = "reports"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    booking_id      = Column(String, ForeignKey("bookings.id"), nullable=True)
+    reporter_id     = Column(String, ForeignKey("users.id"))
+    reported_id     = Column(String, ForeignKey("users.id"))
+    report_type     = Column(String)  # "professional" or "client"
+    reason          = Column(String, nullable=False)
+    description     = Column(Text, nullable=True)
+    status          = Column(String, default="pending")  # pending, under_review, resolved
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at     = Column(DateTime(timezone=True), nullable=True)

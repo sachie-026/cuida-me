@@ -10,6 +10,16 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 def _ser_user(u: User) -> dict:
     """Serialize user safely — no password_hash, enum as string value."""
+    prof = None
+    if u.role.value not in ("client", "admin"):
+        from app.models.models import Professional
+        from app.core.database import SessionLocal
+        # Try to get professional data for city/state
+        session = SessionLocal()
+        try:
+            prof = session.query(Professional).filter(Professional.user_id == u.id).first()
+        finally:
+            session.close()
     return {
         "id":         u.id,
         "email":      u.email,
@@ -19,6 +29,8 @@ def _ser_user(u: User) -> dict:
         "is_active":  u.is_active,
         "is_verified":u.is_verified,
         "created_at": u.created_at,
+        "city":       prof.city if prof else None,
+        "state":      prof.state if prof else None,
     }
 
 def _ser_prof(prof: Professional, user: User, docs: list) -> dict:
@@ -55,6 +67,10 @@ def get_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
         "total_users":         db.query(User).count(),
         "total_clients":       db.query(User).filter(User.role == UserRole.client).count(),
         "total_professionals": db.query(User).filter(User.role != UserRole.client, User.role != UserRole.admin).count(),
+        "total_nurses":        db.query(User).filter(User.role == UserRole.nurse).count(),
+        "total_technicians":   db.query(User).filter(User.role == UserRole.technician).count(),
+        "total_nursing_assistants": db.query(User).filter(User.role == UserRole.nursing_assistant).count(),
+        "total_caregivers":    db.query(User).filter(User.role == UserRole.caregiver).count(),
         "pending_approvals":   db.query(Professional).filter(Professional.approval_status == DocStatus.pending).count(),
         "total_bookings":      db.query(Booking).count(),
         "total_revenue":       db.query(Payment).filter(Payment.status.in_(["held", "released"])).with_entities(
@@ -121,6 +137,7 @@ def get_bookings(status: Optional[str] = None, db: Session = Depends(get_db), _=
         {
             **{c.key: getattr(b, c.key) for c in b.__table__.columns},
             "status": b.status.value if hasattr(b.status, 'value') else str(b.status),
+            "cancel_reason": getattr(b, 'cancel_reason', None),
         }
         for b in bookings
     ]

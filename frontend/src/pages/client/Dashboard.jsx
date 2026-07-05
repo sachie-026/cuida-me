@@ -51,11 +51,14 @@ const ClientDashboard = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  const [filter, setFilter] = useState("all");
+
+  const filteredBookings = filter === "all" ? bookings : bookings.filter(b => b.status === filter);
+
   const stats = [
-    { icon: <CalendarDays size={18} className="text-blue-500" />,  label: "Agendamentos",  value: bookings.length },
-    { icon: <Star size={18}         className="text-amber-500" />, label: "Concluídos",     value: bookings.filter(b => b.status === "completed").length, accent: true },
-    { icon: <CreditCard size={18}   className="text-blue-500" />,  label: "Total gasto",   value: `R$${bookings.filter(b => b.status==="completed").reduce((s,b) => s + b.total_price, 0).toFixed(0)}` },
-    { icon: <User size={18}         className="text-green-500" />, label: "Pendentes",      value: bookings.filter(b => b.status === "pending").length, accent: true },
+    { icon: <CalendarDays size={18} className="text-blue-500" />,  label: "Agendamentos",  value: bookings.length, filterKey: "all" },
+    { icon: <Star size={18}         className="text-amber-500" />, label: "Concluídos",     value: bookings.filter(b => b.status === "completed").length, accent: true, filterKey: "completed" },
+    { icon: <User size={18}         className="text-green-500" />, label: "Pendentes",      value: bookings.filter(b => b.status === "pending").length, accent: true, filterKey: "pending" },
   ];
 
   return (
@@ -69,7 +72,7 @@ const ClientDashboard = () => {
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold text-navy">Olá, {firstName} 👋</h1>
-            <p className="text-slate-500 text-sm mt-1">Como podemos cuidar hoje?</p>
+            <p className="text-slate-500 text-sm mt-1">Como podemos ajudar hoje?</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button onClick={() => navigate("/messages")}
@@ -83,9 +86,9 @@ const ClientDashboard = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-3 gap-4 mb-8">
           {stats.map((s, i) => (
-            <div key={i} className="card p-5">
+            <div key={i} className="card p-5 cursor-pointer hover:ring-2 hover:ring-blue-200 transition-all" onClick={() => setFilter(s.filterKey)}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${s.accent ? "bg-green-100" : "bg-blue-100"}`}>{s.icon}</div>
               <p className="text-xs text-slate-500 mb-1">{s.label}</p>
               <p className="font-display text-xl font-bold text-navy">{s.value}</p>
@@ -95,7 +98,7 @@ const ClientDashboard = () => {
 
         <div className="bg-brand-gradient rounded-2xl p-6 text-white mb-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            <h2 className="font-display text-xl font-bold mb-1">Precisa de cuidado agora?</h2>
+            <h2 className="font-display text-xl font-bold mb-1">Precisa de cuidado?</h2>
             <p className="text-white/80 text-sm">Encontre profissionais disponíveis perto de você.</p>
           </div>
           <button onClick={() => navigate("/booking/new")}
@@ -105,10 +108,17 @@ const ClientDashboard = () => {
         </div>
 
         <div className="card p-6">
-          <h3 className="font-semibold text-navy mb-4">Agendamentos</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-navy">
+              {filter === "all" ? "Agendamentos" : filter === "completed" ? "Concluídos" : "Pendentes"}
+            </h3>
+            {filter !== "all" && (
+              <button onClick={() => setFilter("all")} className="text-xs text-blue-500 hover:underline">Ver todos</button>
+            )}
+          </div>
           {loading ? (
             <p className="text-sm text-slate-400 text-center py-6">Carregando...</p>
-          ) : bookings.length === 0 ? (
+          ) : filteredBookings.length === 0 ? (
             <div className="text-center py-10">
               <CalendarDays size={40} className="mx-auto mb-3 text-slate-300" />
               <p className="text-slate-500 text-sm mb-4">Nenhum agendamento ainda.</p>
@@ -116,7 +126,7 @@ const ClientDashboard = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {bookings.map((b, i) => (
+              {filteredBookings.map((b, i) => (
                 <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 transition-colors gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-navy text-sm truncate">{b.service_type}</p>

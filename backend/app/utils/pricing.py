@@ -6,8 +6,61 @@ CuidaU Pricing Engine + Service Catalog
 
 from typing import Optional, List
 
+# ── Specialties / areas of experience per role ────────────────────────────────
+SPECIALTIES_BY_ROLE = {
+    "nurse": [
+        "Home Care / Saúde Domiciliar",
+        "Gerontologia / Geriatria",
+        "Terapia Intensiva (UTI)",
+        "Cuidados Paliativos",
+        "Oncologia",
+        "Cardiologia",
+        "Neurologia",
+        "Pediatria / Neonatologia",
+        "Terapia Infusional / PICC",
+        "Estomaterapia (Feridas, Ostomia e Continência)",
+    ],
+    "technician": [
+        "Home Care / Saúde Domiciliar",
+        "Cuidado Geriátrico",
+        "Terapia Intensiva (UTI)",
+        "Cuidados Paliativos",
+        "Oncologia",
+        "Pediatria / Neonatal",
+        "Cuidados com Feridas",
+        "Terapia Infusional",
+        "Pós-operatório",
+        "Reabilitação",
+        "Emergência",
+    ],
+    "nursing_assistant": [
+        "Home Care / Saúde Domiciliar",
+        "Cuidado de Idosos",
+        "Cuidados Paliativos",
+        "Cuidado Hospitalar",
+        "Pós-operatório",
+        "Reabilitação",
+        "Curativos Básicos",
+        "Higiene e Conforto",
+        "Cuidados de Longa Duração",
+        "Atenção Primária à Saúde",
+    ],
+    "caregiver": [
+        "Cuidado de Idosos",
+        "Demência / Alzheimer",
+        "Parkinson",
+        "Cuidados Paliativos",
+        "Home Care",
+        "Apoio a Deficiência",
+        "Pós-operatório",
+        "Companhia",
+        "Higiene Pessoal / AVDs",
+        "Lembrete de Medicamentos",
+    ],
+}
+
 # ── Care Level 1 — Basic Care ─────────────────────────────────────────────────
-# Allowed: caregiver, technician, nurse
+# Allowed: caregiver, nursing_assistant, technician, nurse
 LEVEL_1_SERVICES = [
     "Acompanhamento / companheirismo",
     "Auxílio à mobilidade",
@@ -182,6 +235,16 @@ VALID_DURATIONS = [2, 4, 6, 8, 12, 24]
 VALID_MARKUPS   = [0, 5, 10, 15, 20, 25, 30]
 COMMISSION_RATE = 12.0
 
+# ── Night shift definition ────────────────────────────────────────────────────
+NIGHT_SHIFT_START = 22  # 22:00
+NIGHT_SHIFT_END   = 6   # 06:00
+
+def detect_shift(hour: int) -> str:
+    """Determine shift from hour (0-23). Night = 22:00-06:00."""
+    if hour >= NIGHT_SHIFT_START or hour < NIGHT_SHIFT_END:
+        return "night"
+    return "day"
+
 # ── Surcharges ────────────────────────────────────────────────────────────────
 SURCHARGE_URGENT    = 0.20
 SURCHARGE_HOLIDAY   = 0.20
@@ -242,9 +305,12 @@ def calculate_price(
 
     surcharge_amount = round(subtotal * surcharge_pct, 2)
     dist_fee         = round(distance_fee(distance_km), 2)
-    total            = round(subtotal + surcharge_amount + dist_fee, 2)
-    platform_fee     = round(total * commission_pct / 100, 2)
-    pro_payout       = round(total - platform_fee, 2)
+
+    # Commission model: platform fee is ADDED ON TOP of pro's amount
+    # Pro receives full amount; client pays pro amount + platform commission
+    pro_payout       = round(subtotal + surcharge_amount + dist_fee, 2)
+    platform_fee     = round(pro_payout * commission_pct / 100, 2)
+    total            = round(pro_payout + platform_fee, 2)
 
     return {
         "role":             role,

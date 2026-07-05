@@ -9,7 +9,7 @@ from typing import Optional
 
 # Fixed national holidays (month, day) → name
 FIXED_NATIONAL_HOLIDAYS = {
-    (1,  1):  "Confraternização Universal",
+    (1,  1):  "Ano Novo",
     (4,  21): "Tiradentes",
     (5,  1):  "Dia do Trabalho",
     (9,  7):  "Independência do Brasil",

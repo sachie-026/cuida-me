@@ -110,10 +110,11 @@ const ProfessionalProfile = () => {
   const [error,          setError]          = useState("");
   const [servicesMap,    setServicesMap]     = useState({});
   const [user,           setUser]           = useState({full_name:"",phone:"",cpf:"",email:""});
-  const [prof,           setProf]           = useState({council_number:"",council_state:"",services_offered:[],service_radius:15,city:"",state:"",markup_pct:0});
+  const [prof,           setProf]           = useState({council_number:"",council_state:"",services_offered:[],specialties:[],service_radius:15,city:"",state:"",markup_pct:0});
   const [docs,           setDocs]           = useState([]);
   const [approvalStatus, setApprovalStatus] = useState("pending");
   const [pricingTable,   setPricingTable]   = useState(null);
+  const [specialtiesOptions, setSpecialtiesOptions] = useState([]);
 
   useEffect(() => {
     Promise.all([
@@ -127,6 +128,7 @@ const ProfessionalProfile = () => {
       // Fetch pricing table for this role
       if (uRes.data.role && uRes.data.role !== "client" && uRes.data.role !== "admin") {
         axios.get(`${API}/api/professionals/pricing-table/${uRes.data.role}`).then(r => setPricingTable(r.data)).catch(()=>{});
+        axios.get(`${API}/api/professionals/specialties/${uRes.data.role}`).then(r => setSpecialtiesOptions(r.data.specialties||[])).catch(()=>{});
       }
       if (pRes.data?.id) {
         setProf({
@@ -241,15 +243,39 @@ const ProfessionalProfile = () => {
                   </select>
                 </div>
                 <div><label className="form-label">Raio de atendimento (km)</label><input className="form-input" type="number" value={prof.service_radius} onChange={setP("service_radius")}/></div>
-                <div>
-                  <label className="form-label">Meu acréscimo sobre o mínimo</label>
-                  <select className="form-input" value={prof.markup_pct} onChange={setP("markup_pct")}>
-                    {MARKUP_OPTIONS.map(m=>(
-                      <option key={m} value={m}>{m===0?"Valor mínimo (sem acréscimo)":`+${m}% acima do mínimo`}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-400 mt-1">O valor mínimo é definido pela plataforma</p>
+              </div>
+
+              {/* Specialties */}
+              {specialtiesOptions.length > 0 && (
+                <div className="mt-4">
+                  <label className="form-label">Áreas de atuação / Especialidades</label>
+                  <p className="text-xs text-slate-400 mb-2">Selecione suas áreas de experiência — elas aparecerão no seu perfil para clientes.</p>
+                  <div className="space-y-1">
+                    {specialtiesOptions.map(spec => {
+                      const selected = (prof.specialties || []).includes(spec);
+                      return (
+                        <label key={spec} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                          <input type="checkbox" checked={selected} onChange={() => {
+                            const current = prof.specialties || [];
+                            const updated = selected ? current.filter(s => s !== spec) : [...current, spec];
+                            setProf(p => ({ ...p, specialties: updated }));
+                          }} className="w-4 h-4 accent-blue-500 flex-shrink-0"/>
+                          <span className={`text-sm ${selected ? "text-navy font-medium" : "text-slate-600"}`}>{spec}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
+
+              <div className="mt-4">
+                <label className="form-label">Meu acréscimo sobre o mínimo</label>
+                <select className="form-input" value={prof.markup_pct} onChange={setP("markup_pct")}>
+                  {MARKUP_OPTIONS.map(m=>(
+                    <option key={m} value={m}>{m===0?"Valor mínimo (sem acréscimo)":`+${m}% acima do mínimo`}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">O valor mínimo é definido pela plataforma</p>
               </div>
 
               {/* Platform pricing table */}

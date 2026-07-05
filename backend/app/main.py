@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays
+from app.routes import availability, payments, messages, holidays, reports
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -17,6 +17,22 @@ def run_migrations():
         "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'held'",
         "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'released'",
         "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'nursing_assistant'",
+        # Professional enhancements
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS specialties JSON DEFAULT '[]'",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS rest_until TIMESTAMPTZ",
+        # Reports table
+        """CREATE TABLE IF NOT EXISTS reports (
+            id VARCHAR PRIMARY KEY,
+            booking_id VARCHAR REFERENCES bookings(id),
+            reporter_id VARCHAR REFERENCES users(id),
+            reported_id VARCHAR REFERENCES users(id),
+            report_type VARCHAR,
+            reason VARCHAR NOT NULL,
+            description TEXT,
+            status VARCHAR DEFAULT 'pending',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            resolved_at TIMESTAMPTZ
+        )""",
         # Fix AvailabilityType enum
         "DO $$ BEGIN CREATE TYPE availabilitytype AS ENUM ('available', 'blocked'); EXCEPTION WHEN duplicate_object THEN null; END $$",
         # Users table
@@ -120,6 +136,7 @@ app.include_router(availability.router, prefix="/api")
 app.include_router(payments.router,     prefix="/api")
 app.include_router(messages.router,     prefix="/api")
 app.include_router(holidays.router,     prefix="/api")
+app.include_router(reports.router,      prefix="/api")
 
 @app.get("/")
 def root():
@@ -191,11 +208,11 @@ def seed_dev(
     db.commit()
 
     db.add_all([
-        Professional(id="prof-nurse-001", user_id="user-nurse-001", council_number="123456", council_state="SP", council_type="COREN", services_offered=NURSE_SERVICES, markup_pct=10, service_radius=25, city="São Paulo", state="SP", latitude=-23.5505, longitude=-46.6333, is_available=True, approval_status=DocStatus.approved, rating_avg=4.9, rating_count=87, years_experience=8, bio="Enfermeira especializada em cuidados domiciliares e pós-operatório."),
+        Professional(id="prof-nurse-001", user_id="user-nurse-001", council_number="123456", council_state="SP", council_type="COREN", services_offered=NURSE_SERVICES, specialties=["Home Care / Saúde Domiciliar","Gerontologia / Geriatria","Cuidados Paliativos"], markup_pct=10, service_radius=25, city="São Paulo", state="SP", latitude=-23.5505, longitude=-46.6333, is_available=True, approval_status=DocStatus.approved, rating_avg=4.9, rating_count=87, years_experience=8, bio="Enfermeira especializada em cuidados domiciliares e pós-operatório."),
         Professional(id="prof-nurse-002", user_id="user-nurse-002", council_number="789012", council_state="SP", council_type="COREN", services_offered=NURSE_SERVICES, markup_pct=20, service_radius=20, city="São Paulo", state="SP", latitude=-23.5605, longitude=-46.6433, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=52, years_experience=5, bio="Especialista em UTI domiciliar e cuidados paliativos."),
         Professional(id="prof-tech-001", user_id="user-tech-001", council_number="654321", council_state="SP", council_type="COREN", services_offered=TECHNICIAN_SERVICES, markup_pct=0, service_radius=15, city="São Paulo", state="SP", latitude=-23.5705, longitude=-46.6533, is_available=True, approval_status=DocStatus.approved, rating_avg=4.7, rating_count=43),
         Professional(id="prof-tech-002", user_id="user-tech-002", council_number="345678", council_state="SP", council_type="COREN", services_offered=TECHNICIAN_SERVICES, markup_pct=5, service_radius=20, city="São Paulo", state="SP", latitude=-23.5805, longitude=-46.6633, is_available=False, approval_status=DocStatus.approved, rating_avg=4.6, rating_count=28),
-        Professional(id="prof-assist-001", user_id="user-assist-001", council_number="998877", council_state="SP", council_type="COREN", services_offered=NURSING_ASSISTANT_SERVICES, markup_pct=0, service_radius=20, city="São Paulo", state="SP", latitude=-23.5755, longitude=-46.6583, is_available=True, approval_status=DocStatus.approved, rating_avg=4.7, rating_count=18, bio="Auxiliar de enfermagem com experiência em cuidados domiciliares."),
+        Professional(id="prof-assist-001", user_id="user-assist-001", council_number="998877", council_state="SP", council_type="COREN", services_offered=NURSING_ASSISTANT_SERVICES, specialties=["Home Care / Saúde Domiciliar","Cuidado de Idosos","Cuidados Paliativos"], markup_pct=0, service_radius=20, city="São Paulo", state="SP", latitude=-23.5755, longitude=-46.6583, is_available=True, approval_status=DocStatus.approved, rating_avg=4.7, rating_count=18, bio="Auxiliar de enfermagem com experiência em cuidados domiciliares."),
         Professional(id="prof-care-001", user_id="user-care-001", council_number="", council_state="SP", council_type="CERTIFICADO", services_offered=CAREGIVER_SERVICES, markup_pct=0, service_radius=20, city="São Paulo", state="SP", latitude=-23.5905, longitude=-46.6733, is_available=True, approval_status=DocStatus.approved, rating_avg=4.8, rating_count=31),
         Professional(id="prof-care-002", user_id="user-care-002", council_number="", council_state="SP", council_type="CERTIFICADO", services_offered=CAREGIVER_SERVICES, markup_pct=0, service_radius=15, city="São Paulo", state="SP", latitude=-23.6005, longitude=-46.6833, is_available=False, approval_status=DocStatus.pending, rating_avg=0.0, rating_count=0),
     ])

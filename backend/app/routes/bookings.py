@@ -2,11 +2,11 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus
-from app.utils.pricing import calculate_price, MINIMUM_PRICES
+from app.utils.pricing import calculate_price, MINIMUM_PRICES, detect_shift
 from app.utils.holidays import check_date_for_holiday
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -57,10 +57,14 @@ def _compute_price(body: BookingCreate, db: Session):
     role = user.role.value if hasattr(user.role, 'value') else str(user.role)
     if role not in MINIMUM_PRICES:
         return None
+    # Auto-detect shift from scheduled start time (#9)
+    shift = body.shift
+    if body.scheduled_start:
+        shift = detect_shift(body.scheduled_start.hour)
     try:
         return calculate_price(
             role=role, duration_hours=body.duration_hours,
-            shift=body.shift, markup_pct=prof.markup_pct or 0,
+            shift=shift, markup_pct=prof.markup_pct or 0,
             is_urgent=body.is_urgent, is_holiday=body.is_holiday,
             distance_km=body.distance_km,
         )
@@ -187,6 +191,25 @@ def checkout(booking_id: str, body: CheckInOut, db: Session = Depends(get_db), c
     _check_booking_access(b, current, db)
     b.status = BookingStatus.completed
     b.actual_checkout = datetime.utcnow()
+
+    # #7 Mandatory rest: check consecutive hours for this professional
+    prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+    if prof:
+        now = datetime.utcnow()
+        recent = db.query(Booking).filter(
+            Booking.professional_id == prof.id,
+            Booking.status == BookingStatus.completed,
+            Booking.actual_checkout != None,
+            Booking.actual_checkout >= now - timedelta(hours=48),
+        ).order_by(Booking.actual_checkout.desc()).all()
+
+        total_hours = sum(
+            ((rb.actual_checkout - rb.actual_checkin).total_seconds() / 3600)
+            for rb in recent if rb.actual_checkin and rb.actual_checkout
+        )
+        if total_hours >= 24:
+            prof.rest_until = now + timedelta(hours=11)
+
     db.commit()
     db.refresh(b)
     return b
