@@ -11,6 +11,7 @@ Usage:
     def admin_route(user = Depends(require_admin)):
         ...
 """
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -69,7 +70,7 @@ def require_client(user: User = Depends(get_current_user)) -> User:
 def get_optional_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
-) -> User | None:
+) -> Optional[User]:
     """Returns user if authenticated, None if not. For public-but-enhanced endpoints."""
     if not credentials:
         return None

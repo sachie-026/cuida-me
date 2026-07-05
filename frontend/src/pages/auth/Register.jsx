@@ -87,8 +87,6 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
 
   const [form, setForm] = useState({
     full_name: "", email: "", cpf: "", phone: "", password: "",
-    patient_name: "", age: "", relation: "", diagnoses: "",
-    address: "", care_type: "",
   });
 
   useEffect(() => {
@@ -142,7 +140,7 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
 
   return (
     <div>
-      <StepDots total={4} current={step} />
+      <StepDots total={2} current={step} />
 
       {step === 1 && (
         <div>
@@ -190,65 +188,6 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
 
       {step === 2 && (
         <div>
-          <div className="mb-4">
-            <label className="form-label">{f.patient_name} *</label>
-            <input className="form-input" value={form.patient_name} onChange={set("patient_name")} placeholder="Nome de quem receberá o cuidado" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="form-label">{f.patient_age} *</label>
-              <input className="form-input" type="number" value={form.age} onChange={set("age")} placeholder="75" />
-            </div>
-            <div>
-              <label className="form-label">{f.relation} *</label>
-              <select className="form-input" value={form.relation} onChange={set("relation")}>
-                <option value="">Selecione...</option>
-                {["Filho(a)","Cônjuge","Próprio paciente","Outro familiar"].map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="mb-4">
-            <label className="form-label">{f.diagnoses}</label>
-            <textarea className="form-input min-h-[80px]" value={form.diagnoses} onChange={set("diagnoses")} placeholder="Ex: Diabetes, hipertensão, acamado..." />
-          </div>
-          <div className="mb-2">
-            <label className="form-label">{f.address} *</label>
-            <input className="form-input" value={form.address} onChange={set("address")} placeholder="Rua, número, bairro, cidade" />
-          </div>
-          <InlineError message={error} />
-          <div className="flex gap-3 mt-4">
-            <button onClick={() => { setError(""); setStep(1); }} className="btn-outline flex-1">← {t("register.back")}</button>
-            <button onClick={() => {
-              if (!form.patient_name) { setError("Nome do paciente é obrigatório."); return; }
-              if (!form.address)      { setError("Endereço é obrigatório."); return; }
-              setError(""); setStep(3);
-            }} className="btn-primary flex-1">{t("register.continue")} →</button>
-          </div>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div>
-          <div className="mb-4">
-            <label className="form-label">{f.care_type} *</label>
-            <select className="form-input" value={form.care_type} onChange={set("care_type")}>
-              <option value="">Selecione...</option>
-              {["Cuidados gerais de enfermagem","Curativo / pós-operatório","Administração de medicamentos",
-                "Cuidado de traqueostomia / sonda","Acompanhamento / companheirismo","Outros"].map(o => <option key={o}>{o}</option>)}
-            </select>
-          </div>
-          {/* TODO: Wire document upload to Cloudinary */}
-          <UploadZone label={`${f.doc_photo} *`} note="RG ou CPF · JPG, PNG ou PDF · Máx. 5MB" />
-          <InlineError message={error} />
-          <div className="flex gap-3 mt-2">
-            <button onClick={() => { setError(""); setStep(2); }} className="btn-outline flex-1">← {t("register.back")}</button>
-            <button onClick={() => { setError(""); setStep(4); }} className="btn-primary flex-1">{t("register.continue")} →</button>
-          </div>
-        </div>
-      )}
-
-      {step === 4 && (
-        <div>
           <div className="space-y-3 mb-4">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" className="mt-0.5 accent-blue-500" />
@@ -261,7 +200,7 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
           </div>
           <InlineError message={error} />
           <div className="flex gap-3 mt-4">
-            <button onClick={() => { setError(""); setStep(3); }} className="btn-outline flex-1">← {t("register.back")}</button>
+            <button onClick={() => { setError(""); setStep(1); }} className="btn-outline flex-1">← {t("register.back")}</button>
             <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1 disabled:opacity-60">
               {loading ? (
                 <span className="flex items-center justify-center gap-2">

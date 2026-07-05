@@ -140,16 +140,20 @@ const CalendarTab = ({ userId, profId }) => {
   const [year,         setYear]         = useState(now.getFullYear());
   const [month,        setMonth]        = useState(now.getMonth());
   const [slots,        setSlots]        = useState([]);
+  const [bookings,     setBookings]     = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [loading,      setLoading]      = useState(true);
 
   useEffect(() => {
     if (!userId) return;
-    axios.get(`${API}/api/availability/professional/${userId}`, { headers })
-      .then(r => setSlots(r.data.slots || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [userId]);
+    Promise.all([
+      axios.get(`${API}/api/availability/professional/${userId}`, { headers }),
+      profId ? axios.get(`${API}/api/bookings/professional/${profId}`, { headers }).catch(()=>({data:[]})) : Promise.resolve({data:[]}),
+    ]).then(([slotsRes, bookRes]) => {
+      setSlots(slotsRes.data.slots || []);
+      setBookings(Array.isArray(bookRes.data) ? bookRes.data : []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [userId, profId]);
 
   const specificSlots = slots.filter(s => !s.is_recurring);
 
@@ -236,6 +240,12 @@ const CalendarTab = ({ userId, profId }) => {
             const hasBlocked = daySlots.some(s => s.type === "blocked");
             const isSelected = selectedDate === dateStr;
 
+            // Booking events for this date
+            const dayBookings = bookings.filter(b => b.scheduled_start && b.scheduled_start.startsWith(dateStr));
+            const hasConfirmed = dayBookings.some(b => b.status === "accepted");
+            const hasPending   = dayBookings.some(b => b.status === "pending");
+            const hasActive    = dayBookings.some(b => b.status === "checked_in");
+
             return (
               <button key={day} disabled={isPast}
                 onClick={() => setSelectedDate(dateStr)}
@@ -252,6 +262,13 @@ const CalendarTab = ({ userId, profId }) => {
                   <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full
                     ${hasAvail ? "bg-green-400" : "bg-red-400"}`} />
                 )}
+                {dayBookings.length > 0 && !isSelected && (
+                  <div className="absolute bottom-1 flex gap-0.5">
+                    {hasConfirmed && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                    {hasPending && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />}
+                    {hasActive && <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />}
+                  </div>
+                )}
               </button>
             );
           })}
@@ -259,12 +276,21 @@ const CalendarTab = ({ userId, profId }) => {
       )}
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100">
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100 flex-wrap">
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="w-3 h-3 rounded-full bg-green-400 inline-block" /> Disponível
         </span>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="w-3 h-3 rounded-full bg-red-400 inline-block" /> Bloqueado
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Confirmado
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-yellow-400 inline-block" /> Pendente
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-purple-500 inline-block" /> Em andamento
         </span>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-400 inline-block" /> Hoje

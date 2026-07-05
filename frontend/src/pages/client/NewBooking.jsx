@@ -9,11 +9,6 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const CARE_TYPES = [
-  "Cuidado Acompanhante","Cuidado com Idosos","Cuidado Pós-Hospitalar",
-  "Cuidado de Doença Crônica","Cuidado Paliativo","Procedimentos de Enfermagem",
-];
-
 const DURATIONS = [
   {hours:2,label:"2 horas"},{hours:4,label:"4 horas"},{hours:6,label:"6 horas"},
   {hours:8,label:"8 horas"},{hours:12,label:"12 horas"},{hours:24,label:"24 horas"},
@@ -48,15 +43,18 @@ const NewBooking = () => {
   const [selectedPro,   setSelectedPro]   = useState(null);
   const [submitting,    setSubmitting]    = useState(false);
 
-  const [careType,    setCareType]    = useState("");
   const [selectedSvcs,setSelectedSvcs]= useState([]);
   const [duration,    setDuration]    = useState(null);
   const [date,        setDate]        = useState("");
   const [time,        setTime]        = useState("");
   const [shift,       setShift]       = useState("day");
   const [isUrgent,    setIsUrgent]    = useState(false);
-  const [isHoliday,   setIsHoliday]   = useState(false);
   const [notes,       setNotes]       = useState("");
+  const [patientMode, setPatientMode] = useState("myself"); // "myself" | "other"
+  const [patientForm, setPatientForm] = useState({
+    patient_name:"", age:"", relation:"", diagnoses:"", address:"",
+    phone:"", emergency_name:"", emergency_phone:"", gender:"",
+  });
 
   useEffect(() => {
     Promise.all([
@@ -71,7 +69,7 @@ const NewBooking = () => {
   useEffect(() => {
     if (!time) return;
     const hour = parseInt(time.split(":")[0]);
-    setShift(hour >= 7 && hour < 19 ? "day" : "night");
+    setShift(hour >= 22 || hour < 6 ? "night" : "day");
   }, [time]);
 
   useEffect(() => {
@@ -85,7 +83,6 @@ const NewBooking = () => {
     setSelectedSvcs(prev => prev.includes(svc) ? prev.filter(s=>s!==svc) : [...prev,svc]);
 
   const handleStep1Next = () => {
-    if (!careType)               { toast.error("Selecione o tipo de cuidado."); return; }
     if (selectedSvcs.length===0) { toast.error("Selecione pelo menos um serviço."); return; }
     if (!duration)               { toast.error("Selecione a duração."); return; }
     if (!date || !time)          { toast.error("Informe data e horário."); return; }
@@ -103,7 +100,7 @@ const NewBooking = () => {
     try {
       const priceRes = await axios.post(`${API}/api/professionals/calculate-price`, {
         professional_id: pro.id, duration_hours: duration, shift,
-        is_urgent: isUrgent, is_holiday: isHoliday, distance_km: 0,
+        is_urgent: isUrgent, distance_km: 0,
       }, {headers});
       setPriceResult(priceRes.data);
       setStep(3);
@@ -119,10 +116,10 @@ const NewBooking = () => {
       const end   = new Date(start.getTime()+duration*60*60*1000);
       await axios.post(`${API}/api/bookings`, {
         patient_id: patient.id, professional_id: selectedPro.id,
-        service_type: careType, services: selectedSvcs,
+        service_type: selectedSvcs.join(", "), services: selectedSvcs,
         duration_hours: duration, shift,
         scheduled_start: start.toISOString(), scheduled_end: end.toISOString(),
-        is_urgent: isUrgent, is_holiday: isHoliday, distance_km: 0,
+        is_urgent: isUrgent, distance_km: 0,
         markup_pct: priceResult.markup_pct,
         notes,
       }, {headers});
@@ -149,13 +146,46 @@ const NewBooking = () => {
 
         {step===1 && (
           <div className="card p-6 space-y-5">
+            {/* Patient picker */}
             <div>
-              <label className="form-label">Tipo de cuidado *</label>
-              <select className="form-input" value={careType} onChange={e=>setCareType(e.target.value)}>
-                <option value="">Selecione...</option>
-                {CARE_TYPES.map(t=><option key={t}>{t}</option>)}
-              </select>
+              <label className="form-label">Quem vai receber o atendimento? *</label>
+              <div className="flex gap-2 mt-1">
+                {[{key:"myself",label:"Eu mesmo(a)"},{key:"other",label:"Outra pessoa"}].map(o=>(
+                  <button key={o.key} type="button" onClick={()=>setPatientMode(o.key)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                      patientMode===o.key?"bg-blue-500 text-white border-blue-500":"border-slate-200 text-slate-600 hover:border-blue-400"
+                    }`}>{o.label}</button>
+                ))}
+              </div>
             </div>
+
+            {patientMode==="other" && (
+              <div className="space-y-3 p-4 bg-slate-50 rounded-xl">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dados do paciente</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label className="form-label">Nome completo *</label><input className="form-input" value={patientForm.patient_name} onChange={e=>setPatientForm(p=>({...p,patient_name:e.target.value}))}/></div>
+                  <div><label className="form-label">Idade</label><input className="form-input" type="number" value={patientForm.age} onChange={e=>setPatientForm(p=>({...p,age:e.target.value}))}/></div>
+                  <div><label className="form-label">Parentesco *</label>
+                    <select className="form-input" value={patientForm.relation} onChange={e=>setPatientForm(p=>({...p,relation:e.target.value}))}>
+                      <option value="">Selecione...</option>
+                      {["Pai/Mãe","Cônjuge","Filho(a)","Avô/Avó","Outro familiar","Amigo(a)","Outro"].map(o=><option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="form-label">Gênero</label>
+                    <select className="form-input" value={patientForm.gender} onChange={e=>setPatientForm(p=>({...p,gender:e.target.value}))}>
+                      <option value="">Selecione...</option>
+                      {["Masculino","Feminino","Outro","Prefiro não informar"].map(o=><option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div><label className="form-label">Endereço do atendimento *</label><input className="form-input" value={patientForm.address} onChange={e=>setPatientForm(p=>({...p,address:e.target.value}))}/></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label className="form-label">Telefone de contato</label><input className="form-input" type="tel" value={patientForm.phone} onChange={e=>setPatientForm(p=>({...p,phone:e.target.value}))}/></div>
+                  <div><label className="form-label">Contato de emergência</label><input className="form-input" value={patientForm.emergency_name} onChange={e=>setPatientForm(p=>({...p,emergency_name:e.target.value}))}/></div>
+                </div>
+                <div><label className="form-label">Diagnóstico / condição (opcional)</label><textarea className="form-input min-h-[60px]" value={patientForm.diagnoses} onChange={e=>setPatientForm(p=>({...p,diagnoses:e.target.value}))}/></div>
+              </div>
+            )}
 
             <div>
               <label className="form-label">Serviços necessários * <span className="text-slate-400 font-normal">(selecione todos que precisar)</span></label>
@@ -171,14 +201,12 @@ const NewBooking = () => {
                   ].map(group=>(
                     <div key={group.key}>
                       <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">{group.label}</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="space-y-1">
                         {(servicesMap[group.key]||[]).filter(group.filter).map(svc=>(
-                          <button key={svc} type="button" onClick={()=>toggleService(svc)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                              selectedSvcs.includes(svc)
-                                ?"bg-blue-500 text-white border-blue-500"
-                                :"border-slate-200 text-slate-600 hover:border-blue-400 bg-white"
-                            }`}>{svc}</button>
+                          <label key={svc} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                            <input type="checkbox" checked={selectedSvcs.includes(svc)} onChange={()=>toggleService(svc)} className="w-4 h-4 accent-blue-500 flex-shrink-0"/>
+                            <span className={`text-sm ${selectedSvcs.includes(svc)?"text-navy font-medium":"text-slate-600"}`}>{svc}</span>
+                          </label>
                         ))}
                       </div>
                     </div>
@@ -220,7 +248,7 @@ const NewBooking = () => {
                 shift==="day"?"bg-amber-50 text-amber-700":"bg-slate-800 text-white"
               }`}>
                 {shift==="day"?<Sun size={16}/>:<Moon size={16}/>}
-                {shift==="day"?"Plantão diurno (7h–19h)":"Plantão noturno (19h–7h)"}
+                {shift==="day"?"Plantão diurno (6h–22h)":"Plantão noturno (22h–6h)"}
               </div>
             )}
 
@@ -230,11 +258,6 @@ const NewBooking = () => {
                 <p className="text-xs text-red-600 font-medium">Solicitação urgente (menos de 12h) — acréscimo de 20%</p>
               </div>
             )}
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={isHoliday} onChange={e=>setIsHoliday(e.target.checked)} className="w-4 h-4 accent-blue-500"/>
-              <span className="text-sm text-slate-600">Atendimento em feriado <span className="text-slate-400">(+20%)</span></span>
-            </label>
 
             <div>
               <label className="form-label">Observações</label>
@@ -272,6 +295,9 @@ const NewBooking = () => {
                             <p className="text-xs text-slate-500">{ROLE_LABELS[pro.role]||pro.role} · {pro.city}</p>
                           </div>
                         </div>
+                        <div className="flex items-center gap-1 text-xs text-amber-600 font-medium">
+                          <Star size={13} className="fill-amber-400 text-amber-400"/> {pro.rating_avg?.toFixed(1) || "—"} <span className="text-slate-400">({pro.rating_count || 0})</span>
+                        </div>
                         <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                           {pro.rating_avg>0 && <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400"/>{pro.rating_avg} ({pro.rating_count})</span>}
                           {pro.markup_pct>0 && <span className="text-slate-400">+{pro.markup_pct}% acréscimo</span>}
@@ -302,10 +328,10 @@ const NewBooking = () => {
             <h3 className="font-semibold text-navy">Confirmar agendamento</h3>
             <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-slate-500">Profissional</span><span className="font-medium text-navy">{selectedPro.full_name||"—"}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Tipo de cuidado</span><span className="font-medium text-navy">{careType}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Serviço</span><span className="font-medium text-navy">{selectedSvcs.length} serviço(s)</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Duração</span><span className="font-medium text-navy">{duration}h · {shift==="day"?"Diurno ☀️":"Noturno 🌙"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Data</span><span className="font-medium text-navy">{new Date(`${date}T${time}`).toLocaleString("pt-BR")}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Paciente</span><span className="font-medium text-navy">{patient?.patient_name}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Paciente</span><span className="font-medium text-navy">{patientMode==="myself"?(patient?.patient_name||"Eu mesmo"):patientForm.patient_name}</span></div>
             </div>
 
             <div>
@@ -345,10 +371,6 @@ const NewBooking = () => {
                 <hr className="border-slate-200"/>
                 <div className="flex justify-between font-bold text-navy text-base">
                   <span>Total</span><span>R${priceResult.total?.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-xs text-slate-400">
-                  <span>Taxa da plataforma ({priceResult.commission_pct}%)</span>
-                  <span>R${priceResult.platform_fee?.toFixed(2)}</span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">💳 PIX ou cartão será processado após confirmação do profissional</p>
               </div>

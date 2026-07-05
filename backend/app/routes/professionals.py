@@ -8,7 +8,7 @@ from app.models.models import Professional, DocStatus, User
 from app.utils.pricing import (
     professional_can_perform, minimum_role_for_services,
     SERVICES_BY_ROLE, calculate_price, VALID_MARKUPS,
-    MINIMUM_PRICES, VALID_DURATIONS
+    MINIMUM_PRICES, VALID_DURATIONS, SPECIALTIES_BY_ROLE
 )
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
@@ -23,6 +23,7 @@ class ProfessionalUpdate(BaseModel):
     markup_pct:       Optional[int]       = None
     is_available:     Optional[bool]      = None
     bio:              Optional[str]       = None
+    specialties:      Optional[List[str]] = None
 
 class PriceCalcRequest(BaseModel):
     role:             Optional[str] = None
@@ -96,12 +97,17 @@ def get_nearby(
     current:  Optional[User] = Depends(get_optional_user),
 ):
     """Public endpoint — returns approved+available professionals, filtered by services if provided."""
+    from datetime import datetime, timezone
     required_services = [s.strip() for s in services.split(",")] if services else []
+    now = datetime.now(timezone.utc)
 
     professionals = db.query(Professional).filter(
         Professional.approval_status == DocStatus.approved,
         Professional.is_available    == True,
     ).all()
+
+    # Filter out resting professionals (#7 mandatory rest)
+    professionals = [p for p in professionals if not p.rest_until or p.rest_until <= now]
 
     if required_services:
         min_role = minimum_role_for_services(required_services)
@@ -184,3 +190,10 @@ def get_pricing_table(role: str):
         "durations": VALID_DURATIONS,
         "prices": MINIMUM_PRICES[role],
     }
+
+@router.get("/specialties/{role}")
+def get_specialties(role: str):
+    """Return available specialties for a given role."""
+    if role not in SPECIALTIES_BY_ROLE:
+        raise HTTPException(400, f"Invalid role. Must be one of: {list(SPECIALTIES_BY_ROLE.keys())}")
+    return {"role": role, "specialties": SPECIALTIES_BY_ROLE[role]}
