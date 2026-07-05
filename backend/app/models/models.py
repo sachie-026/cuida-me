@@ -132,6 +132,7 @@ class Document(Base):
     status      = Column(Enum(DocStatus), default=DocStatus.pending)
     reviewed_by = Column(String, nullable=True)
     notes       = Column(Text, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
     expires_at  = Column(DateTime(timezone=True), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
