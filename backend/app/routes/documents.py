@@ -7,7 +7,7 @@ from app.utils.cloudinary_helper import upload_document, ALLOWED_TYPES, MAX_SIZE
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-VALID_DOC_TYPES = {"photo_id", "diploma", "criminal", "selfie", "vaccination", "other"}
+VALID_DOC_TYPES = {"photo_id", "diploma", "criminal", "selfie", "vaccination", "coren_negative", "client_id", "client_selfie", "other"}
 
 @router.post("/upload")
 async def upload_doc(

@@ -309,7 +309,7 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
             {Object.entries(roles).map(([key, val]) => (
               <RoleCard key={key}
-                emoji={key === "nurse" ? "👩‍⚕️" : key === "technician" ? "🩺" : key === "nursing_assistant" ? "💉" : "🤝"}
+                emoji={key === "nurse" ? "👩‍⚕️" : key === "technician" ? "🩺" : key === "nursing_assistant" ? "🩹" : "🤝"}
                 title={val.title} subtitle={val.subtitle}
                 selected={role === key} onClick={() => setRole(key)} />
             ))}

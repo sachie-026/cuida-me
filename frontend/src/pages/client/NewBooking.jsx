@@ -55,14 +55,18 @@ const NewBooking = () => {
     patient_name:"", age:"", relation:"", diagnoses:"", address:"",
     phone:"", emergency_name:"", emergency_phone:"", gender:"",
   });
+  const [emergencyContact, setEmergencyContact] = useState({ name:"", phone:"" });
+  const [isVerified, setIsVerified] = useState(true);
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/professionals/services`),
       axios.get(`${API}/api/users/${userId}/patient`, {headers}),
-    ]).then(([svcRes,patRes]) => {
+      axios.get(`${API}/api/users/${userId}`, {headers}).catch(()=>({data:{}})),
+    ]).then(([svcRes,patRes,userRes]) => {
       setServicesMap(svcRes.data);
       setPatient(patRes.data);
+      setIsVerified(userRes.data?.is_verified || false);
     }).catch(() => toast.error("Erro ao carregar dados."));
   }, []);
 
@@ -86,6 +90,7 @@ const NewBooking = () => {
     if (selectedSvcs.length===0) { toast.error("Selecione pelo menos um serviço."); return; }
     if (!duration)               { toast.error("Selecione a duração."); return; }
     if (!date || !time)          { toast.error("Informe data e horário."); return; }
+    if (!emergencyContact.name || !emergencyContact.phone) { toast.error("Contato de emergência é obrigatório."); return; }
     setLoading(true);
     const svcParam = encodeURIComponent(selectedSvcs.join(","));
     axios.get(`${API}/api/professionals/nearby?services=${svcParam}`, {headers})
@@ -144,8 +149,22 @@ const NewBooking = () => {
         <p className="text-slate-500 text-sm mb-6">Passo {step} de 3</p>
         <StepDots total={3} current={step}/>
 
+        {/* Verification gate */}
+        {!isVerified && (
+          <div className="card p-6 mb-4 border-2 border-amber-300 bg-amber-50">
+            <div className="flex items-start gap-3">
+              <AlertCircle size={24} className="text-amber-500 flex-shrink-0 mt-0.5"/>
+              <div>
+                <p className="font-bold text-navy mb-1">Verificação de identidade necessária</p>
+                <p className="text-sm text-slate-600 mb-3">Para agendar atendimentos, você precisa verificar sua identidade enviando seus documentos.</p>
+                <button onClick={()=>navigate("/profile/client")} className="btn-primary text-sm">Verificar minha identidade →</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {step===1 && (
-          <div className="card p-6 space-y-5">
+          <div className={`card p-6 space-y-5 ${!isVerified ? "opacity-50 pointer-events-none" : ""}`}>
             {/* Patient picker */}
             <div>
               <label className="form-label">Quem vai receber o atendimento? *</label>
@@ -259,6 +278,17 @@ const NewBooking = () => {
               </div>
             )}
 
+            {/* Emergency contact — required for both modes */}
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Em caso de emergência, contactar</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="form-label">Nome completo *</label>
+                  <input className="form-input" value={emergencyContact.name} onChange={e=>setEmergencyContact(p=>({...p,name:e.target.value}))} placeholder="Nome do contato de emergência"/></div>
+                <div><label className="form-label">Telefone *</label>
+                  <input className="form-input" type="tel" value={emergencyContact.phone} onChange={e=>setEmergencyContact(p=>({...p,phone:e.target.value}))} placeholder="(11) 99999-9999"/></div>
+              </div>
+            </div>
+
             <div>
               <label className="form-label">Observações</label>
               <textarea className="form-input min-h-[80px]" value={notes} onChange={e=>setNotes(e.target.value)}
@@ -299,7 +329,6 @@ const NewBooking = () => {
                           <Star size={13} className="fill-amber-400 text-amber-400"/> {pro.rating_avg?.toFixed(1) || "—"} <span className="text-slate-400">({pro.rating_count || 0})</span>
                         </div>
                         <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-                          {pro.rating_avg>0 && <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400"/>{pro.rating_avg} ({pro.rating_count})</span>}
                           {pro.markup_pct>0 && <span className="text-slate-400">+{pro.markup_pct}% acréscimo</span>}
                         </div>
                         <div className="flex flex-wrap gap-1 mt-2">

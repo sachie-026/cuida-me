@@ -96,7 +96,7 @@ export const Professionals = () => {
   const profs = [
     { key: "nurse",             emoji: "👩‍⚕️", gradient: "from-blue-100 to-blue-200" },
     { key: "technician",        emoji: "🩺",    gradient: "from-green-100 to-green-200" },
-    { key: "nursing_assistant", emoji: "💉",    gradient: "from-blue-50 to-blue-100" },
+    { key: "nursing_assistant", emoji: "🩹",    gradient: "from-blue-50 to-blue-100" },
     { key: "caregiver",         emoji: "🤝",    gradient: "from-blue-50 to-green-100" },
   ];
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Upload, CheckCircle, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -14,25 +14,23 @@ const ClientProfile = () => {
   const userId    = localStorage.getItem("user_id");
   const token     = localStorage.getItem("token");
   const headers   = { Authorization: `Bearer ${token}` };
-  const [loading, setLoading]  = useState(true);
-  const [saving,  setSaving]   = useState(false);
+  const [loading, setLoading]      = useState(true);
+  const [saving,  setSaving]       = useState(false);
+  const [clientDocs, setClientDocs]= useState([]);
+  const [docUploading, setDocUploading] = useState(false);
 
-  const [user, setUser] = useState({ full_name: "", phone: "", cpf: "", email: "" });
-  const [patient, setPatient] = useState({
-    patient_name: "", date_of_birth: "", age: "", relation: "", diagnoses: "", allergies: "",
-    medications: "", address: "",
-    is_own_account: true,
-    representative_name: "", representative_relation: "", representative_phone: "",
-    emergency_contact_name: "", emergency_contact_phone: "", emergency_contact_relation: ""
-  });
+  const [user, setUser] = useState({ full_name: "", phone: "", cpf: "", email: "", is_verified: false });
+  const [patient, setPatient] = useState({});
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/users/${userId}`, { headers }),
       axios.get(`${API}/api/users/${userId}/patient`, { headers }).catch(() => ({ data: null })),
-    ]).then(([uRes, pRes]) => {
+      axios.get(`${API}/api/documents/my-documents`, { headers }).catch(() => ({ data: [] })),
+    ]).then(([uRes, pRes, docRes]) => {
       setUser(uRes.data);
       if (pRes.data) setPatient(pRes.data);
+      setClientDocs(Array.isArray(docRes.data) ? docRes.data : []);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -44,19 +42,6 @@ const ClientProfile = () => {
     try {
       await axios.patch(`${API}/api/users/${userId}`, {
         full_name: user.full_name, phone: user.phone, cpf: user.cpf,
-      }, { headers });
-      await axios.patch(`${API}/api/users/${userId}/patient`, {
-        patient_name: patient.patient_name, date_of_birth: patient.date_of_birth,
-        age: parseInt(patient.age), relation: patient.relation, diagnoses: patient.diagnoses,
-        is_own_account: patient.is_own_account,
-        representative_name: patient.representative_name,
-        representative_relation: patient.representative_relation,
-        representative_phone: patient.representative_phone,
-        emergency_contact_name: patient.emergency_contact_name,
-        emergency_contact_phone: patient.emergency_contact_phone,
-        emergency_contact_relation: patient.emergency_contact_relation,
-        allergies: patient.allergies, medications: patient.medications,
-        address: patient.address,
       }, { headers });
       localStorage.setItem("full_name", user.full_name);
       toast.success("Perfil atualizado!");
@@ -93,53 +78,68 @@ const ClientProfile = () => {
               </div>
             </div>
 
-            {/* Patient info */}
+            {/* Patient info — removed per suggestion: patient data moves to booking flow */}
+
+            {/* Client Identity Verification */}
             <div className="card p-6">
-              <h3 className="font-semibold text-navy mb-4">Dados do paciente</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                <div><label className="form-label">Nome do paciente</label><input className="form-input" value={patient.patient_name || ""} onChange={setP("patient_name")} /></div>
-                <div><label className="form-label">Idade</label><input className="form-input" type="number" value={patient.age || ""} onChange={setP("age")} /></div>
-                <div>
-                  <label className="form-label">Relação</label>
-                  <select className="form-input" value={patient.relation || ""} onChange={setP("relation")}>
-                    <option value="">Selecione...</option>
-                    {["Filho(a)","Cônjuge","Próprio paciente","Outro familiar"].map(o => <option key={o}>{o}</option>)}
-                  </select>
+              <h3 className="font-semibold text-navy mb-2">Verificação de identidade</h3>
+              <p className="text-xs text-slate-500 mb-4">Envie seus documentos para verificar sua identidade e poder agendar atendimentos.</p>
+              {user.is_verified ? (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
+                  <CheckCircle size={16} className="text-green-500"/>
+                  <span className="text-sm font-semibold text-green-700">✓ Identidade verificada</span>
                 </div>
-                <div><label className="form-label">Endereço</label><input className="form-input" value={patient.address || ""} onChange={setP("address")} /></div>
-              </div>
-              <div className="mb-4"><label className="form-label">Diagnósticos</label><textarea className="form-input min-h-[70px]" value={patient.diagnoses || ""} onChange={setP("diagnoses")} /></div>
-              <div className="mb-4"><label className="form-label">Alergias</label><textarea className="form-input min-h-[60px]" value={patient.allergies || ""} onChange={setP("allergies")} /></div>
-              <div><label className="form-label">Medicamentos em uso</label><textarea className="form-input min-h-[60px]" value={patient.medications || ""} onChange={setP("medications")} /></div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-3">
+                    <AlertTriangle size={16} className="text-amber-500"/>
+                    <span className="text-xs text-amber-700 font-medium">Envie os documentos abaixo para completar sua verificação</span>
+                  </div>
+                  {[
+                    {key:"client_id", label:"Documento com foto (RG/CNH)", note:"Frente e verso · JPG, PNG ou PDF"},
+                    {key:"client_selfie", label:"Selfie segurando o documento", note:"Foto clara do rosto com documento visível"},
+                  ].map(d => {
+                    const existing = clientDocs.find(cd=>cd.doc_type===d.key);
+                    return (
+                      <div key={d.key} className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <p className="text-sm font-semibold text-navy">{d.label}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{d.note}</p>
+                          </div>
+                          {existing ? (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              existing.status==="approved"?"bg-green-100 text-green-700":existing.status==="rejected"?"bg-red-100 text-red-600":"bg-amber-100 text-amber-700"
+                            }`}>{existing.status==="approved"?"✓ Aprovado":existing.status==="rejected"?"✗ Rejeitado":"⏳ Em análise"}</span>
+                          ) : <span className="text-xs text-slate-400">Não enviado</span>}
+                        </div>
+                        {existing?.status==="rejected" && existing?.rejection_reason && (
+                          <div className="flex items-start gap-2 p-2 mb-2 bg-red-50 border border-red-200 rounded-lg">
+                            <span className="text-xs text-red-600"><strong>Motivo:</strong> {existing.rejection_reason}</span>
+                          </div>
+                        )}
+                        <label className={`flex items-center gap-2 cursor-pointer w-fit px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          docUploading?"bg-slate-200 text-slate-400":"bg-blue-100 text-blue-700 hover:bg-blue-200"}`}>
+                          <Upload size={13}/>
+                          <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.pdf" disabled={docUploading} onChange={async(e)=>{
+                            const file=e.target.files[0]; if(!file) return;
+                            if(file.size>10*1024*1024){toast.error("Máximo 10MB.");return;}
+                            setDocUploading(true);
+                            try{
+                              const fd=new FormData(); fd.append("file",file); fd.append("doc_type",d.key);
+                              const{data}=await axios.post(`${API}/api/documents/upload`,fd,{headers:{...headers,"Content-Type":"multipart/form-data"}});
+                              toast.success("Documento enviado!");
+                              setClientDocs(prev=>{const idx=prev.findIndex(x=>x.doc_type===d.key);if(idx>=0){const u=[...prev];u[idx]={...u[idx],...data};return u;}return[...prev,data];});
+                            }catch{toast.error("Erro ao enviar.");}finally{setDocUploading(false);}
+                          }}/>
+                          {docUploading?"Enviando...":existing?"Reenviar":"Enviar"}
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-
-            {/* Representative info */}
-          <div className="card p-6 mt-5">
-            <h3 className="font-semibold text-navy mb-4">Responsável pelo paciente</h3>
-            <div className="mb-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={patient.is_own_account} onChange={e => setPatient(p => ({...p, is_own_account: e.target.checked}))} className="accent-blue-500 w-4 h-4" />
-                <span className="text-sm text-slate-600">O paciente é o próprio titular da conta</span>
-              </label>
-            </div>
-            {!patient.is_own_account && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><label className="form-label">Nome do responsável legal</label><input className="form-input" value={patient.representative_name || ""} onChange={setP("representative_name")} placeholder="Nome completo" /></div>
-                <div><label className="form-label">Relação com o paciente</label><input className="form-input" value={patient.representative_relation || ""} onChange={setP("representative_relation")} placeholder="Filho(a), Cônjuge..." /></div>
-                <div><label className="form-label">Telefone do responsável</label><input className="form-input" type="tel" value={patient.representative_phone || ""} onChange={setP("representative_phone")} placeholder="(11) 99999-9999" /></div>
-              </div>
-            )}
-          </div>
-
-          {/* Emergency contact */}
-          <div className="card p-6 mt-5">
-            <h3 className="font-semibold text-navy mb-4">Contato de emergência</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><label className="form-label">Nome</label><input className="form-input" value={patient.emergency_contact_name || ""} onChange={setP("emergency_contact_name")} placeholder="Nome do contato" /></div>
-              <div><label className="form-label">Telefone</label><input className="form-input" type="tel" value={patient.emergency_contact_phone || ""} onChange={setP("emergency_contact_phone")} placeholder="(11) 99999-9999" /></div>
-              <div><label className="form-label">Relação</label><input className="form-input" value={patient.emergency_contact_relation || ""} onChange={setP("emergency_contact_relation")} placeholder="Médico, Familiar..." /></div>
-            </div>
-          </div>
 
           <button onClick={handleSave} disabled={saving}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60">
