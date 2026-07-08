@@ -12,7 +12,36 @@
     "title_2": "when you need it",
     "subtitle": "We connect patients and families with verified nurses, technicians and caregivers. Simple scheduling, secure payment, certified professionals.",
     "cta_client": "I need care",
-    "cta_pro": "I'm a professional"
+    "cta_pro": "I'm a professional",
+    "for_families": "For families and patients",
+    "families_desc": "Find verified professionals near you in minutes",
+    "for_professionals": "For healthcare professionals",
+    "professionals_desc": "Manage your schedule, receive patients and grow your career"
+  },
+  "why": {
+    "label": "Why CuidaNow",
+    "title": "The right platform for both sides of care",
+    "subtitle": "Clear benefits for those who need care and those who provide it",
+    "for_clients": "For families and patients",
+    "for_professionals": "For healthcare professionals",
+    "client_1_title": "Verified professionals",
+    "client_1_desc": "All professionals pass COREN validation, background checks and document review",
+    "client_2_title": "Real reviews",
+    "client_2_desc": "Read ratings from other patients and families before choosing",
+    "client_3_title": "Transparent pricing",
+    "client_3_desc": "No surprises — see the total price before confirming your booking",
+    "client_4_title": "Everything in the app",
+    "client_4_desc": "Book, chat and pay without needing to call or negotiate",
+    "pro_1_title": "Flexible schedule",
+    "pro_1_desc": "Set your hours, accept or decline requests as you prefer",
+    "pro_2_title": "Fair compensation",
+    "pro_2_desc": "Set your price above the minimum — you receive 100% of your amount",
+    "pro_3_title": "More visibility",
+    "pro_3_desc": "Appear to nearby families who need your type of care",
+    "pro_4_title": "Safety and support",
+    "pro_4_desc": "GPS check-in/out, SOS button and platform support",
+    "client_cta": "Find a professional →",
+    "pro_cta": "Register as a professional →"
   },
   "trust": {
     "coren": "COREN/COFEN Validation",
@@ -136,11 +165,14 @@
   },
   "testimonials": {
     "label": "Testimonials",
-    "title": "What people say about Cuida.me",
+    "title": "What people say about CuidaNow",
     "items": [
-      { "text": "My mother needed care after surgery. In less than 2 hours I found a verified nurse with an active COREN and great reviews. Peace of mind that is priceless.", "name": "Ana Carolina M.", "location": "São Paulo, SP" },
-      { "text": "As a nursing technician, I never imagined having so much autonomy to choose my hours and get paid directly to my account. The platform is clean and easy to use.", "name": "Juliana F.", "location": "Nursing Technician · RJ" },
-      { "text": "The digital medical record is what convinced me. Every visit is recorded, with a report sent to the family. True professionalism in home care.", "name": "Roberto P.", "location": "Belo Horizonte, MG" }
+      { "text": "My mother needed care after surgery. In less than 2 hours I found a verified nurse with an active COREN and great reviews. Peace of mind that is priceless.", "name": "Ana Carolina M.", "location": "São Paulo, SP · Family" },
+      { "text": "As a nursing technician, I never imagined having so much autonomy to choose my hours and get paid directly to my account. The platform is clean and easy to use.", "name": "Juliana F.", "location": "Rio de Janeiro, RJ · Nursing Technician" },
+      { "text": "The digital medical record is what convinced me. Every visit is recorded, with a report sent to the family. True professionalism in home care.", "name": "Roberto P.", "location": "Belo Horizonte, MG · Family" },
+      { "text": "After years of working by referral only, I finally have an organized schedule and receive payments instantly. CuidaNow gave me more confidence as a professional.", "name": "Fernanda L.", "location": "Curitiba, PR · Nurse" },
+      { "text": "My father has Alzheimer's and we needed specialized care. The platform filtered caregivers with exact experience in this area. The care was perfect.", "name": "Marcos S.", "location": "Campinas, SP · Family" },
+      { "text": "As a nursing assistant, CuidaNow opened doors for me to serve home patients safely. The GPS check-in gives confidence to the family and to me.", "name": "Patrícia R.", "location": "Salvador, BA · Nursing Assistant" }
     ]
   },
   "cta": {
@@ -155,6 +187,8 @@
     "how_it_works": "How it works",
     "for_clients": "For clients",
     "for_pros": "For professionals",
+    "professionals_link": "Professional categories",
+    "safety_link": "Safety and verification",
     "pricing": "Pricing",
     "support": "Support",
     "help": "Help centre",

@@ -72,6 +72,24 @@ const HeroSection = () => {
           <p className="text-slate-600 text-lg leading-relaxed mb-8 max-w-lg">
             {t("hero.subtitle")}
           </p>
+
+          {/* Dual-audience value props */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-white/70 border border-blue-100">
+              <span className="text-xl mt-0.5">👨‍👩‍👧</span>
+              <div>
+                <p className="text-sm font-semibold text-navy">{t("hero.for_families")}</p>
+                <p className="text-xs text-slate-500">{t("hero.families_desc")}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-white/70 border border-green-100">
+              <span className="text-xl mt-0.5">👩‍⚕️</span>
+              <div>
+                <p className="text-sm font-semibold text-navy">{t("hero.for_professionals")}</p>
+                <p className="text-xs text-slate-500">{t("hero.professionals_desc")}</p>
+              </div>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-3">
             <a href="/register" className="btn-primary">
               {t("hero.cta_client")}

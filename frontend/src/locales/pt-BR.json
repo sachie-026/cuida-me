@@ -12,7 +12,36 @@
     "title_2": "quando você precisar",
     "subtitle": "Conectamos pacientes e famílias a enfermeiros, técnicos e cuidadores verificados. Agendamento simples, pagamento seguro, profissional certificado.",
     "cta_client": "Preciso de cuidado",
-    "cta_pro": "Sou profissional"
+    "cta_pro": "Sou profissional",
+    "for_families": "Para famílias e pacientes",
+    "families_desc": "Encontre profissionais verificados perto de você em minutos",
+    "for_professionals": "Para profissionais de saúde",
+    "professionals_desc": "Gerencie sua agenda, receba pacientes e cresça na carreira"
+  },
+  "why": {
+    "label": "Por que CuidaNow",
+    "title": "A plataforma certa para cada lado do cuidado",
+    "subtitle": "Benefícios claros para quem precisa de cuidado e para quem cuida",
+    "for_clients": "Para famílias e pacientes",
+    "for_professionals": "Para profissionais de saúde",
+    "client_1_title": "Profissionais verificados",
+    "client_1_desc": "Todos passam por validação de COREN, antecedentes e documentos antes de atender",
+    "client_2_title": "Avaliações reais",
+    "client_2_desc": "Leia avaliações de outros pacientes e famílias antes de escolher",
+    "client_3_title": "Preço transparente",
+    "client_3_desc": "Sem surpresas — veja o valor total antes de confirmar o agendamento",
+    "client_4_title": "Tudo pelo app",
+    "client_4_desc": "Agende, converse e pague sem precisar ligar ou negociar",
+    "pro_1_title": "Agenda flexível",
+    "pro_1_desc": "Defina seus horários, aceite ou recuse solicitações como preferir",
+    "pro_2_title": "Receba o valor justo",
+    "pro_2_desc": "Você define seu preço acima do mínimo — recebe 100% do seu valor",
+    "pro_3_title": "Mais visibilidade",
+    "pro_3_desc": "Apareça para famílias próximas que precisam do seu tipo de cuidado",
+    "pro_4_title": "Segurança e suporte",
+    "pro_4_desc": "GPS de check-in/out, botão SOS e suporte da plataforma",
+    "client_cta": "Encontrar profissional →",
+    "pro_cta": "Cadastrar-se como profissional →"
   },
   "trust": {
     "coren": "Validação COREN/COFEN",
@@ -136,11 +165,14 @@
   },
   "testimonials": {
     "label": "Depoimentos",
-    "title": "O que dizem sobre a Cuida.me",
+    "title": "O que dizem sobre a CuidaNow",
     "items": [
-      { "text": "Minha mãe precisou de cuidados após a cirurgia. Em menos de 2 horas encontrei uma enfermeira verificada, com COREN ativo e ótimas avaliações. Tranquilidade que não tem preço.", "name": "Ana Carolina M.", "location": "São Paulo, SP" },
-      { "text": "Como técnica de enfermagem, nunca imaginei ter tanta autonomia para escolher meus horários e receber direto na minha conta. A plataforma é limpa e fácil de usar.", "name": "Juliana F.", "location": "Técnica de Enfermagem · RJ" },
-      { "text": "O prontuário digital foi o que me convenceu. Cada visita fica registrada, com relatório enviado para a família. Profissionalismo de verdade no cuidado domiciliar.", "name": "Roberto P.", "location": "Belo Horizonte, MG" }
+      { "text": "Minha mãe precisou de cuidados após a cirurgia. Em menos de 2 horas encontrei uma enfermeira verificada, com COREN ativo e ótimas avaliações. Tranquilidade que não tem preço.", "name": "Ana Carolina M.", "location": "São Paulo, SP · Familiar" },
+      { "text": "Como técnica de enfermagem, nunca imaginei ter tanta autonomia para escolher meus horários e receber direto na minha conta. A plataforma é limpa e fácil de usar.", "name": "Juliana F.", "location": "Rio de Janeiro, RJ · Técnica de Enfermagem" },
+      { "text": "O prontuário digital foi o que me convenceu. Cada visita fica registrada, com relatório enviado para a família. Profissionalismo de verdade no cuidado domiciliar.", "name": "Roberto P.", "location": "Belo Horizonte, MG · Familiar" },
+      { "text": "Depois de anos trabalhando por indicação, finalmente tenho uma agenda organizada e recebo pagamentos na hora. A CuidaNow me deu mais segurança como profissional.", "name": "Fernanda L.", "location": "Curitiba, PR · Enfermeira" },
+      { "text": "Meu pai tem Alzheimer e precisamos de cuidado especializado. A plataforma filtrou cuidadores com experiência exata nessa área. O atendimento foi perfeito.", "name": "Marcos S.", "location": "Campinas, SP · Familiar" },
+      { "text": "Como auxiliar de enfermagem, a CuidaNow me abriu portas para atender pacientes domiciliares com segurança. O GPS de check-in dá confiança para a família e para mim.", "name": "Patrícia R.", "location": "Salvador, BA · Auxiliar de Enfermagem" }
     ]
   },
   "cta": {
@@ -155,6 +187,8 @@
     "how_it_works": "Como funciona",
     "for_clients": "Para clientes",
     "for_pros": "Para profissionais",
+    "professionals_link": "Categorias profissionais",
+    "safety_link": "Segurança e verificação",
     "pricing": "Preços",
     "support": "Suporte",
     "help": "Central de ajuda",
