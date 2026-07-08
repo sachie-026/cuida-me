@@ -21,9 +21,10 @@ const Footer = () => {
             <h5 className="text-white font-semibold text-sm mb-4">{t("footer.platform")}</h5>
             {[
               ["footer.how_it_works", "/#how"],
-              ["footer.for_clients", "/#register"],
-              ["footer.for_pros", "/#register"],
-              ["footer.pricing", "/pricing"],
+              ["footer.for_clients", "/register"],
+              ["footer.for_pros", "/register"],
+              ["footer.professionals_link", "/#professionals"],
+              ["footer.safety_link", "/#safety"],
             ].map(([key, href]) => (
               <a key={key} href={href} className="block text-sm text-slate-400 hover:text-white mb-2 transition-colors">
                 {t(key)}

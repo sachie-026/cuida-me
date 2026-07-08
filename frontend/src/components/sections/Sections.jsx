@@ -36,6 +36,79 @@ export const TrustBar = () => {
   );
 };
 
+/* ── Why Choose CuidaU ── */
+export const WhyChoose = () => {
+  const { t } = useTranslation();
+  const ref = useFadeIn();
+
+  const clientBenefits = [
+    { emoji: "✅", title: t("why.client_1_title"), desc: t("why.client_1_desc") },
+    { emoji: "⭐", title: t("why.client_2_title"), desc: t("why.client_2_desc") },
+    { emoji: "💰", title: t("why.client_3_title"), desc: t("why.client_3_desc") },
+    { emoji: "📱", title: t("why.client_4_title"), desc: t("why.client_4_desc") },
+  ];
+
+  const proBenefits = [
+    { emoji: "📅", title: t("why.pro_1_title"), desc: t("why.pro_1_desc") },
+    { emoji: "💵", title: t("why.pro_2_title"), desc: t("why.pro_2_desc") },
+    { emoji: "📈", title: t("why.pro_3_title"), desc: t("why.pro_3_desc") },
+    { emoji: "🛡️", title: t("why.pro_4_title"), desc: t("why.pro_4_desc") },
+  ];
+
+  return (
+    <section className="py-20 bg-white">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="text-center mb-12">
+          <span className="section-label">{t("why.label")}</span>
+          <h2 className="section-title mb-3">{t("why.title")}</h2>
+          <p className="section-sub max-w-xl mx-auto">{t("why.subtitle")}</p>
+        </div>
+        <div ref={ref} className="fade-in grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* For clients */}
+          <div className="bg-blue-50 rounded-2xl p-6 border border-blue-100">
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-2xl">👨‍👩‍👧</span>
+              <h3 className="font-display text-lg font-bold text-navy">{t("why.for_clients")}</h3>
+            </div>
+            <div className="space-y-4">
+              {clientBenefits.map((b, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="text-lg flex-shrink-0 mt-0.5">{b.emoji}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-navy">{b.title}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{b.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <a href="/register" className="btn-primary w-full mt-6 text-center block">{t("why.client_cta")}</a>
+          </div>
+
+          {/* For professionals */}
+          <div className="bg-green-50 rounded-2xl p-6 border border-green-100">
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-2xl">👩‍⚕️</span>
+              <h3 className="font-display text-lg font-bold text-navy">{t("why.for_professionals")}</h3>
+            </div>
+            <div className="space-y-4">
+              {proBenefits.map((b, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="text-lg flex-shrink-0 mt-0.5">{b.emoji}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-navy">{b.title}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{b.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <a href="/register" className="btn-primary w-full mt-6 text-center block bg-green-600 hover:bg-green-700 border-green-600">{t("why.pro_cta")}</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 /* ── HowItWorks ── */
 export const HowItWorks = () => {
   const { t } = useTranslation();
@@ -108,7 +181,7 @@ export const Professionals = () => {
           <h2 className="section-title mb-3">{t("professionals.title")}</h2>
           <p className="section-sub max-w-xl mx-auto">{t("professionals.subtitle")}</p>
         </div>
-        <div ref={ref} className="fade-in grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div ref={ref} className="fade-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {profs.map(({ key, emoji, gradient }) => {
             const data = t(`professionals.${key}`, { returnObjects: true });
             return (

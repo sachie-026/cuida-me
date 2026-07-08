@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import HeroSection from "../components/sections/HeroSection";
 import {
-  TrustBar, HowItWorks, Professionals,
+  TrustBar, WhyChoose, HowItWorks, Professionals,
   Stats, Safety, Testimonials, CTASection
 } from "../components/sections/Sections";
 
@@ -30,6 +30,7 @@ const Home = () => {
     <main>
       <HeroSection />
       <TrustBar />
+      <WhyChoose />
       <HowItWorks />
       <Professionals />
       <Stats />
