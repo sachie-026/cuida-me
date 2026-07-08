@@ -13,11 +13,12 @@ const STATES = ["SP","RJ","MG","RS","PR","BA","CE","GO","DF","SC","PE","Outro"];
 const MARKUP_OPTIONS = [0,5,10,15,20,25,30];
 
 const DOC_TYPES = [
-  {key:"photo_id",   label:"Documento com foto (RG/CNH)",    note:"Frente e verso · JPG, PNG ou PDF"},
-  {key:"diploma",    label:"Diploma ou certificado",          note:"Diploma de enfermagem ou certificado"},
-  {key:"criminal",   label:"Antecedentes criminais",          note:"Emitido há menos de 90 dias"},
-  {key:"selfie",     label:"Selfie com prova de vida",        note:"Selfie segurando o documento"},
-  {key:"vaccination",label:"Carteira de vacinação (opcional)",note:"Hepatite B, tétano, etc."},
+  {key:"photo_id",       label:"Documento com foto (RG/CNH)",    note:"Frente e verso · JPG, PNG ou PDF"},
+  {key:"diploma",        label:"Diploma ou certificado",          note:"Diploma de enfermagem ou certificado"},
+  {key:"coren_negative", label:"Certidão Negativa COREN",        note:"Certidão Única Negativa emitida pelo COREN", nursingOnly:true},
+  {key:"criminal",       label:"Antecedentes criminais",          note:"Emitido há menos de 90 dias"},
+  {key:"selfie",         label:"Selfie com prova de vida",        note:"Selfie segurando o documento"},
+  {key:"vaccination",    label:"Carteira de vacinação (opcional)",note:"Hepatite B, tétano, etc."},
 ];
 
 const DocStatusBadge = ({status}) => {
@@ -194,7 +195,9 @@ const ProfessionalProfile = () => {
   };
 
   const getDoc = (type) => docs.find(d=>d.doc_type===type);
-  const requiredDocs = ["photo_id","diploma","criminal","selfie"];
+  const isNursingRole = ["nurse","technician","nursing_assistant"].includes(role);
+  const requiredDocs = isNursingRole ? ["photo_id","diploma","criminal","selfie","coren_negative"] : ["photo_id","diploma","criminal","selfie"];
+  const filteredDocTypes = DOC_TYPES.filter(d => !d.nursingOnly || isNursingRole);
   const hasAllDocs   = requiredDocs.every(t=>docs.some(d=>d.doc_type===t&&d.file_url));
   const handleDocUploaded = (newDoc) => {
     setDocs(prev => {
@@ -376,7 +379,7 @@ const ProfessionalProfile = () => {
               </div>
               <p className="text-xs text-slate-500 mb-4">Envie todos os documentos obrigatórios para aprovação da conta.</p>
               <div className="space-y-3">
-                {DOC_TYPES.map(({key,label,note})=>(
+                {filteredDocTypes.map(({key,label,note})=>(
                   <UploadZone key={key} docType={key} label={label} note={note}
                     existingDoc={getDoc(key)} onUploaded={handleDocUploaded}/>
                 ))}

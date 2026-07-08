@@ -79,10 +79,6 @@ const ClientDashboard = () => {
               className="btn-outline flex items-center gap-2">
               <MessageSquare size={16} /> Mensagens
             </button>
-            <button onClick={() => navigate("/booking/new")}
-              className="btn-primary flex items-center gap-2">
-              <Plus size={16} /> Novo agendamento
-            </button>
           </div>
         </div>
 

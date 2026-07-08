@@ -100,6 +100,10 @@ def _get_refund_policy(booking: Booking, cancelled_by: str) -> dict:
 @router.post("", status_code=201)
 @router.post("/", status_code=201, include_in_schema=False)
 def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    # Client verification gate
+    if current.role.value == "client" and not current.is_verified:
+        raise HTTPException(403, "Verifique sua identidade antes de agendar. Envie seus documentos no perfil.")
+
     patient = db.query(Patient).filter(Patient.id == body.patient_id).first()
     if not patient:
         raise HTTPException(404, "Patient not found")
