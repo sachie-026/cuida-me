@@ -271,3 +271,26 @@ class Report(Base):
     status          = Column(String, default="pending")  # pending, under_review, resolved
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     resolved_at     = Column(DateTime(timezone=True), nullable=True)
+class AvailabilityAlert(Base):
+    """Availability alerts for smart matching — notifies users when compatible opportunities appear."""
+    __tablename__   = "availability_alerts"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    user_id         = Column(String, ForeignKey("users.id"), nullable=False)
+    alert_type      = Column(String, nullable=False)  # "patient" or "professional"
+    # Search criteria
+    care_type       = Column(String, nullable=True)
+    services        = Column(JSON, default=list)
+    professional_category = Column(String, nullable=True)  # nurse, technician, etc.
+    preferred_date  = Column(String, nullable=True)  # YYYY-MM-DD
+    preferred_time  = Column(String, nullable=True)  # HH:MM
+    duration_hours  = Column(Integer, nullable=True)
+    city            = Column(String, nullable=True)
+    state           = Column(String, nullable=True)
+    radius_km       = Column(Integer, default=50)
+    # Status
+    status          = Column(String, default="active")  # active, paused, matched, expired
+    matched_at      = Column(DateTime(timezone=True), nullable=True)
+    matched_id      = Column(String, nullable=True)  # booking_id or professional_id that matched
+    expires_at      = Column(DateTime(timezone=True), nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
