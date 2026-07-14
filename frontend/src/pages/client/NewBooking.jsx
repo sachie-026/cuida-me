@@ -315,8 +315,23 @@ const NewBooking = () => {
             {professionals.length===0 ? (
               <div className="card p-8 text-center">
                 <p className="text-navy font-semibold mb-2">Nenhum profissional disponível</p>
-                <p className="text-slate-500 text-sm">Não há profissionais disponíveis para os serviços selecionados no momento.</p>
-                <button onClick={()=>setStep(1)} className="btn-outline mt-4">← Voltar e ajustar</button>
+                <p className="text-slate-500 text-sm mb-4">Não há profissionais disponíveis para os serviços selecionados no momento.</p>
+                <p className="text-slate-500 text-sm mb-4">Deseja ser notificado quando um profissional compatível estiver disponível?</p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button onClick={async()=>{
+                    try{
+                      await axios.post(`${API}/api/alerts`,{
+                        alert_type:"patient", services:selectedSvcs,
+                        preferred_date:date, preferred_time:time,
+                        duration_hours:duration, radius_km:50,
+                      },{headers});
+                      toast.success("Alerta criado! Você será notificado quando houver um profissional disponível.");
+                    }catch{toast.error("Erro ao criar alerta.");}
+                  }} className="btn-primary flex items-center justify-center gap-2">
+                    🔔 Notifique-me
+                  </button>
+                  <button onClick={()=>setStep(1)} className="btn-outline">← Voltar e ajustar</button>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">

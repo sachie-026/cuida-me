@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare } from "lucide-react";
+import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare, Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -75,6 +75,10 @@ const ClientDashboard = () => {
             <p className="text-slate-500 text-sm mt-1">Como podemos ajudar hoje?</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => navigate("/alerts")}
+              className="btn-outline flex items-center gap-2">
+              <Bell size={16} /> Alertas
+            </button>
             <button onClick={() => navigate("/messages")}
               className="btn-outline flex items-center gap-2">
               <MessageSquare size={16} /> Mensagens

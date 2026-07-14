@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports
+from app.routes import availability, payments, messages, holidays, reports, alerts
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -33,6 +33,26 @@ def run_migrations():
             status VARCHAR DEFAULT 'pending',
             created_at TIMESTAMPTZ DEFAULT NOW(),
             resolved_at TIMESTAMPTZ
+        )""",
+        """CREATE TABLE IF NOT EXISTS availability_alerts (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR REFERENCES users(id) NOT NULL,
+            alert_type VARCHAR NOT NULL,
+            care_type VARCHAR,
+            services JSON DEFAULT '[]',
+            professional_category VARCHAR,
+            preferred_date VARCHAR,
+            preferred_time VARCHAR,
+            duration_hours INTEGER,
+            city VARCHAR,
+            state VARCHAR,
+            radius_km INTEGER DEFAULT 50,
+            status VARCHAR DEFAULT 'active',
+            matched_at TIMESTAMPTZ,
+            matched_id VARCHAR,
+            expires_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
         )""",
         # Fix AvailabilityType enum
         "DO $$ BEGIN CREATE TYPE availabilitytype AS ENUM ('available', 'blocked'); EXCEPTION WHEN duplicate_object THEN null; END $$",
@@ -138,6 +158,7 @@ app.include_router(payments.router,     prefix="/api")
 app.include_router(messages.router,     prefix="/api")
 app.include_router(holidays.router,     prefix="/api")
 app.include_router(reports.router,      prefix="/api")
+app.include_router(alerts.router,       prefix="/api")
 
 @app.get("/")
 def root():
