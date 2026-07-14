@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Star, CheckCircle, Clock, Sun, Moon, AlertCircle } from "lucide-react";
+import VerifiedBadge from "../../components/common/VerifiedBadge";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -235,6 +236,14 @@ const NewBooking = () => {
               {selectedSvcs.length>0 && (
                 <p className="text-xs text-blue-600 mt-2 font-medium">✓ {selectedSvcs.length} serviço(s) selecionado(s)</p>
               )}
+              {selectedSvcs.some(s => s.toLowerCase().includes("medicamento") || s.toLowerCase().includes("insulina")) && (
+                <div className="flex items-start gap-2 p-3 mt-2 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5"/>
+                  <p className="text-xs text-amber-700">
+                    <strong>Aviso legal:</strong> A administração de medicamentos requer prescrição médica válida e deve seguir todas as regulamentações de saúde brasileiras aplicáveis.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -327,6 +336,7 @@ const NewBooking = () => {
                         </div>
                         <div className="flex items-center gap-1 text-xs text-amber-600 font-medium">
                           <Star size={13} className="fill-amber-400 text-amber-400"/> {pro.rating_avg?.toFixed(1) || "—"} <span className="text-slate-400">({pro.rating_count || 0})</span>
+                          <VerifiedBadge type="professional" verified={pro.approval_status === "approved"} size="sm" />
                         </div>
                         <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                           {pro.markup_pct>0 && <span className="text-slate-400">+{pro.markup_pct}% acréscimo</span>}

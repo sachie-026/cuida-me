@@ -42,38 +42,40 @@ export const WhyChoose = () => {
   const ref = useFadeIn();
 
   const clientBenefits = [
-    { emoji: "✅", title: t("why.client_1_title"), desc: t("why.client_1_desc") },
-    { emoji: "⭐", title: t("why.client_2_title"), desc: t("why.client_2_desc") },
-    { emoji: "💰", title: t("why.client_3_title"), desc: t("why.client_3_desc") },
-    { emoji: "📱", title: t("why.client_4_title"), desc: t("why.client_4_desc") },
+    { title: t("why.client_1_title"), desc: t("why.client_1_desc") },
+    { title: t("why.client_2_title"), desc: t("why.client_2_desc") },
+    { title: t("why.client_3_title"), desc: t("why.client_3_desc") },
+    { title: t("why.client_4_title"), desc: t("why.client_4_desc") },
+    { title: t("why.client_5_title"), desc: t("why.client_5_desc") },
   ];
 
   const proBenefits = [
-    { emoji: "📅", title: t("why.pro_1_title"), desc: t("why.pro_1_desc") },
-    { emoji: "💵", title: t("why.pro_2_title"), desc: t("why.pro_2_desc") },
-    { emoji: "📈", title: t("why.pro_3_title"), desc: t("why.pro_3_desc") },
-    { emoji: "🛡️", title: t("why.pro_4_title"), desc: t("why.pro_4_desc") },
+    { title: t("why.pro_1_title"), desc: t("why.pro_1_desc") },
+    { title: t("why.pro_2_title"), desc: t("why.pro_2_desc") },
+    { title: t("why.pro_3_title"), desc: t("why.pro_3_desc") },
+    { title: t("why.pro_4_title"), desc: t("why.pro_4_desc") },
+    { title: t("why.pro_5_title"), desc: t("why.pro_5_desc") },
   ];
 
   return (
-    <section className="py-20 bg-white">
+    <section className="py-24 bg-white">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-12">
-          <span className="section-label">{t("why.label")}</span>
+        <div className="text-center mb-14">
           <h2 className="section-title mb-3">{t("why.title")}</h2>
-          <p className="section-sub max-w-xl mx-auto">{t("why.subtitle")}</p>
+          <p className="section-sub max-w-2xl mx-auto">{t("why.subtitle")}</p>
         </div>
         <div ref={ref} className="fade-in grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* For clients */}
-          <div className="bg-blue-50 rounded-2xl p-6 border border-blue-100">
-            <div className="flex items-center gap-2 mb-5">
-              <span className="text-2xl">👨‍👩‍👧</span>
-              <h3 className="font-display text-lg font-bold text-navy">{t("why.for_clients")}</h3>
+          <div className="bg-blue-50/50 rounded-2xl p-8 border border-blue-100">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">👨‍👩‍👧</span>
+              <h3 className="font-display text-xl font-bold text-navy">{t("why.for_clients")}</h3>
             </div>
+            <p className="text-sm text-slate-600 mb-6">{t("why.for_clients_desc")}</p>
             <div className="space-y-4">
               {clientBenefits.map((b, i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <span className="text-lg flex-shrink-0 mt-0.5">{b.emoji}</span>
+                  <span className="text-green-500 font-bold text-sm mt-0.5 flex-shrink-0">✔</span>
                   <div>
                     <p className="text-sm font-semibold text-navy">{b.title}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{b.desc}</p>
@@ -81,19 +83,20 @@ export const WhyChoose = () => {
                 </div>
               ))}
             </div>
-            <a href="/register" className="btn-primary w-full mt-6 text-center block">{t("why.client_cta")}</a>
+            <a href="/register" className="btn-primary w-full mt-8 text-center block py-3">{t("why.client_cta")}</a>
           </div>
 
           {/* For professionals */}
-          <div className="bg-green-50 rounded-2xl p-6 border border-green-100">
-            <div className="flex items-center gap-2 mb-5">
-              <span className="text-2xl">👩‍⚕️</span>
-              <h3 className="font-display text-lg font-bold text-navy">{t("why.for_professionals")}</h3>
+          <div className="bg-green-50/50 rounded-2xl p-8 border border-green-100">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">👩‍⚕️</span>
+              <h3 className="font-display text-xl font-bold text-navy">{t("why.for_professionals")}</h3>
             </div>
+            <p className="text-sm text-slate-600 mb-6">{t("why.for_professionals_desc")}</p>
             <div className="space-y-4">
               {proBenefits.map((b, i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <span className="text-lg flex-shrink-0 mt-0.5">{b.emoji}</span>
+                  <span className="text-green-500 font-bold text-sm mt-0.5 flex-shrink-0">✔</span>
                   <div>
                     <p className="text-sm font-semibold text-navy">{b.title}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{b.desc}</p>
@@ -101,8 +104,42 @@ export const WhyChoose = () => {
                 </div>
               ))}
             </div>
-            <a href="/register" className="btn-primary w-full mt-6 text-center block bg-green-600 hover:bg-green-700 border-green-600">{t("why.pro_cta")}</a>
+            <a href="/register" className="btn-primary w-full mt-8 text-center block py-3 bg-green-600 hover:bg-green-700 border-green-600">{t("why.pro_cta")}</a>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ── Trust Highlights ── */
+export const TrustHighlights = () => {
+  const { t } = useTranslation();
+  const ref = useFadeIn();
+  const items = [
+    { icon: "✔", text: t("trust_hl.item_1") },
+    { icon: "✔", text: t("trust_hl.item_2") },
+    { icon: "✔", text: t("trust_hl.item_3") },
+    { icon: "✔", text: t("trust_hl.item_4") },
+    { icon: "✔", text: t("trust_hl.item_5") },
+    { icon: "✔", text: t("trust_hl.item_6") },
+    { icon: "✔", text: t("trust_hl.item_7") },
+    { icon: "✔", text: t("trust_hl.item_8") },
+  ];
+  return (
+    <section className="py-20 bg-slate-50">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <div className="text-center mb-12">
+          <h2 className="section-title mb-3">{t("trust_hl.title")}</h2>
+          <p className="section-sub max-w-2xl mx-auto">{t("trust_hl.subtitle")}</p>
+        </div>
+        <div ref={ref} className="fade-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+              <span className="text-green-500 font-bold text-lg flex-shrink-0">{item.icon}</span>
+              <span className="text-sm font-medium text-navy">{item.text}</span>
+            </div>
+          ))}
         </div>
       </div>
     </section>

@@ -90,14 +90,15 @@ const HeroSection = () => {
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <a href="/register" className="btn-primary">
+          <div className="flex flex-wrap gap-3 mb-3">
+            <a href="/register" className="btn-primary px-6 py-3">
               {t("hero.cta_client")}
             </a>
-            <a href="/register" className="btn-outline">
+            <a href="/register" className="btn-outline px-6 py-3">
               {t("hero.cta_pro")}
             </a>
           </div>
+          <p className="text-sm text-slate-400 italic">{t("hero.brand_statement")}</p>
         </div>
 
         {/* Right: app preview */}

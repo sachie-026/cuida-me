@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import VerificationCenter from "../../components/common/VerificationCenter";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -79,6 +80,9 @@ const ClientProfile = () => {
             </div>
 
             {/* Patient info — removed per suggestion: patient data moves to booking flow */}
+
+            {/* Verification Center */}
+            <VerificationCenter role="client" userId={userId} />
 
             {/* Client Identity Verification */}
             <div className="card p-6">
