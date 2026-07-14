@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import VerificationCenter from "../../components/common/VerificationCenter";
 import AvailabilityCalendar from "../../components/professional/AvailabilityCalendar";
 
 const API    = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -225,6 +226,7 @@ const ProfessionalProfile = () => {
         ) : (
           <div className="space-y-5">
             <VerificationBanner approvalStatus={approvalStatus} hasAllDocs={hasAllDocs} docs={docs}/>
+            <VerificationCenter role={role} userId={userId} />
 
             {/* Personal info */}
             <div className="card p-6">

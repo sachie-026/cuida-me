@@ -37,6 +37,7 @@ const Footer = () => {
             <h5 className="text-white font-semibold text-sm mb-4">{t("footer.support")}</h5>
             {[
               ["footer.help", "/help"],
+              ["footer.faq", "/faq"],
               ["footer.contact", "/contact"],
               ["footer.whatsapp", "#"],
               ["footer.report", "/report"],
