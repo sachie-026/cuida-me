@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus } from "lucide-react";
+import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -163,6 +163,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "commission",    label: "Comissão",      icon: <DollarSign size={18} /> },
     { key: "holidays",      label: "Feriados",      icon: <CalendarRange size={18} /> },
     { key: "reports",       label: "Denúncias",     icon: <FileText size={18} /> },
+    { key: "alice",          label: "Alice IA",       icon: <Bot size={18} /> },
   ];
 
   const content = (
@@ -252,7 +253,25 @@ const COREN_URLS = {
   RO:"https://www.coren-ro.org.br",RR:"https://corenrr.gov.br",SC:"https://www.corensc.gov.br",
   SP:"https://portal.coren-sp.gov.br",SE:"https://coren-se.gov.br",TO:"https://www.corentocantins.org.br",
 };
-const COFEN_LOOKUP = "https://sigen.cofen.gov.br/profissional/consultar";
+/* ── Doc Image Preview with Zoom/Rotate ── */
+const DocImagePreview = ({ url }) => {
+  const [rotation, setRotation] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
+  return (
+    <div className="mt-2 relative">
+      <div className={`overflow-hidden rounded-lg border border-slate-200 bg-slate-100 ${zoomed ? "cursor-zoom-out" : "cursor-zoom-in"}`}
+        onClick={() => setZoomed(!zoomed)}>
+        <img src={url} alt="Documento" className={`w-full transition-all duration-300 ${zoomed ? "max-h-[500px] object-contain" : "max-h-[120px] object-cover"}`}
+          style={{ transform: `rotate(${rotation}deg)` }} />
+      </div>
+      <div className="flex gap-1 mt-1">
+        <button onClick={() => setRotation(r => r - 90)} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-500">↺ Girar</button>
+        <button onClick={() => setRotation(r => r + 90)} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-500">↻ Girar</button>
+        <button onClick={() => setZoomed(!zoomed)} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-500">{zoomed ? "🔍− Reduzir" : "🔍+ Ampliar"}</button>
+      </div>
+    </div>
+  );
+};
 
 /* ── Document Viewer Modal ── */
 const DocModal = ({ prof, onClose, onDocUpdate }) => {
@@ -260,6 +279,21 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
+  const [qrInput, setQrInput] = useState("");
+  const [qrResult, setQrResult] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
+  const handleQrVerify = async () => {
+    if (!qrInput.trim()) return;
+    setQrLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/api/admin/coren-verify`, { qr_data: qrInput }, { headers });
+      setQrResult(data);
+      if (data.auto_verify) toast.success("COREN ativo verificado!");
+      else toast(data.message, { icon: "ℹ️" });
+    } catch { toast.error("Erro na verificação."); }
+    finally { setQrLoading(false); }
+  };
 
   const handleApprove = async (docId) => {
     setActionLoading(docId);
@@ -295,14 +329,10 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
 
         {/* COREN verification links */}
         <div className="flex flex-wrap gap-2 mb-4">
-          <a href={COFEN_LOOKUP} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-            <ExternalLink size={12} /> Verificar no COFEN (nacional)
-          </a>
           {corenState && COREN_URLS[corenState] && (
             <a href={COREN_URLS[corenState]} target="_blank" rel="noreferrer"
               className="flex items-center gap-1.5 text-xs font-semibold text-green-600 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors">
-              <ExternalLink size={12} /> Site COREN-{corenState}
+              <ExternalLink size={12} /> Verificar no COREN-{corenState}
             </a>
           )}
         </div>
@@ -327,12 +357,22 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                     )}
                   </div>
                   {doc.file_url && !doc.file_url.includes("placeholder.com") && (
-                    <a href={doc.file_url} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-                      <ExternalLink size={13} /> Ver arquivo
-                    </a>
+                    <div className="flex items-center gap-1.5">
+                      <a href={doc.file_url} target="_blank" rel="noreferrer"
+                        className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors">
+                        <ExternalLink size={11} /> Abrir
+                      </a>
+                      <a href={doc.file_url} download
+                        className="flex items-center gap-1 text-xs font-semibold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors">
+                        ⬇ Baixar
+                      </a>
+                    </div>
                   )}
                 </div>
+                {/* Inline image preview */}
+                {doc.file_url && !doc.file_url.includes("placeholder.com") && /\.(jpg|jpeg|png|webp)/i.test(doc.file_url) && (
+                  <DocImagePreview url={doc.file_url} />
+                )}
                 {/* Approve/Reject actions */}
                 {doc.status !== "approved" && doc.file_url && !doc.file_url.includes("placeholder.com") && (
                   <div className="mt-2 pt-2 border-t border-slate-200">
@@ -375,7 +415,26 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
           </div>
         )}
 
-        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+        {/* COREN QR Verification */}
+        <div className="mt-5 pt-4 border-t border-slate-100">
+          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Verificação COREN via QR</p>
+          <div className="flex gap-2 mb-2">
+            <input type="text" className="form-input text-xs flex-1" placeholder="Cole o texto do QR code aqui..."
+              value={qrInput} onChange={e => setQrInput(e.target.value)} />
+            <button onClick={handleQrVerify} disabled={qrLoading || !qrInput.trim()}
+              className="btn-primary text-xs px-3 disabled:opacity-50">
+              {qrLoading ? "..." : "Verificar"}
+            </button>
+          </div>
+          {qrResult && (
+            <div className={`p-2 rounded-lg text-xs ${qrResult.auto_verify ? "bg-green-50 text-green-700" : qrResult.matched ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>
+              {qrResult.message}
+              {qrResult.extracted?.coren_number && <span className="block mt-1 font-mono">COREN: {qrResult.extracted.coren_number} {qrResult.extracted.state && `(${qrResult.extracted.state})`}</span>}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
           <span className="text-xs text-slate-400">
             {prof.documents?.filter(d => d.status === "approved").length || 0} de 4 documentos aprovados
             {prof.documents?.filter(d => d.status === "approved").length >= 4 && " ✓ Profissional auto-aprovado"}
@@ -713,6 +772,60 @@ const ReportsPanel = () => {
   );
 };
 
+/* ── Alice Panel ── */
+const AlicePanel = () => {
+  const { headers } = useAdmin();
+  const [updating, setUpdating] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  const handleUpdate = async () => {
+    setUpdating(true);
+    try {
+      const { data } = await axios.post(`${API}/api/alice/update`, {}, { headers });
+      toast.success(data.message || "Alice atualizada!");
+      setLastUpdate(new Date().toLocaleString("pt-BR"));
+    } catch { toast.error("Erro ao atualizar Alice."); }
+    finally { setUpdating(false); }
+  };
+
+  return (
+    <div>
+      <h2 className="font-bold text-navy text-lg">Alice — Assistente IA</h2>
+      <p className="text-xs text-slate-500 mt-0.5 mb-6">Gerencie a base de conhecimento da Alice (FAQ inteligente)</p>
+
+      <div className="card p-6 mb-4">
+        <div className="flex items-center gap-3 mb-4">
+          <Bot size={24} className="text-blue-500" />
+          <div>
+            <p className="font-semibold text-navy">Base de conhecimento</p>
+            <p className="text-xs text-slate-500">Termos de Uso, Política de Privacidade, LGPD, Pagamentos</p>
+          </div>
+        </div>
+        <p className="text-sm text-slate-600 mb-4">
+          Clique em "Atualizar Alice" após alterar qualquer documento legal para que a assistente passe a responder com as informações atualizadas.
+        </p>
+        <button onClick={handleUpdate} disabled={updating}
+          className="btn-primary flex items-center gap-2 disabled:opacity-50">
+          <Bot size={16} /> {updating ? "Atualizando..." : "Atualizar Alice"}
+        </button>
+        {lastUpdate && <p className="text-xs text-slate-400 mt-2">Última atualização: {lastUpdate}</p>}
+      </div>
+
+      <div className="card p-6">
+        <p className="font-semibold text-navy mb-3">Documentos indexados</p>
+        <div className="space-y-2">
+          {["Termos de Uso", "Política de Privacidade", "LGPD", "Pagamentos e Reembolsos"].map(doc => (
+            <div key={doc} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
+              <span className="text-sm text-slate-600">{doc}</span>
+              <span className="text-xs text-green-600 font-semibold">✓ Indexado</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = () => {
   const [section,    setSection]    = useState("overview");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -725,12 +838,13 @@ const AdminDashboard = () => {
     commission:    <CommissionPanel />,
     holidays:      <HolidaysPanel />,
     reports:       <ReportsPanel />,
+    alice:         <AlicePanel />,
   };
 
   const sectionLabel = {
     overview: "Visão geral", professionals: "Profissionais",
     users: "Usuários", bookings: "Agendamentos", commission: "Comissão",
-    holidays: "Feriados", reports: "Denúncias",
+    holidays: "Feriados", reports: "Denúncias", alice: "Alice IA",
   };
 
   return (

@@ -336,12 +336,15 @@ const NewBooking = () => {
             ) : (
               <div className="space-y-3">
                 <p className="text-sm text-slate-500 mb-2">{professionals.length} profissional(is) disponível(is)</p>
-                {professionals.map(pro=>(
-                  <div key={pro.id} className="card p-5">
+                {professionals.map(pro=>{
+                  // Calculate final price for this pro
+                  const proPrice = pro.total_price || pro.base_price || null;
+                  return (
+                  <div key={pro.id} className="card p-5 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-600">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-600">
                             {(pro.full_name||"?")?.[0]}
                           </div>
                           <div>
@@ -349,29 +352,50 @@ const NewBooking = () => {
                             <p className="text-xs text-slate-500">{ROLE_LABELS[pro.role]||pro.role} · {pro.city}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-amber-600 font-medium">
-                          <Star size={13} className="fill-amber-400 text-amber-400"/> {pro.rating_avg?.toFixed(1) || "—"} <span className="text-slate-400">({pro.rating_count || 0})</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-1 text-xs text-amber-600 font-medium">
+                            <Star size={13} className="fill-amber-400 text-amber-400"/> {pro.rating_avg?.toFixed(1) || "—"} <span className="text-slate-400">({pro.rating_count || 0})</span>
+                          </div>
                           <VerifiedBadge type="professional" verified={pro.approval_status === "approved"} size="sm" />
+                          {pro.completed_count > 0 && (
+                            <span className="text-xs text-slate-400">{pro.completed_count} atendimento(s)</span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-                          {pro.markup_pct>0 && <span className="text-slate-400">+{pro.markup_pct}% acréscimo</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-2">
+                        {pro.bio && (
+                          <p className="text-xs text-slate-500 mt-2 line-clamp-2">{pro.bio}</p>
+                        )}
+                        {pro.specialties?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {pro.specialties.slice(0,3).map(s=>(
+                              <span key={s} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-600 rounded-full font-medium">{s}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1 mt-1.5">
                           {(pro.services_offered||[]).slice(0,3).map(s=>(
-                            <span key={s} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{s}</span>
+                            <span key={s} className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{s}</span>
                           ))}
                           {(pro.services_offered||[]).length>3 && (
-                            <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">+{pro.services_offered.length-3} mais</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">+{pro.services_offered.length-3}</span>
                           )}
                         </div>
                       </div>
-                      <button onClick={()=>handleSelectPro(pro)} disabled={loading}
-                        className="btn-primary text-sm px-4 py-2 flex-shrink-0 disabled:opacity-60">
-                        {loading&&selectedPro?.id===pro.id?"...":"Selecionar"}
-                      </button>
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        {proPrice && (
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-green-700">R$ {Number(proPrice).toFixed(0)}</p>
+                            <p className="text-[10px] text-slate-400">valor estimado</p>
+                          </div>
+                        )}
+                        <button onClick={()=>handleSelectPro(pro)} disabled={loading}
+                          className="btn-primary text-sm px-4 py-2 disabled:opacity-60">
+                          {loading&&selectedPro?.id===pro.id?"...":"Agendar"}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

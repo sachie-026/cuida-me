@@ -252,3 +252,86 @@ def _check_auto_approve(user_id: str, db: Session):
             if prof and prof.approval_status != DocStatus.approved:
                 prof.approval_status = DocStatus.approved
                 db.commit()
+# ── #4: COREN QR Code Verification ────────────────────────────────────────────
+
+class CorenVerifyRequest(BaseModel):
+    qr_data: str  # Raw text from QR scan
+
+@router.post("/coren-verify")
+def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Parse COREN QR code data and auto-verify against professional records."""
+    raw = body.qr_data.strip()
+
+    # Common COREN QR formats:
+    # "COREN-SP 123456 - NOME COMPLETO - TECNICO DE ENFERMAGEM - ATIVO"
+    # URL format: "https://portal.coren-sp.gov.br/verificar/123456"
+    extracted = {
+        "coren_number": None,
+        "name": None,
+        "category": None,
+        "state": None,
+        "status": None,
+        "raw": raw,
+    }
+
+    # Try to parse structured format
+    parts = raw.replace(" - ", "|").replace(" – ", "|").split("|")
+    for part in parts:
+        part = part.strip()
+        p_upper = part.upper()
+        if "COREN" in p_upper:
+            # Extract state and number
+            import re
+            state_match = re.search(r'COREN[- ]?([A-Z]{2})', p_upper)
+            num_match = re.search(r'(\d{4,})', part)
+            if state_match:
+                extracted["state"] = state_match.group(1)
+            if num_match:
+                extracted["coren_number"] = num_match.group(1)
+        elif p_upper in ("ATIVO", "ACTIVE", "REGULAR"):
+            extracted["status"] = "active"
+        elif p_upper in ("INATIVO", "INACTIVE", "SUSPENSO", "SUSPENDED", "CANCELADO"):
+            extracted["status"] = "inactive"
+        elif any(cat in p_upper for cat in ["ENFERMEIRO", "TÉCNICO", "AUXILIAR", "NURSE", "TECHNICIAN"]):
+            extracted["category"] = part.strip()
+        elif len(part) > 5 and not part.isdigit():
+            if not extracted["name"]:
+                extracted["name"] = part.strip()
+
+    # Try URL format
+    if not extracted["coren_number"]:
+        import re
+        url_match = re.search(r'coren[- ]?([a-z]{2}).*?(\d{4,})', raw.lower())
+        if url_match:
+            extracted["state"] = url_match.group(1).upper()
+            extracted["coren_number"] = url_match.group(2)
+
+    if not extracted["coren_number"]:
+        return {"success": False, "message": "Não foi possível extrair o número COREN do QR code.", "extracted": extracted}
+
+    # Try to match with a professional in our system
+    match = None
+    pros = db.query(Professional).filter(Professional.council_number != None).all()
+    for p in pros:
+        if p.council_number and str(p.council_number) == str(extracted["coren_number"]):
+            match = p
+            break
+
+    if match:
+        user = db.query(User).filter(User.id == match.user_id).first()
+        return {
+            "success": True,
+            "matched": True,
+            "professional_id": match.id,
+            "professional_name": user.full_name if user else None,
+            "extracted": extracted,
+            "auto_verify": extracted.get("status") == "active",
+            "message": f"Profissional encontrado: {user.full_name if user else 'N/A'}. COREN {'ativo' if extracted.get('status') == 'active' else 'verificação manual necessária'}.",
+        }
+
+    return {
+        "success": True,
+        "matched": False,
+        "extracted": extracted,
+        "message": f"COREN {extracted['coren_number']} extraído com sucesso, mas nenhum profissional correspondente encontrado no sistema.",
+    }

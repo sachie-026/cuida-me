@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports, alerts
+from app.routes import availability, payments, messages, holidays, reports, alerts, alice
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -21,6 +21,21 @@ def run_migrations():
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS specialties JSON DEFAULT '[]'",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS rest_until TIMESTAMPTZ",
         "ALTER TABLE documents ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS reliability_score INTEGER DEFAULT 100",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS client_no_shows INTEGER DEFAULT 0",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS reliability_score INTEGER DEFAULT 100",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS late_cancellations INTEGER DEFAULT 0",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS no_shows INTEGER DEFAULT 0",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS completed_count INTEGER DEFAULT 0",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reschedule_new_start TIMESTAMPTZ",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reschedule_new_end TIMESTAMPTZ",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reschedule_status VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_name VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_start BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_end BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_dispute BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS dispute_reason TEXT",
         # Reports table
         """CREATE TABLE IF NOT EXISTS reports (
             id VARCHAR PRIMARY KEY,
@@ -159,6 +174,7 @@ app.include_router(messages.router,     prefix="/api")
 app.include_router(holidays.router,     prefix="/api")
 app.include_router(reports.router,      prefix="/api")
 app.include_router(alerts.router,       prefix="/api")
+app.include_router(alice.router,        prefix="/api")
 
 @app.get("/")
 def root():

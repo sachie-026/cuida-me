@@ -10,10 +10,13 @@ from sqlalchemy import func
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
 class RatingCreate(BaseModel):
-    booking_id:  str
-    reviewee_id: str   # professional_id or user_id — reviewer always comes from JWT
-    rating:      int
-    comment:     Optional[str] = None
+    booking_id:     str
+    reviewee_id:    Optional[str] = None  # auto-resolved from booking if not provided
+    rating:         int
+    comment:        Optional[str] = None
+    tags:           list = []
+    would_again:    Optional[str] = None  # "yes" | "no" | "maybe"
+    evaluator_role: Optional[str] = None  # "client" | "professional"
 
 @router.get("")
 @router.get("/")
@@ -50,11 +53,19 @@ def create_rating(body: RatingCreate, db: Session = Depends(get_db), current: Us
     # Fix 2 — reviewer_id always from JWT, never from request body
     reviewer_id = current.id
 
-    # Resolve professional_id → user_id if needed
-    reviewee_user_id = body.reviewee_id
-    prof = db.query(Professional).filter(Professional.id == body.reviewee_id).first()
-    if prof:
-        reviewee_user_id = prof.user_id
+    # Auto-resolve reviewee from booking if not provided
+    if body.reviewee_id:
+        reviewee_user_id = body.reviewee_id
+        prof = db.query(Professional).filter(Professional.id == body.reviewee_id).first()
+        if prof:
+            reviewee_user_id = prof.user_id
+    else:
+        # Client evaluating pro → reviewee is the pro; Pro evaluating client → reviewee is the client
+        if body.evaluator_role == "client" or current.role.value == "client":
+            pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+            reviewee_user_id = pro.user_id if pro else booking.professional_id
+        else:
+            reviewee_user_id = booking.user_id
 
     # Prevent self-rating
     if reviewer_id == reviewee_user_id:
