@@ -36,6 +36,18 @@ def run_migrations():
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_end BOOLEAN DEFAULT FALSE",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_dispute BOOLEAN DEFAULT FALSE",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS dispute_reason TEXT",
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_amount FLOAT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkout_lat FLOAT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkout_lng FLOAT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS actual_duration_minutes INTEGER",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_flagged BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checkin_distance INTEGER",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS arrival_timer_start TIMESTAMPTZ",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS early_termination BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS early_termination_reason TEXT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS match_deadline TIMESTAMPTZ",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS match_batch INTEGER",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS matched_pro_ids JSON DEFAULT '[]'",
         # Reports table
         """CREATE TABLE IF NOT EXISTS reports (
             id VARCHAR PRIMARY KEY,

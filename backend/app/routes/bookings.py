@@ -394,3 +394,456 @@ def report_issue(booking_id: str, reason: str = "Problema com o atendimento", db
     booking.dispute_reason = reason
     db.commit()
     return {"booking_id": booking_id, "has_dispute": True, "reason": reason}
+
+# ── #14: GPS Check-In/Check-Out ───────────────────────────────────────────────
+
+class CheckInRequest(BaseModel):
+    latitude:  float
+    longitude: float
+
+CHECK_IN_RADIUS_METERS = 500  # configurable
+
+def _haversine_meters(lat1, lon1, lat2, lon2):
+    """Calculate distance in meters between two GPS coordinates."""
+    import math
+    R = 6371000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+@router.post("/{booking_id}/checkin")
+def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Professional checks in with GPS. Validates proximity if patient address has coords."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    if not prof or prof.user_id != current.id:
+        raise HTTPException(403, "Only the assigned professional can check in")
+
+    if booking.status.value != "accepted":
+        raise HTTPException(400, "Só é possível fazer check-in em atendimentos aceitos")
+
+    # Store GPS
+    booking.checkin_lat = body.latitude
+    booking.checkin_lng = body.longitude
+    booking.actual_checkin = datetime.now(timezone.utc)
+    booking.status = BookingStatus.checked_in
+    booking.checkin_flagged = False
+
+    # Validate proximity if patient has coordinates
+    patient = db.query(Patient).filter(Patient.id == booking.patient_id).first()
+    if patient and hasattr(patient, 'lat') and patient.lat and patient.lng:
+        distance = _haversine_meters(body.latitude, body.longitude, patient.lat, patient.lng)
+        if distance > CHECK_IN_RADIUS_METERS:
+            booking.checkin_flagged = True
+            booking.checkin_distance = round(distance)
+
+    # Start 15-min arrival waiting timer
+    booking.arrival_timer_start = datetime.now(timezone.utc)
+
+    db.commit()
+    return {
+        "booking_id": booking_id, "status": "checked_in",
+        "checkin_time": booking.actual_checkin.isoformat(),
+        "flagged": booking.checkin_flagged,
+        "message": "Check-in realizado. Aguardando confirmação do cliente." if not booking.checkin_flagged
+                   else "⚠️ Check-in registrado, mas a localização está fora do raio esperado.",
+    }
+
+@router.post("/{booking_id}/checkout")
+def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Professional checks out with GPS. Calculates actual duration."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    if not prof or prof.user_id != current.id:
+        raise HTTPException(403, "Only the assigned professional can check out")
+
+    if booking.status.value != "checked_in":
+        raise HTTPException(400, "Só é possível fazer checkout de atendimentos em andamento")
+
+    booking.checkout_lat = body.latitude
+    booking.checkout_lng = body.longitude
+    booking.actual_checkout = datetime.now(timezone.utc)
+    booking.status = BookingStatus.completed
+
+    # Calculate actual duration
+    if booking.actual_checkin:
+        actual_minutes = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
+        booking.actual_duration_minutes = round(actual_minutes)
+
+    # Update professional stats
+    prof.completed_count = (prof.completed_count or 0) + 1
+    db.commit()
+
+    return {
+        "booking_id": booking_id, "status": "completed",
+        "checkout_time": booking.actual_checkout.isoformat(),
+        "actual_duration_minutes": booking.actual_duration_minutes,
+        "message": "Checkout realizado. Atendimento concluído.",
+    }
+
+# ── #16: Report Client No-Show ────────────────────────────────────────────────
+
+@router.post("/{booking_id}/client-no-show")
+def report_client_no_show(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Professional reports client no-show after 15-min waiting timer."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    if not prof or prof.user_id != current.id:
+        raise HTTPException(403, "Only the assigned professional can report no-show")
+
+    if booking.status.value != "checked_in":
+        raise HTTPException(400, "Check-in necessário antes de reportar no-show")
+
+    # Verify 15 minutes have passed since check-in
+    if booking.arrival_timer_start:
+        elapsed = (datetime.now(timezone.utc) - booking.arrival_timer_start).total_seconds() / 60
+        if elapsed < 15:
+            raise HTTPException(400, f"Aguarde {15 - int(elapsed)} minuto(s) antes de reportar no-show.")
+
+    booking.status = BookingStatus.cancelled
+    booking.cancel_reason = "client_no_show"
+    booking.cancelled_by = "professional"
+    booking.cancelled_at = datetime.now(timezone.utc)
+
+    # Update client reliability
+    client = db.query(User).filter(User.id == booking.user_id).first()
+    if client:
+        client.client_no_shows = (client.client_no_shows or 0) + 1
+        client.reliability_score = max(0, (client.reliability_score or 100) - 10)
+
+    db.commit()
+    return {"booking_id": booking_id, "status": "cancelled", "reason": "client_no_show",
+            "message": "No-show do cliente registrado. Pagamento será processado conforme política."}
+
+# ── #17: Early Service Termination ────────────────────────────────────────────
+
+class EarlyTerminationRequest(BaseModel):
+    reason:    str
+    is_serious: bool = False  # triggers dispute + payment hold
+    latitude:  Optional[float] = None
+    longitude: Optional[float] = None
+
+MINIMUM_BILLABLE_MINUTES = 120  # 2 hours
+
+@router.post("/{booking_id}/terminate-early")
+def terminate_early(booking_id: str, body: EarlyTerminationRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """End service early. Available after 30 min of checked-in. Proportional payment."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    if booking.status.value != "checked_in":
+        raise HTTPException(400, "Só é possível encerrar atendimentos em andamento")
+
+    # Verify at least 30 min since check-in
+    if booking.actual_checkin:
+        elapsed_min = (datetime.now(timezone.utc) - booking.actual_checkin).total_seconds() / 60
+        if elapsed_min < 30:
+            raise HTTPException(400, f"Encerramento antecipado só é permitido após 30 minutos. Faltam {30 - int(elapsed_min)} min.")
+    else:
+        raise HTTPException(400, "Check-in não registrado")
+
+    # Complete with early termination
+    booking.actual_checkout = datetime.now(timezone.utc)
+    booking.checkout_lat = body.latitude
+    booking.checkout_lng = body.longitude
+    actual_minutes = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
+    booking.actual_duration_minutes = max(round(actual_minutes), MINIMUM_BILLABLE_MINUTES)
+    booking.early_termination = True
+    booking.early_termination_reason = body.reason
+
+    if body.is_serious:
+        booking.has_dispute = True
+        booking.dispute_reason = f"Encerramento antecipado grave: {body.reason}"
+        booking.status = BookingStatus.completed
+        # Payment held for dispute review
+    else:
+        booking.status = BookingStatus.completed
+
+    db.commit()
+    return {
+        "booking_id": booking_id, "status": "completed",
+        "actual_duration_minutes": booking.actual_duration_minutes,
+        "billable_minutes": booking.actual_duration_minutes,
+        "has_dispute": booking.has_dispute,
+        "message": "Atendimento encerrado antecipadamente." + (" Disputa aberta para análise." if body.is_serious else ""),
+    }
+
+# ── #22: Smart Matching with Countdown ─────────────────────────────────────────
+
+STANDARD_RESPONSE_HOURS = 3
+URGENT_RESPONSE_MINUTES = 90
+MAX_MATCH_BATCH = 5
+
+@router.post("/{booking_id}/smart-match")
+def initiate_smart_match(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Send booking request to top matching professionals with a countdown timer."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if booking.status.value != "pending":
+        raise HTTPException(400, "Só é possível buscar profissionais para atendimentos pendentes")
+
+    # Find top matching pros
+    pros = db.query(Professional).filter(
+        Professional.approval_status == DocStatus.approved,
+        Professional.is_available == True,
+    ).all()
+
+    now = datetime.now(timezone.utc)
+    scored = []
+    for p in pros:
+        if p.rest_until and p.rest_until > now:
+            continue
+        user = db.query(User).filter(User.id == p.user_id).first()
+        if not user:
+            continue
+        score = (p.reliability_score or 100) + (p.rating_avg or 0) * 10 + (p.completed_count or 0)
+        scored.append((score, p, user))
+
+    scored.sort(key=lambda x: -x[0])
+    top_pros = scored[:MAX_MATCH_BATCH]
+
+    if not top_pros:
+        return {"booking_id": booking_id, "matched": 0, "message": "Nenhum profissional disponível para este atendimento."}
+
+    # Set countdown
+    if booking.is_urgent:
+        deadline = now + timedelta(minutes=URGENT_RESPONSE_MINUTES)
+    else:
+        deadline = now + timedelta(hours=STANDARD_RESPONSE_HOURS)
+
+    booking.match_deadline = deadline
+    booking.match_batch = 1
+    booking.matched_pro_ids = [p.id for _, p, _ in top_pros]
+
+    db.commit()
+
+    return {
+        "booking_id": booking_id,
+        "matched": len(top_pros),
+        "deadline": deadline.isoformat(),
+        "response_window": f"{URGENT_RESPONSE_MINUTES}min" if booking.is_urgent else f"{STANDARD_RESPONSE_HOURS}h",
+        "professionals": [
+            {"id": p.id, "name": u.full_name, "rating": p.rating_avg, "reliability": p.reliability_score}
+            for _, p, u in top_pros
+        ],
+        "message": f"Solicitação enviada para {len(top_pros)} profissional(is). Aguardando resposta.",
+    }
+
+@router.post("/{booking_id}/smart-match/expire")
+def expire_and_rematch(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Called when countdown expires — re-match with next batch of pros."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if booking.status.value != "pending":
+        return {"message": "Atendimento já foi aceito ou cancelado."}
+
+    # Exclude previously matched pros
+    excluded = set(booking.matched_pro_ids or [])
+    now = datetime.now(timezone.utc)
+
+    pros = db.query(Professional).filter(
+        Professional.approval_status == DocStatus.approved,
+        Professional.is_available == True,
+    ).all()
+
+    scored = []
+    for p in pros:
+        if p.id in excluded:
+            continue
+        if p.rest_until and p.rest_until > now:
+            continue
+        user = db.query(User).filter(User.id == p.user_id).first()
+        if not user:
+            continue
+        score = (p.reliability_score or 100) + (p.rating_avg or 0) * 10
+        scored.append((score, p, user))
+
+    scored.sort(key=lambda x: -x[0])
+    next_batch = scored[:MAX_MATCH_BATCH]
+
+    if not next_batch:
+        return {"booking_id": booking_id, "matched": 0, "message": "Nenhum profissional adicional disponível. Considere criar um alerta."}
+
+    if booking.is_urgent:
+        deadline = now + timedelta(minutes=URGENT_RESPONSE_MINUTES)
+    else:
+        deadline = now + timedelta(hours=STANDARD_RESPONSE_HOURS)
+
+    booking.match_deadline = deadline
+    booking.match_batch = (booking.match_batch or 1) + 1
+    booking.matched_pro_ids = list(excluded) + [p.id for _, p, _ in next_batch]
+
+    db.commit()
+
+    return {
+        "booking_id": booking_id,
+        "matched": len(next_batch),
+        "batch": booking.match_batch,
+        "deadline": deadline.isoformat(),
+        "professionals": [{"id": p.id, "name": u.full_name} for _, p, u in next_batch],
+        "message": f"Lote {booking.match_batch}: solicitação enviada para {len(next_batch)} profissional(is).",
+    }
+
+# ── #11: Cancellation System ──────────────────────────────────────────────────
+
+GRACE_PERIOD_MINUTES = 10
+CANCELLATION_REASONS = [
+    "Mudança de planos",
+    "Problema de saúde",
+    "Profissional indisponível",
+    "Encontrei outro profissional",
+    "Erro no agendamento",
+    "Problema financeiro",
+    "Emergência pessoal",
+    "Outro",
+]
+
+class CancelRequest(BaseModel):
+    reason:      str
+    detail:      Optional[str] = None
+    cancelled_by: str = "client"  # "client" | "professional"
+
+@router.post("/{booking_id}/cancel")
+def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Cancel booking with tiered refund policy + grace period."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    if booking.status.value in ("completed", "cancelled"):
+        raise HTTPException(400, "Atendimento já foi concluído ou cancelado")
+
+    now = datetime.now(timezone.utc)
+
+    # Determine refund percentage
+    hours_until = (booking.scheduled_start.replace(tzinfo=timezone.utc) - now).total_seconds() / 3600
+    minutes_since_creation = (now - booking.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60 if booking.created_at else 999
+
+    # Grace period: free cancellation within 10 min if pro hasn't accepted and >12h before
+    is_grace = minutes_since_creation <= GRACE_PERIOD_MINUTES and booking.status.value == "pending" and hours_until > 12
+
+    if is_grace:
+        refund_pct = 100
+    elif hours_until > 12:
+        refund_pct = 100
+    elif hours_until >= 2:
+        refund_pct = 50
+    else:
+        refund_pct = 0
+
+    # Update booking
+    booking.status = BookingStatus.cancelled
+    booking.cancel_reason = f"{body.reason}: {body.detail}" if body.detail else body.reason
+    booking.cancelled_by = body.cancelled_by
+    booking.cancelled_at = now
+
+    # Update reliability score
+    if body.cancelled_by == "professional":
+        prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        if prof:
+            prof.late_cancellations = (prof.late_cancellations or 0) + 1
+            prof.reliability_score = max(0, (prof.reliability_score or 100) - 5)
+
+            # Progressive penalties
+            if prof.late_cancellations >= 5:
+                prof.is_available = False  # auto-ban after 5 cancellations
+    else:
+        client = db.query(User).filter(User.id == booking.user_id).first()
+        if client and not is_grace:
+            client.reliability_score = max(0, (client.reliability_score or 100) - 3)
+
+    db.commit()
+
+    # Process refund if payment exists
+    refund_result = None
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+    if payment and payment.status.value in ("held", "pending") and refund_pct > 0:
+        refund_amount = round(payment.amount * refund_pct / 100, 2)
+        payment.status = PaymentStatus.refunded
+        payment.refunded_at = now
+        payment.refund_amount = refund_amount
+        payment.refund_reason = body.reason
+        db.commit()
+        refund_result = {"refund_pct": refund_pct, "refund_amount": refund_amount}
+
+    return {
+        "booking_id": booking_id,
+        "status": "cancelled",
+        "reason": booking.cancel_reason,
+        "cancelled_by": body.cancelled_by,
+        "grace_period": is_grace,
+        "refund": refund_result,
+        "policy": f"{'Período de graça: ' if is_grace else ''}{refund_pct}% de reembolso" +
+                  (f" (mais de 12h)" if hours_until > 12 else f" ({hours_until:.0f}h antes)" if refund_pct > 0 else " (menos de 2h)"),
+        "cancellation_reasons": CANCELLATION_REASONS,
+    }
+
+@router.get("/cancellation-reasons")
+def get_cancellation_reasons():
+    """Return list of valid cancellation reasons."""
+    return {"reasons": CANCELLATION_REASONS}
+
+# ── #12: Professional Cancellation + Replacement ──────────────────────────────
+
+@router.post("/{booking_id}/replace-professional")
+def replace_professional(booking_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Admin: auto-match replacement professional for a cancelled booking."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    now = datetime.now(timezone.utc)
+    excluded = set(booking.matched_pro_ids or [])
+    if booking.professional_id:
+        excluded.add(booking.professional_id)
+
+    pros = db.query(Professional).filter(
+        Professional.approval_status == DocStatus.approved,
+        Professional.is_available == True,
+    ).all()
+
+    candidates = []
+    for p in pros:
+        if p.id in excluded:
+            continue
+        if p.rest_until and p.rest_until > now:
+            continue
+        user = db.query(User).filter(User.id == p.user_id).first()
+        if not user:
+            continue
+        score = (p.reliability_score or 100) + (p.rating_avg or 0) * 10
+        candidates.append((score, p, user))
+
+    candidates.sort(key=lambda x: -x[0])
+
+    if not candidates:
+        return {"booking_id": booking_id, "replacement": None, "message": "Nenhum profissional substituto disponível."}
+
+    best = candidates[0]
+    # Reset booking for new professional
+    booking.professional_id = best[1].id
+    booking.status = BookingStatus.pending
+    booking.cancel_reason = None
+    booking.cancelled_by = None
+    booking.cancelled_at = None
+    db.commit()
+
+    return {
+        "booking_id": booking_id,
+        "replacement": {"id": best[1].id, "name": best[2].full_name, "reliability": best[1].reliability_score},
+        "message": f"Profissional substituto encontrado: {best[2].full_name}",
+    }
