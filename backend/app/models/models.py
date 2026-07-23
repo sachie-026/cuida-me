@@ -206,7 +206,22 @@ class Booking(Base):
     client_confirmed_end   = Column(Boolean, default=False)
     has_dispute     = Column(Boolean, default=False)
     dispute_reason  = Column(Text, nullable=True)
-    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    # GPS checkout
+    checkout_lat    = Column(Float, nullable=True)
+    checkout_lng    = Column(Float, nullable=True)
+    actual_duration_minutes = Column(Integer, nullable=True)
+    checkin_flagged  = Column(Boolean, default=False)
+    checkin_distance = Column(Integer, nullable=True)
+    # Arrival timer
+    arrival_timer_start = Column(DateTime(timezone=True), nullable=True)
+    # Early termination
+    early_termination = Column(Boolean, default=False)
+    early_termination_reason = Column(Text, nullable=True)
+    # Smart matching
+    match_deadline   = Column(DateTime(timezone=True), nullable=True)
+    match_batch      = Column(Integer, nullable=True)
+    matched_pro_ids  = Column(JSON, default=list)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     patient      = relationship("Patient",      back_populates="bookings")
     professional = relationship("Professional", back_populates="bookings")
@@ -229,6 +244,7 @@ class Payment(Base):
     released_at      = Column(DateTime(timezone=True), nullable=True)
     refunded_at      = Column(DateTime(timezone=True), nullable=True)
     refund_reason    = Column(String, nullable=True)
+    refund_amount    = Column(Float, nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     booking = relationship("Booking", back_populates="payment")
