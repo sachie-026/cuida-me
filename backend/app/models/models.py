@@ -53,6 +53,8 @@ class User(Base):
     google_id     = Column(String, unique=True, nullable=True)
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
+    reliability_score = Column(Integer, default=100)
+    client_no_shows   = Column(Integer, default=0)
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
     updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -81,6 +83,10 @@ class Professional(Base):
     years_experience = Column(Integer, nullable=True)
     bio              = Column(Text, nullable=True)
     specialties      = Column(JSON, default=list)
+    reliability_score = Column(Integer, default=100)  # 0-100, higher is better
+    late_cancellations = Column(Integer, default=0)
+    no_shows         = Column(Integer, default=0)
+    completed_count  = Column(Integer, default=0)
     rest_until       = Column(DateTime(timezone=True), nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -188,6 +194,18 @@ class Booking(Base):
     cancel_reason   = Column(Text, nullable=True)
     cancelled_by    = Column(String, nullable=True)   # "client" | "professional"
     cancelled_at    = Column(DateTime(timezone=True), nullable=True)
+    # Rescheduling
+    reschedule_new_start = Column(DateTime(timezone=True), nullable=True)
+    reschedule_new_end   = Column(DateTime(timezone=True), nullable=True)
+    reschedule_status    = Column(String, nullable=True)  # requested, accepted, declined
+    # Emergency contact for booking
+    emergency_name  = Column(String, nullable=True)
+    emergency_phone = Column(String, nullable=True)
+    # Client confirmation
+    client_confirmed_start = Column(Boolean, default=False)
+    client_confirmed_end   = Column(Boolean, default=False)
+    has_dispute     = Column(Boolean, default=False)
+    dispute_reason  = Column(Text, nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
     patient      = relationship("Patient",      back_populates="bookings")

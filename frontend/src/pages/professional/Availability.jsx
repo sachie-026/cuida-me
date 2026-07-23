@@ -133,6 +133,7 @@ const SlotModal = ({ date, existingSlots, onClose, onAdd, onDelete }) => {
 // ── Calendar Tab ───────────────────────────────────────────────────────────────
 
 const CalendarTab = ({ userId, profId }) => {
+  const navigate = useNavigate();
   const token   = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -258,6 +259,9 @@ const CalendarTab = ({ userId, profId }) => {
                   ${!isSelected && !hasAvail && !hasBlocked && !isPast ? "text-slate-700" : ""}
                 `}>
                 {day}
+                {dayBookings.length > 0 && (
+                  <span className="absolute top-0.5 right-1 text-[9px] font-bold text-blue-600 bg-blue-100 rounded-full w-4 h-4 flex items-center justify-center">{dayBookings.length}</span>
+                )}
                 {daySlots.length > 0 && !isSelected && (
                   <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full
                     ${hasAvail ? "bg-green-400" : "bg-red-400"}`} />
@@ -278,12 +282,6 @@ const CalendarTab = ({ userId, profId }) => {
       {/* Legend */}
       <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100 flex-wrap">
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          <span className="w-3 h-3 rounded-full bg-green-400 inline-block" /> Disponível
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          <span className="w-3 h-3 rounded-full bg-red-400 inline-block" /> Bloqueado
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Confirmado
         </span>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -293,9 +291,51 @@ const CalendarTab = ({ userId, profId }) => {
           <span className="w-3 h-3 rounded-full bg-purple-500 inline-block" /> Em andamento
         </span>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className="w-3 h-3 rounded-full bg-red-400 inline-block" /> Bloqueado
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-400 inline-block" /> Hoje
         </span>
       </div>
+
+      {/* Booking details for selected date */}
+      {selectedDate && bookings.filter(b => b.scheduled_start?.startsWith(selectedDate)).length > 0 && (
+        <div className="mt-6 p-5 bg-white border border-slate-200 rounded-2xl">
+          <h4 className="font-semibold text-navy text-sm mb-3">
+            📋 Agendamentos — {new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" })}
+          </h4>
+          <div className="space-y-3">
+            {bookings.filter(b => b.scheduled_start?.startsWith(selectedDate)).map(b => {
+              const statusConfig = {
+                pending: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },
+                accepted: { label: "Confirmado", color: "bg-blue-100 text-blue-700" },
+                checked_in: { label: "Em andamento", color: "bg-purple-100 text-purple-700" },
+                completed: { label: "Concluído", color: "bg-green-100 text-green-700" },
+                cancelled: { label: "Cancelado", color: "bg-red-100 text-red-600" },
+              };
+              const cfg = statusConfig[b.status] || statusConfig.pending;
+              return (
+                <div key={b.id} className="flex items-start justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+                      <span className="text-xs text-slate-400">
+                        {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}
+                        {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}`}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-navy">{b.service_type || "Atendimento"}</p>
+                    {b.total_price && <p className="text-xs text-slate-500 mt-0.5">R$ {Number(b.total_price).toFixed(2)}</p>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => navigate(`/messages?booking=${b.id}`)} className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold">Chat</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Upcoming slots summary */}
       {specificSlots.filter(s => s.specific_date >= todayStr).length > 0 && (
@@ -514,8 +554,8 @@ const AvailabilityPage = () => {
             <ChevronLeft size={20} />
           </button>
           <div>
-            <h1 className="font-display text-2xl font-bold text-navy">Disponibilidade</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Gerencie seus horários disponíveis para atendimentos</p>
+            <h1 className="font-display text-2xl font-bold text-navy">Minha Agenda</h1>
+            <p className="text-sm text-slate-500 mt-0.5">Gerencie seus horários e visualize seus agendamentos</p>
           </div>
         </div>
 

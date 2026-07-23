@@ -23,6 +23,7 @@ import ProfessionalDashboard from "./pages/professional/Dashboard";
 import ProfessionalProfile   from "./pages/professional/Profile";
 import Availability          from "./pages/professional/Availability";
 import Alerts                from "./pages/alerts/Alerts";
+import AliceChatWidget       from "./components/common/AliceChatWidget";
 import AdminDashboard        from "./pages/admin/Dashboard";
 import Messages              from "./pages/messages/Messages";
 
@@ -73,6 +74,7 @@ function App() {
           {/* 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+      <AliceChatWidget />
       </BrowserRouter>
     </GoogleOAuthProvider>
   );
