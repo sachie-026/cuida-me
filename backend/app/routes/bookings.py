@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus
-from app.utils.pricing import calculate_price, MINIMUM_PRICES, detect_shift
+from app.utils.pricing import calculate_price, MINIMUM_PRICES, detect_shift, HOUR_RATES, INITIAL_SERVICE_FEE
 from app.utils.holidays import check_date_for_holiday
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -46,8 +46,7 @@ def _check_booking_access(booking: Booking, current: User, db: Session):
     raise HTTPException(403, "Access denied")
 
 def _compute_price(body: BookingCreate, db: Session):
-    if not body.duration_hours:
-        return None
+    """Compute price using v2 engine: Initial Fee + Hour Rate × minutes."""
     prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
     if not prof:
         raise HTTPException(404, "Professional not found")
@@ -55,21 +54,20 @@ def _compute_price(body: BookingCreate, db: Session):
     if not user:
         raise HTTPException(404, "Professional user not found")
     role = user.role.value if hasattr(user.role, 'value') else str(user.role)
-    if role not in MINIMUM_PRICES:
+    if role not in HOUR_RATES:
         return None
-    # Auto-detect shift from scheduled start time (#9)
-    shift = body.shift
-    if body.scheduled_start:
-        shift = detect_shift(body.scheduled_start.hour)
     try:
         return calculate_price(
-            role=role, duration_hours=body.duration_hours,
-            shift=shift, markup_pct=prof.markup_pct or 0,
-            is_urgent=body.is_urgent, is_holiday=body.is_holiday,
+            role=role,
+            start_time=body.scheduled_start,
+            end_time=body.scheduled_end,
+            markup_pct=prof.markup_pct or 0,
+            is_urgent=body.is_urgent,
+            is_holiday=body.is_holiday,
             distance_km=body.distance_km,
         )
     except ValueError as e:
-        raise HTTPException(400, f"Invalid booking parameters: {e}")
+        raise HTTPException(400, f"Erro de preço: {e}")
 
 def _get_refund_policy(booking: Booking, cancelled_by: str) -> dict:
     """
