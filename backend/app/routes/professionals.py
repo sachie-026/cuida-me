@@ -8,7 +8,7 @@ from app.models.models import Professional, DocStatus, User
 from app.utils.pricing import (
     professional_can_perform, minimum_role_for_services,
     SERVICES_BY_ROLE, calculate_price, VALID_MARKUPS,
-    MINIMUM_PRICES, VALID_DURATIONS, SPECIALTIES_BY_ROLE
+    MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE, SPECIALTIES_BY_ROLE
 )
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
@@ -28,8 +28,8 @@ class ProfessionalUpdate(BaseModel):
 class PriceCalcRequest(BaseModel):
     role:             Optional[str] = None
     professional_id:  Optional[str] = None
-    duration_hours:   int
-    shift:            str
+    start_time:       str   # ISO datetime
+    end_time:         str   # ISO datetime
     markup_pct:       int   = 0
     is_urgent:        bool  = False
     is_holiday:       bool  = False
@@ -60,7 +60,6 @@ def calculate_booking_price(body: PriceCalcRequest, db: Session = Depends(get_db
     role = body.role
     markup = body.markup_pct
 
-    # If professional_id is provided, resolve role and markup from DB
     if body.professional_id:
         prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
         if not prof:
@@ -74,15 +73,18 @@ def calculate_booking_price(body: PriceCalcRequest, db: Session = Depends(get_db
     if not role:
         raise HTTPException(400, "Either 'role' or 'professional_id' is required")
 
+    from datetime import datetime as dt
+    try:
+        start = dt.fromisoformat(body.start_time)
+        end = dt.fromisoformat(body.end_time)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Invalid start_time or end_time format. Use ISO datetime.")
+
     try:
         return calculate_price(
-            role=role,
-            duration_hours=body.duration_hours,
-            shift=body.shift,
-            markup_pct=markup,
-            is_urgent=body.is_urgent,
-            is_holiday=body.is_holiday,
-            distance_km=body.distance_km,
+            role=role, start_time=start, end_time=end,
+            markup_pct=markup, is_urgent=body.is_urgent,
+            is_holiday=body.is_holiday, distance_km=body.distance_km,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -182,13 +184,16 @@ def get_professional(user_id: str, db: Session = Depends(get_db), current=Depend
 
 @router.get("/pricing-table/{role}")
 def get_pricing_table(role: str):
-    """Return platform minimum prices for a given role. Public endpoint."""
-    if role not in MINIMUM_PRICES:
-        raise HTTPException(400, f"Invalid role. Must be one of: {list(MINIMUM_PRICES.keys())}")
+    """Return platform rates for a given role. Public endpoint."""
+    if role not in HOUR_RATES:
+        raise HTTPException(400, f"Invalid role. Must be one of: {list(HOUR_RATES.keys())}")
     return {
         "role": role,
-        "durations": VALID_DURATIONS,
-        "prices": MINIMUM_PRICES[role],
+        "initial_fee": INITIAL_SERVICE_FEE[role],
+        "day_rate": HOUR_RATES[role]["day"],
+        "night_rate": HOUR_RATES[role]["night"],
+        "minimum_duration_hours": 2,
+        "commission_pct": 12,
     }
 
 @router.get("/specialties/{role}")
