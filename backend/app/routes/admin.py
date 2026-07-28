@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.auth_deps import require_admin
 from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole
-from app.utils.pricing import MINIMUM_PRICES, VALID_DURATIONS
+from app.utils.pricing import MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -159,20 +159,30 @@ def update_commission(rate: float, _=Depends(require_admin)):
 
 @router.get("/pricing")
 def get_pricing_table(_=Depends(require_admin)):
-    return MINIMUM_PRICES
+    return {
+        role: {
+            "initial_fee": INITIAL_SERVICE_FEE[role],
+            "day_rate": HOUR_RATES[role]["day"],
+            "night_rate": HOUR_RATES[role]["night"],
+        }
+        for role in HOUR_RATES
+    }
 
-@router.patch("/pricing/{role}/{duration}/{shift}")
-def update_pricing(role: str, duration: int, shift: str, price: float, _=Depends(require_admin)):
-    if role not in MINIMUM_PRICES:
-        raise HTTPException(400, f"Invalid role. Must be: {list(MINIMUM_PRICES.keys())}")
-    if duration not in VALID_DURATIONS:
-        raise HTTPException(400, f"Invalid duration. Must be: {VALID_DURATIONS}")
-    if shift not in ("day", "night"):
-        raise HTTPException(400, "shift must be 'day' or 'night'")
-    if price <= 0:
-        raise HTTPException(400, "Price must be positive")
-    MINIMUM_PRICES[role][duration][shift] = round(price, 2)
-    return {"updated": True, "role": role, "duration": duration, "shift": shift, "price": price}
+@router.patch("/pricing/{role}/{field}")
+def update_pricing(role: str, field: str, value: float, _=Depends(require_admin)):
+    if role not in HOUR_RATES:
+        raise HTTPException(400, f"Invalid role. Must be: {list(HOUR_RATES.keys())}")
+    if field not in ("initial_fee", "day_rate", "night_rate"):
+        raise HTTPException(400, "field must be 'initial_fee', 'day_rate', or 'night_rate'")
+    if value <= 0:
+        raise HTTPException(400, "Value must be positive")
+    if field == "initial_fee":
+        INITIAL_SERVICE_FEE[role] = round(value, 2)
+    elif field == "day_rate":
+        HOUR_RATES[role]["day"] = round(value, 2)
+    else:
+        HOUR_RATES[role]["night"] = round(value, 2)
+    return {"updated": True, "role": role, "field": field, "value": round(value, 2)}
 # ── Document Verification ─────────────────────────────────────────────────────
 
 REQUIRED_DOCS_BASE = {"photo_id", "diploma", "criminal", "selfie"}
