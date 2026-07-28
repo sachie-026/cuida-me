@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
-from app.core.auth_deps import get_current_user
-from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus
+from app.core.auth_deps import get_current_user, require_admin
+from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus, DocStatus
 from app.utils.pricing import calculate_price, MINIMUM_PRICES, detect_shift, HOUR_RATES, INITIAL_SERVICE_FEE
 from app.utils.holidays import check_date_for_holiday
 
