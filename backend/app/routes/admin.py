@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.auth_deps import require_admin
+from pydantic import BaseModel
 from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole
 from app.utils.pricing import MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE
 
