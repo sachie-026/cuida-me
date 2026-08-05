@@ -91,6 +91,16 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
 
   if (!isAccepted && !isCheckedIn) return null;
 
+  const sendQuickMessage = async (text) => {
+    try {
+      await axios.post(`${API}/api/messages`, {
+        booking_id: booking.id,
+        content: text,
+      }, { headers });
+      toast.success("Mensagem enviada!");
+    } catch { toast.error("Erro ao enviar mensagem."); }
+  };
+
   return (
     <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 space-y-3">
       <div className="flex items-center gap-2">
@@ -99,6 +109,14 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
           {isAccepted ? "Check-in" : "Atendimento em andamento"}
         </p>
       </div>
+
+      {/* Quick messages */}
+      {isAccepted && (
+        <button onClick={() => sendQuickMessage("🚗 Estou a caminho!")}
+          className="w-full text-xs py-2 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200 transition-colors">
+          🚗 Estou a caminho
+        </button>
+      )}
 
       {gpsError && (
         <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-lg">

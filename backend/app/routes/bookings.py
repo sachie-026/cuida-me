@@ -448,9 +448,27 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
         "booking_id": booking_id, "status": "checked_in",
         "checkin_time": booking.actual_checkin.isoformat(),
         "flagged": booking.checkin_flagged,
-        "message": "Check-in realizado. Aguardando confirmação do cliente." if not booking.checkin_flagged
+        "message": "Check-in realizado. Clique em 'Iniciar Serviço' quando o cliente estiver disponível." if not booking.checkin_flagged
                    else "⚠️ Check-in registrado, mas a localização está fora do raio esperado.",
     }
+
+@router.post("/{booking_id}/start-service")
+def start_service(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Professional starts the service after check-in and client is available."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    if not prof or prof.user_id != current.id:
+        raise HTTPException(403, "Only the assigned professional can start service")
+    if booking.status.value != "checked_in":
+        raise HTTPException(400, "Check-in necessário antes de iniciar o serviço")
+
+    booking.service_started_at = datetime.now(timezone.utc)
+    # Status stays checked_in (which means "in progress") — consistent with existing flow
+    db.commit()
+    return {"booking_id": booking_id, "service_started": True, "started_at": booking.service_started_at.isoformat(),
+            "message": "Serviço iniciado. Bom atendimento!"}
 
 @router.post("/{booking_id}/checkout")
 def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
@@ -731,38 +749,91 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
     hours_until = (booking.scheduled_start.replace(tzinfo=timezone.utc) - now).total_seconds() / 3600
     minutes_since_creation = (now - booking.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60 if booking.created_at else 999
 
-    # Grace period: free cancellation within 10 min if pro hasn't accepted and >12h before
-    is_grace = minutes_since_creation <= GRACE_PERIOD_MINUTES and booking.status.value == "pending" and hours_until > 12
+    # Grace period: free cancellation within 10 min if pro hasn't accepted and >7h before
+    is_grace = minutes_since_creation <= GRACE_PERIOD_MINUTES and booking.status.value == "pending" and hours_until > 7
 
     if is_grace:
         refund_pct = 100
-    elif hours_until > 12:
+    elif hours_until > 7:
         refund_pct = 100
     elif hours_until >= 2:
         refund_pct = 50
     else:
         refund_pct = 0
 
+    # #3: Grace period 3-use limit per 30 days
+    if is_grace:
+        from datetime import timedelta as td
+        thirty_days_ago = now - td(days=30)
+        grace_count = db.query(Booking).filter(
+            Booking.user_id == booking.user_id,
+            Booking.cancel_reason != None,
+            Booking.cancel_reason.contains("grace"),
+            Booking.cancelled_at > thirty_days_ago,
+        ).count()
+        if grace_count >= 3:
+            is_grace = False
+            # Falls through to standard policy
+            if hours_until > 7:
+                refund_pct = 100
+            elif hours_until >= 2:
+                refund_pct = 50
+            else:
+                refund_pct = 0
+
     # Update booking
     booking.status = BookingStatus.cancelled
-    booking.cancel_reason = f"{body.reason}: {body.detail}" if body.detail else body.reason
+    grace_tag = " (grace)" if is_grace else ""
+    booking.cancel_reason = f"{body.reason}: {body.detail}{grace_tag}" if body.detail else f"{body.reason}{grace_tag}"
     booking.cancelled_by = body.cancelled_by
     booking.cancelled_at = now
 
-    # Update reliability score
+    # #5: Progressive professional penalties
     if body.cancelled_by == "professional":
         prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
         if prof:
             prof.late_cancellations = (prof.late_cancellations or 0) + 1
-            prof.reliability_score = max(0, (prof.reliability_score or 100) - 5)
+            count = prof.late_cancellations
 
-            # Progressive penalties
-            if prof.late_cancellations >= 5:
-                prof.is_available = False  # auto-ban after 5 cancellations
+            # 90-day reset window check
+            from datetime import timedelta as td
+            ninety_days_ago = now - td(days=90)
+            recent_cancels = db.query(Booking).filter(
+                Booking.professional_id == booking.professional_id,
+                Booking.cancelled_by == "professional",
+                Booking.cancelled_at > ninety_days_ago,
+            ).count()
+
+            if recent_cancels <= 1:
+                pass  # 1st: warning only
+            elif recent_cancels == 2:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - 10)
+            elif recent_cancels == 3:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - 15)
+                prof.suspended_until = now + td(days=7)
+                prof.is_available = False
+            elif recent_cancels == 4:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - 25)
+                prof.suspended_until = now + td(days=30)
+                prof.is_available = False
+            elif recent_cancels >= 5:
+                prof.is_available = False  # permanent ban until admin review
+
+    # #4: Progressive client penalties
     else:
         client = db.query(User).filter(User.id == booking.user_id).first()
         if client and not is_grace:
             client.reliability_score = max(0, (client.reliability_score or 100) - 3)
+            # Check no-show count in 90 days
+            from datetime import timedelta as td
+            ninety_days_ago = now - td(days=90)
+            no_show_count = db.query(Booking).filter(
+                Booking.user_id == booking.user_id,
+                Booking.cancel_reason.contains("no_show"),
+                Booking.cancelled_at > ninety_days_ago,
+            ).count()
+            if no_show_count >= 3:
+                client.reliability_score = max(0, (client.reliability_score or 100) - 15)
 
     db.commit()
 

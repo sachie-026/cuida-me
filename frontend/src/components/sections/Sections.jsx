@@ -250,10 +250,10 @@ export const Stats = () => {
   const { t } = useTranslation();
   const ref = useFadeIn();
   const stats = [
-    { num: "100%", label: t("professionals.nurse.badge"), accent: true },
-    { num: "48h",  label: "Aprovação de cadastro profissional" },
-    { num: "R$0",  label: "Taxa para criar conta e buscar profissionais" },
-    { num: "SOS",  label: "Botão de emergência para profissional e família", accent: true },
+    { num: "GPS",    label: "Check-in e check-out com verificação de localização", accent: false },
+    { num: "100%",   label: "Pagamento seguro via PIX ou cartão com split automático", accent: true },
+    { num: "SOS",    label: "Atalho para emergência — liga para SAMU, Bombeiros ou contato de confiança", accent: false },
+    { num: "✓",      label: "Profissionais e clientes verificados com identidade e documentos", accent: true },
   ];
 
   return (
@@ -264,8 +264,8 @@ export const Stats = () => {
             Nossa missão
           </span>
           <h2 className="font-display text-3xl md:text-4xl font-bold text-white">
-            Cuidado acessível para{" "}
-            <em className="not-italic text-amber-400">todas as famílias</em>
+            Conectar profissionais verificados a clientes que precisam de cuidado,{" "}
+            <em className="not-italic text-amber-400">com segurança e agilidade</em>
           </h2>
         </div>
         <div ref={ref} className="fade-in grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">

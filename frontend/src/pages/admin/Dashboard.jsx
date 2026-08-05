@@ -296,6 +296,11 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
   };
 
   const handleApprove = async (docId) => {
+    // #27: Check if QR verification returned inactive COREN
+    if (qrResult && !qrResult.auto_verify && qrResult.extracted?.status && qrResult.extracted.status !== "active") {
+      toast.error("Não é possível aprovar: registro COREN não está Ativo.");
+      return;
+    }
     setActionLoading(docId);
     try {
       await axios.patch(`${API}/api/admin/documents/${docId}/approve`, {}, { headers });
