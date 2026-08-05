@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import CancelBookingModal from "../../components/common/CancelBookingModal";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -35,6 +36,7 @@ const ProfessionalDashboard = () => {
   const [profId,         setProfId]         = useState(null);
   const [loading,        setLoading]        = useState(true);
   const [toggling,       setToggling]       = useState(false);
+  const [cancellingBooking, setCancellingBooking] = useState(null);
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -234,11 +236,26 @@ const ProfessionalDashboard = () => {
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[b.status]}`}>
                     {STATUS_LABEL[b.status]}
                   </span>
+                  {(b.status === "accepted" || b.status === "pending") && b.status !== "cancelled" && b.status !== "completed" && (
+                    <button onClick={() => setCancellingBooking(b)} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-semibold flex-shrink-0">
+                      Cancelar
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
+
+        {/* Cancel modal */}
+        {cancellingBooking && (
+          <CancelBookingModal
+            booking={cancellingBooking}
+            cancelledBy="professional"
+            onClose={() => setCancellingBooking(null)}
+            onCancelled={() => { setCancellingBooking(null); window.location.reload(); }}
+          />
+        )}
       </div>
     </div>
   );

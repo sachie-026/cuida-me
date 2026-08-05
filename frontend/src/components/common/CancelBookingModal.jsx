@@ -31,13 +31,13 @@ const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancel
   const hoursUntil = start ? (start - now) / 1000 / 60 / 60 : 999;
   const created = booking.created_at ? new Date(booking.created_at) : null;
   const minutesSinceCreation = created ? (now - created) / 1000 / 60 : 999;
-  const isGrace = minutesSinceCreation <= 10 && booking.status === "pending" && hoursUntil > 12;
+  const isGrace = minutesSinceCreation <= 10 && booking.status === "pending" && hoursUntil > 7;
 
   let refundPct = 0;
   let policyText = "";
   if (isGrace) { refundPct = 100; policyText = "Período de graça (10 min): reembolso total"; }
-  else if (hoursUntil > 12) { refundPct = 100; policyText = "Mais de 12h antes: reembolso de 100%"; }
-  else if (hoursUntil >= 2) { refundPct = 50; policyText = "Entre 2-12h antes: reembolso de 50%"; }
+  else if (hoursUntil > 7) { refundPct = 100; policyText = "Mais de 7h antes: reembolso de 100%"; }
+  else if (hoursUntil >= 2) { refundPct = 50; policyText = "Entre 2-7h antes: reembolso de 50%"; }
   else { refundPct = 0; policyText = "Menos de 2h antes: sem reembolso"; }
 
   const handleCancel = async () => {

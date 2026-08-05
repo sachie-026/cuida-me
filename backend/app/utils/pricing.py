@@ -127,17 +127,17 @@ def get_care_level_for_services(services: list) -> int:
 # Night hours (22:00-06:00) use night rate, day hours use day rate.
 
 INITIAL_SERVICE_FEE = {
-    "caregiver":         30.0,
-    "nursing_assistant": 40.0,
-    "technician":        50.0,
-    "nurse":             70.0,
+    "caregiver":         80.0,
+    "nursing_assistant": 100.0,
+    "technician":        120.0,
+    "nurse":             180.0,
 }
 
 HOUR_RATES = {
-    "caregiver":         {"day": 25.0,  "night": 35.0},
-    "nursing_assistant": {"day": 35.0,  "night": 45.0},
-    "technician":        {"day": 45.0,  "night": 55.0},
-    "nurse":             {"day": 65.0,  "night": 80.0},
+    "caregiver":         {"day": 16.0,  "night": 19.20},
+    "nursing_assistant": {"day": 17.0,  "night": 20.40},
+    "technician":        {"day": 20.0,  "night": 24.0},
+    "nurse":             {"day": 35.0,  "night": 42.0},
 }
 
 MINIMUM_DURATION_MINUTES = 120  # 2 hours minimum
@@ -203,10 +203,20 @@ def calculate_price(
     if total_minutes < MINIMUM_DURATION_MINUTES:
         raise ValueError(f"Duração mínima é {MINIMUM_DURATION_MINUTES // 60} horas ({MINIMUM_DURATION_MINUTES} minutos)")
 
-    # Count day/night minutes
-    split = _count_day_night_minutes(start_time, end_time)
+    # Initial Service Fee covers the first 120 minutes
+    # Only remaining minutes after first 2h are charged at hourly rates
+    INITIAL_FEE_MINUTES = 120
+    remaining_minutes = max(0, total_minutes - INITIAL_FEE_MINUTES)
 
-    # Calculate hour-rate portion
+    # Count day/night minutes for the REMAINING time only (after first 2h)
+    from datetime import timedelta
+    remaining_start = start_time + timedelta(minutes=INITIAL_FEE_MINUTES)
+    if remaining_minutes > 0:
+        split = _count_day_night_minutes(remaining_start, end_time)
+    else:
+        split = {"day": 0, "night": 0}
+
+    # Calculate hour-rate portion (only for time beyond first 2h)
     day_cost   = round(split["day"] / 60 * HOUR_RATES[role]["day"], 2)
     night_cost = round(split["night"] / 60 * HOUR_RATES[role]["night"], 2)
     hour_cost  = day_cost + night_cost

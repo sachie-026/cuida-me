@@ -87,6 +87,7 @@ class Professional(Base):
     late_cancellations = Column(Integer, default=0)
     no_shows         = Column(Integer, default=0)
     completed_count  = Column(Integer, default=0)
+    suspended_until  = Column(DateTime(timezone=True), nullable=True)
     rest_until       = Column(DateTime(timezone=True), nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -214,6 +215,9 @@ class Booking(Base):
     checkin_distance = Column(Integer, nullable=True)
     # Arrival timer
     arrival_timer_start = Column(DateTime(timezone=True), nullable=True)
+    service_started_at  = Column(DateTime(timezone=True), nullable=True)
+    late_arrival        = Column(Boolean, default=False)
+    late_arrival_count  = Column(Integer, default=0)
     # Early termination
     early_termination = Column(Boolean, default=False)
     early_termination_reason = Column(Text, nullable=True)
