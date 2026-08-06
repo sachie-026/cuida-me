@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, User, ChevronDown, LayoutDashboard } from "lucide-react";
+import {
+  LogOut, User, ChevronDown, LayoutDashboard, CreditCard, Bell, Settings,
+  Calendar, MessageSquare, Star, Shield, Share2, HelpCircle, FileText, RefreshCw, Wallet, History
+} from "lucide-react";
 import toast from "react-hot-toast";
 
 const ProfileMenu = () => {
@@ -12,13 +15,15 @@ const ProfileMenu = () => {
   const role     = localStorage.getItem("role") || "";
   const initials = fullName.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
   const isPro    = ["nurse","technician","nursing_assistant","caregiver"].includes(role);
+  const isAdmin  = role === "admin";
 
-  const dashPath    = isPro ? "/dashboard/professional" : "/dashboard/client";
-  const profilePath = isPro ? "/profile/professional"   : "/profile/client";
+  const dashPath    = isAdmin ? "/admin" : isPro ? "/dashboard/professional" : "/dashboard/client";
+  const profilePath = isPro ? "/profile/professional" : "/profile/client";
 
   const roleLabel = {
     client: "Cliente", nurse: "Enfermeiro(a)",
-    technician: "Técnico de Enfermagem", nursing_assistant: "Auxiliar de Enfermagem", caregiver: "Cuidador(a)", admin: "Admin",
+    technician: "Técnico de Enfermagem", nursing_assistant: "Auxiliar de Enfermagem",
+    caregiver: "Cuidador(a)", admin: "Admin",
   }[role] || role;
 
   useEffect(() => {
@@ -29,41 +34,125 @@ const ProfileMenu = () => {
 
   const handleLogout = () => {
     localStorage.clear();
-    toast.success("Até logo!");
-    navigate("/login");
+    toast.success("Logout realizado!");
+    navigate("/");
   };
+
+  const go = (path) => { navigate(path); setOpen(false); };
+
+  // Menu sections based on role
+  const clientSections = [
+    { label: "MINHA CONTA", items: [
+      { icon: <User size={15}/>, text: "Meu perfil", path: "/profile/client" },
+      { icon: <History size={15}/>, text: "Minha atividade", path: "/activity" },
+      { icon: <MessageSquare size={15}/>, text: "Mensagens", path: "/messages" },
+    ]},
+    { label: "PAGAMENTOS", items: [
+      { icon: <CreditCard size={15}/>, text: "Métodos de pagamento", path: "/payment-methods" },
+    ]},
+    { label: "COMPARTILHAR", items: [
+      { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
+    ]},
+    { label: "CONFIGURAÇÕES", items: [
+      { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
+      { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
+      { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
+    ]},
+  ];
+
+  const proSections = [
+    { label: "MINHA CONTA", items: [
+      { icon: <User size={15}/>, text: "Meu perfil", path: "/profile/professional" },
+      { icon: <Calendar size={15}/>, text: "Minha agenda", path: "/availability" },
+      { icon: <LayoutDashboard size={15}/>, text: "Meus atendimentos", path: "/dashboard/professional" },
+      { icon: <MessageSquare size={15}/>, text: "Mensagens", path: "/messages" },
+    ]},
+    { label: "GANHOS", items: [
+      { icon: <Wallet size={15}/>, text: "Ganhos", path: "/earnings" },
+      { icon: <CreditCard size={15}/>, text: "Conta bancária", path: "/bank-account" },
+    ]},
+    { label: "PERFIL PROFISSIONAL", items: [
+      { icon: <Star size={15}/>, text: "Avaliações", path: "/reviews" },
+      { icon: <Shield size={15}/>, text: "Verificação profissional", path: "/profile/professional" },
+    ]},
+    { label: "COMPARTILHAR", items: [
+      { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
+    ]},
+    { label: "CONFIGURAÇÕES", items: [
+      { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
+      { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
+      { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
+    ]},
+  ];
+
+  const sections = isAdmin ? [{ label: "ADMIN", items: [
+    { icon: <LayoutDashboard size={15}/>, text: "Painel Admin", path: "/admin" },
+  ]}] : isPro ? proSections : clientSections;
 
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-slate-100 transition-colors">
-        <div className="w-8 h-8 rounded-full bg-brand-gradient flex items-center justify-center text-white text-xs font-bold">
+        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
           {initials}
         </div>
-        <span className="hidden sm:block text-sm font-medium text-slate-700 max-w-[120px] truncate">
-          {fullName.split(" ")[0]}
-        </span>
+        <div className="hidden sm:block text-left">
+          <p className="text-sm font-semibold text-navy leading-tight">{fullName.split(" ")[0]}</p>
+          <p className="text-[10px] text-slate-400">{roleLabel}</p>
+        </div>
         <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-hover border border-slate-100 z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 max-h-[80vh] overflow-y-auto">
+          {/* User info header */}
           <div className="px-4 py-3 border-b border-slate-100">
-            <p className="text-sm font-semibold text-navy truncate">{fullName}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{roleLabel}</p>
+            <p className="text-sm font-bold text-navy">{fullName}</p>
+            <p className="text-xs text-slate-500">{roleLabel}</p>
           </div>
-          <div className="py-1">
-            <button onClick={() => { setOpen(false); navigate(dashPath); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-              <LayoutDashboard size={15} className="text-slate-400" /> Dashboard
-            </button>
-            <button onClick={() => { setOpen(false); navigate(profilePath); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-              <User size={15} className="text-slate-400" /> Meu perfil
-            </button>
+
+          {/* Dashboard link */}
+          <button onClick={() => go(dashPath)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <LayoutDashboard size={15} className="text-slate-400" /> Dashboard
+          </button>
+
+          {/* Sections */}
+          {sections.map((section, si) => (
+            <div key={si}>
+              <div className="px-4 pt-3 pb-1">
+                <p className="text-[10px] font-bold text-slate-400 tracking-wider">{section.label}</p>
+              </div>
+              {section.items.map((item, ii) => (
+                <button key={ii} onClick={() => go(item.path)}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                  <span className="text-slate-400">{item.icon}</span> {item.text}
+                </button>
+              ))}
+            </div>
+          ))}
+
+          {/* Switch Role (#46) */}
+          {(isPro || role === "client") && (
+            <div className="border-t border-slate-100 mt-1 pt-1">
+              <button onClick={() => {
+                const newRole = isPro ? "client" : "nurse";
+                localStorage.setItem("role", newRole);
+                toast.success(`Modo alterado para ${newRole === "client" ? "Cliente" : "Profissional"}`);
+                navigate(newRole === "client" ? "/dashboard/client" : "/dashboard/professional");
+                setOpen(false);
+              }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                <RefreshCw size={15} /> Mudar para {isPro ? "Cliente" : "Profissional"}
+              </button>
+            </div>
+          )}
+
+          {/* Logout */}
+          <div className="border-t border-slate-100 mt-1 pt-1">
             <button onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
-              <LogOut size={15} className="text-red-400" /> Sair
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">
+              <LogOut size={15} /> Sair
             </button>
           </div>
         </div>

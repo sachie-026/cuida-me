@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports, alerts, alice
+from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -201,6 +201,7 @@ app.include_router(holidays.router,     prefix="/api")
 app.include_router(reports.router,      prefix="/api")
 app.include_router(alerts.router,       prefix="/api")
 app.include_router(alice.router,        prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 @app.get("/")
 def root():
