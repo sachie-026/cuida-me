@@ -1,17 +1,35 @@
-import { useState } from "react";
-import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertCircle, Navigation, Timer } from "lucide-react";
 import CareBadges from "./CareBadges";
 import VerifiedBadge from "./VerifiedBadge";
 
 const STATUS_CONFIG = {
-  pending:    { label: "Pendente",      color: "bg-yellow-100 text-yellow-700" },
-  accepted:   { label: "Confirmado",    color: "bg-blue-100 text-blue-700" },
-  checked_in: { label: "Em andamento",  color: "bg-purple-100 text-purple-700" },
-  completed:  { label: "Concluído",     color: "bg-green-100 text-green-700" },
-  cancelled:  { label: "Cancelado",     color: "bg-red-100 text-red-600" },
+  pending:              { label: "Pendente",           color: "bg-yellow-100 text-yellow-700" },
+  accepted:             { label: "Confirmado",         color: "bg-blue-100 text-blue-700" },
+  professional_arrived: { label: "Profissional chegou",color: "bg-indigo-100 text-indigo-700" },
+  checked_in:           { label: "Em andamento",       color: "bg-purple-100 text-purple-700" },
+  completed:            { label: "Concluído",          color: "bg-green-100 text-green-700" },
+  cancelled:            { label: "Cancelado",          color: "bg-red-100 text-red-600" },
+  no_show:              { label: "No-show",            color: "bg-red-100 text-red-600" },
+  under_review:         { label: "Em análise",         color: "bg-amber-100 text-amber-700" },
 };
 
 const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) => {
+  const [countdown, setCountdown] = useState(null);
+
+  // #39: Countdown timer for pending requests
+  useEffect(() => {
+    if (booking?.status !== "pending" || !booking?.match_deadline) return;
+    const interval = setInterval(() => {
+      const remaining = (new Date(booking.match_deadline) - Date.now()) / 1000;
+      if (remaining <= 0) { setCountdown("Expirado"); clearInterval(interval); return; }
+      const h = Math.floor(remaining / 3600);
+      const m = Math.floor((remaining % 3600) / 60);
+      const s = Math.floor(remaining % 60);
+      setCountdown(`${h}h ${m.toString().padStart(2,"0")}m ${s.toString().padStart(2,"0")}s`);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [booking?.match_deadline, booking?.status]);
   if (!booking) return null;
 
   const cfg = STATUS_CONFIG[booking.status] || STATUS_CONFIG.pending;
@@ -31,6 +49,17 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
             <X size={16} className="text-slate-400" />
           </button>
         </div>
+
+        {/* #39: Countdown timer */}
+        {isPending && countdown && (
+          <div className={`flex items-center gap-2 p-3 rounded-xl mb-3 ${
+            countdown === "Expirado" ? "bg-red-50 border border-red-200" : "bg-amber-50 border border-amber-200"}`}>
+            <Timer size={14} className={countdown === "Expirado" ? "text-red-500" : "text-amber-500"} />
+            <span className={`text-sm font-semibold ${countdown === "Expirado" ? "text-red-600" : "text-amber-700"}`}>
+              {countdown === "Expirado" ? "Tempo esgotado" : `Tempo restante: ${countdown}`}
+            </span>
+          </div>
+        )}
 
         {/* Schedule */}
         <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
@@ -84,6 +113,14 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
             <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
               <AlertCircle size={11} /> Endereço completo disponível após aceitar
             </p>
+          )}
+          {/* #41: Maps navigation */}
+          {!isPending && booking.address && (
+            <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(booking.address)}`}
+              target="_blank" rel="noreferrer"
+              className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors w-fit">
+              <Navigation size={12} /> Abrir no Google Maps
+            </a>
           )}
         </div>
 

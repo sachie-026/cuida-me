@@ -318,7 +318,8 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
             extracted["coren_number"] = url_match.group(2)
 
     if not extracted["coren_number"]:
-        return {"success": False, "message": "Não foi possível extrair o número COREN do QR code.", "extracted": extracted}
+        return {"success": False, "message": "Não foi possível extrair o número COREN do QR code.", "extracted": extracted,
+                "requires_manual_review": True, "notification": "Admin: verificação automática falhou — revisão manual necessária."}
 
     # Try to match with a professional in our system
     match = None
@@ -346,3 +347,41 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
         "extracted": extracted,
         "message": f"COREN {extracted['coren_number']} extraído com sucesso, mas nenhum profissional correspondente encontrado no sistema.",
     }
+
+# ── #32: Document Access Logging ───────────────────────────────────────────────
+
+class DocumentAccessLog(BaseModel):
+    admin_name: str
+    admin_id: str
+    action: str  # "viewed" | "downloaded"
+    doc_id: str
+    doc_type: str
+    professional_id: str
+    timestamp: str
+
+_doc_access_log = []  # In production, store in DB table
+
+@router.post("/documents/{doc_id}/log-access")
+def log_doc_access(doc_id: str, action: str = "viewed", db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """Log every document access by admin."""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    from datetime import datetime, timezone
+    entry = {
+        "admin_name": current.full_name,
+        "admin_id": current.id,
+        "action": action,
+        "doc_id": doc_id,
+        "doc_type": doc.doc_type,
+        "user_id": doc.user_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _doc_access_log.append(entry)
+    return {"logged": True, **entry}
+
+@router.get("/documents/access-log")
+def get_doc_access_log(_=Depends(require_admin)):
+    """Return document access audit log."""
+    return _doc_access_log[-100:]  # Last 100 entries

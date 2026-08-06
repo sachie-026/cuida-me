@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, timezone
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Assessment, Booking, Professional, BookingStatus, User
@@ -32,11 +33,38 @@ def list_ratings(
             (Assessment.reviewer_id == current.id) |
             (Assessment.reviewee_id == current.id)
         )
+        # #42: Only show reviews where both parties have submitted OR 7 days passed
+        # For now, show own reviews always; others only if counter-review exists
     if reviewer_id:
         q = q.filter(Assessment.reviewer_id == reviewer_id)
     if reviewee_id:
         q = q.filter(Assessment.reviewee_id == reviewee_id)
-    return q.order_by(Assessment.created_at.desc()).all()
+    ratings = q.order_by(Assessment.created_at.desc()).all()
+
+    # #42: Mark visibility — hide detailed review until both submitted
+    result = []
+    for r in ratings:
+        data = {
+            "id": r.id, "booking_id": r.booking_id, "reviewer_id": r.reviewer_id,
+            "reviewee_id": r.reviewee_id, "rating": r.rating, "comment": r.comment,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        # Check if counter-review exists
+        counter = db.query(Assessment).filter(
+            Assessment.booking_id == r.booking_id,
+            Assessment.reviewer_id == r.reviewee_id,
+        ).first()
+        booking = db.query(Booking).filter(Booking.id == r.booking_id).first()
+        checkout = booking.actual_checkout if booking else None
+        days_passed = (datetime.now(timezone.utc) - checkout.replace(tzinfo=timezone.utc)).days if checkout else 999
+
+        if counter or days_passed >= 7 or r.reviewer_id == current.id or current.role.value == "admin":
+            data["visible"] = True
+        else:
+            data["visible"] = False
+            data["comment"] = None  # Hide comment until both reviewed
+        result.append(data)
+    return result
 
 @router.post("", status_code=201)
 @router.post("/", status_code=201, include_in_schema=False)
@@ -49,6 +77,21 @@ def create_rating(body: RatingCreate, db: Session = Depends(get_db), current: Us
         raise HTTPException(404, "Booking not found")
     if booking.status != BookingStatus.completed:
         raise HTTPException(400, "Can only rate completed bookings")
+
+    # #42: 7-day evaluation window
+    if booking.actual_checkout:
+        checkout_time = booking.actual_checkout.replace(tzinfo=timezone.utc) if booking.actual_checkout.tzinfo is None else booking.actual_checkout
+        days_since = (datetime.now(timezone.utc) - checkout_time).days
+        if days_since > 7:
+            raise HTTPException(400, "O prazo de 7 dias para avaliação expirou.")
+
+    # Prevent duplicate rating from same reviewer for same booking
+    existing = db.query(Assessment).filter(
+        Assessment.booking_id == body.booking_id,
+        Assessment.reviewer_id == current.id,
+    ).first()
+    if existing:
+        raise HTTPException(400, "Você já avaliou este atendimento.")
 
     # Fix 2 — reviewer_id always from JWT, never from request body
     reviewer_id = current.id

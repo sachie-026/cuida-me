@@ -21,18 +21,25 @@ class DocStatus(str, enum.Enum):
     rejected = "rejected"
 
 class BookingStatus(str, enum.Enum):
-    pending    = "pending"
-    accepted   = "accepted"
-    checked_in = "checked_in"
-    completed  = "completed"
-    cancelled  = "cancelled"
+    pending              = "pending"        # waiting for a professional to accept
+    accepted             = "accepted"       # professional accepted (confirmed)
+    professional_arrived = "professional_arrived"  # GPS check-in done, waiting to start
+    checked_in           = "checked_in"     # in progress (service started)
+    completed            = "completed"      # service finished
+    cancelled            = "cancelled"      # cancelled by client or professional
+    no_show              = "no_show"        # client or professional no-show (use who field)
+    under_review         = "under_review"   # paused for admin review (use review_type field)
 
 class PaymentStatus(str, enum.Enum):
-    pending   = "pending"
-    held      = "held"       # escrow
-    released  = "released"   # paid out to professional
-    refunded  = "refunded"
-    failed    = "failed"
+    pending           = "pending"           # awaiting payment
+    authorized        = "authorized"        # pre-auth/hold on card
+    received          = "received"          # PIX payment received
+    held              = "held"              # escrow — held by platform
+    on_hold           = "on_hold"           # dispute or fraud review
+    released          = "released"          # paid out to professional
+    refunded          = "refunded"          # full refund
+    partially_refunded = "partially_refunded"
+    failed            = "failed"
 
 class AvailabilityType(str, enum.Enum):
     available = "available"
@@ -195,6 +202,9 @@ class Booking(Base):
     cancel_reason   = Column(Text, nullable=True)
     cancelled_by    = Column(String, nullable=True)   # "client" | "professional"
     cancelled_at    = Column(DateTime(timezone=True), nullable=True)
+    # Unified status detail fields
+    no_show_who     = Column(String, nullable=True)  # "client" or "professional"
+    review_type     = Column(String, nullable=True)  # "cancellation","completion","early_termination","gps_exception","serious_complaint"
     # Rescheduling
     reschedule_new_start = Column(DateTime(timezone=True), nullable=True)
     reschedule_new_end   = Column(DateTime(timezone=True), nullable=True)
@@ -221,6 +231,17 @@ class Booking(Base):
     # Early termination
     early_termination = Column(Boolean, default=False)
     early_termination_reason = Column(Text, nullable=True)
+    # GPS Exception
+    gps_exception_reason   = Column(Text, nullable=True)
+    gps_exception_evidence = Column(String, nullable=True)
+    # GPS Fraud
+    gps_fraud_detected = Column(Boolean, default=False)
+    gps_fraud_flags    = Column(JSON, default=list)
+    # Service Extension
+    extension_new_end       = Column(DateTime(timezone=True), nullable=True)
+    extension_requested_by  = Column(String, nullable=True)
+    extension_additional_cost = Column(Float, nullable=True)
+    extension_status        = Column(String, nullable=True)  # requested, confirmed, declined
     # Smart matching
     match_deadline   = Column(DateTime(timezone=True), nullable=True)
     match_batch      = Column(Integer, nullable=True)

@@ -429,7 +429,7 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
     booking.checkin_lat = body.latitude
     booking.checkin_lng = body.longitude
     booking.actual_checkin = datetime.now(timezone.utc)
-    booking.status = BookingStatus.checked_in
+    booking.status = BookingStatus.professional_arrived
     booking.checkin_flagged = False
 
     # Validate proximity if patient has coordinates
@@ -461,11 +461,11 @@ def start_service(booking_id: str, db: Session = Depends(get_db), current: User 
     prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
     if not prof or prof.user_id != current.id:
         raise HTTPException(403, "Only the assigned professional can start service")
-    if booking.status.value != "checked_in":
+    if booking.status.value not in ("checked_in", "professional_arrived"):
         raise HTTPException(400, "Check-in necessário antes de iniciar o serviço")
 
     booking.service_started_at = datetime.now(timezone.utc)
-    # Status stays checked_in (which means "in progress") — consistent with existing flow
+    booking.status = BookingStatus.checked_in
     db.commit()
     return {"booking_id": booking_id, "service_started": True, "started_at": booking.service_started_at.isoformat(),
             "message": "Serviço iniciado. Bom atendimento!"}
@@ -489,10 +489,12 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
     booking.actual_checkout = datetime.now(timezone.utc)
     booking.status = BookingStatus.completed
 
-    # Calculate actual duration
+    # #14: Calculate actual duration for audit, but payment uses SCHEDULED time
     if booking.actual_checkin:
         actual_minutes = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
         booking.actual_duration_minutes = round(actual_minutes)
+    # Payment is always based on scheduled_start → scheduled_end (not GPS timestamps)
+    # Only Early Termination or Real-Time Extension can change the paid duration
 
     # Update professional stats
     prof.completed_count = (prof.completed_count or 0) + 1
@@ -545,10 +547,29 @@ def report_client_no_show(booking_id: str, db: Session = Depends(get_db), curren
 # ── #17: Early Service Termination ────────────────────────────────────────────
 
 class EarlyTerminationRequest(BaseModel):
-    reason:    str
-    is_serious: bool = False  # triggers dispute + payment hold
-    latitude:  Optional[float] = None
-    longitude: Optional[float] = None
+    reason:      str
+    reason_category: Optional[str] = None  # "client_general","client_serious","professional"
+    detail:      Optional[str] = None
+    is_serious:  bool = False  # triggers dispute + payment hold
+    evidence_url: Optional[str] = None
+    latitude:    Optional[float] = None
+    longitude:   Optional[float] = None
+
+CLIENT_TERMINATION_REASONS = [
+    "Cuidado não é mais necessário", "Paciente hospitalizado", "Decisão familiar",
+    "Conflito de agenda", "Motivos financeiros", "Paciente faleceu", "Outro",
+]
+CLIENT_SERIOUS_REASONS = [
+    "Negligência profissional", "Prática clínica insegura", "Qualidade de cuidado ruim",
+    "Conduta inadequada", "Comportamento desrespeitoso", "Profissional sob efeito de substâncias",
+    "Profissional abandonou o serviço", "Profissional recusou deveres acordados",
+    "Comportamento fraudulento", "Conduta criminosa", "Violação ética grave", "Outra queixa grave",
+]
+PROFESSIONAL_TERMINATION_REASONS = [
+    "Emergência médica", "Emergência pessoal", "Ambiente de trabalho inseguro",
+    "Agressão do cliente", "Abuso verbal", "Violência física",
+    "Condições inseguras", "Cliente solicitou encerramento", "Outro",
+]
 
 MINIMUM_BILLABLE_MINUTES = 120  # 2 hours
 
@@ -577,7 +598,7 @@ def terminate_early(booking_id: str, body: EarlyTerminationRequest, db: Session 
     actual_minutes = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
     booking.actual_duration_minutes = max(round(actual_minutes), MINIMUM_BILLABLE_MINUTES)
     booking.early_termination = True
-    booking.early_termination_reason = body.reason
+    booking.early_termination_reason = f"[{body.reason_category or 'general'}] {body.reason}" + (f": {body.detail}" if body.detail else "")
 
     if body.is_serious:
         booking.has_dispute = True
@@ -916,3 +937,263 @@ def replace_professional(booking_id: str, db: Session = Depends(get_db), _=Depen
         "replacement": {"id": best[1].id, "name": best[2].full_name, "reliability": best[1].reliability_score},
         "message": f"Profissional substituto encontrado: {best[2].full_name}",
     }
+
+# ── #8: Exceptional Circumstances ──────────────────────────────────────────────
+
+EXCEPTIONAL_REASONS = [
+    "Emergência médica", "Hospitalização", "Falecimento de familiar direto",
+    "Desastre natural", "Emergência governamental", "Outro (aprovação do admin)",
+]
+
+@router.post("/{booking_id}/exceptional-cancel")
+def exceptional_cancel(booking_id: str, reason: str = "Emergência médica", db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Cancel under exceptional circumstances — goes to admin review."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    booking.status = BookingStatus.under_review
+    booking.review_type = "cancellation"
+    booking.cancel_reason = f"[EXCEPCIONAL] {reason}"
+    booking.cancelled_by = current.role.value if hasattr(current.role, 'value') else "client"
+    db.commit()
+    return {"booking_id": booking_id, "status": "under_review", "review_type": "cancellation",
+            "message": "Cancelamento sob análise. Um administrador irá revisar seu caso."}
+
+# ── #12: GPS Exception Request ─────────────────────────────────────────────────
+
+class GPSExceptionRequest(BaseModel):
+    reason: str
+    evidence_url: Optional[str] = None
+
+@router.post("/{booking_id}/gps-exception")
+def submit_gps_exception(booking_id: str, body: GPSExceptionRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Submit GPS exception when check-in/out fails due to technical issues."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    booking.status = BookingStatus.under_review
+    booking.review_type = "gps_exception"
+    booking.gps_exception_reason = body.reason
+    booking.gps_exception_evidence = body.evidence_url
+    db.commit()
+    return {"booking_id": booking_id, "status": "under_review", "review_type": "gps_exception",
+            "message": "Exceção GPS enviada. Aguardando análise do administrador."}
+
+# ── #13: GPS Fraud Detection ──────────────────────────────────────────────────
+
+def _check_gps_fraud(booking, db):
+    """Auto-detect suspicious GPS activity and flag booking."""
+    flags = []
+
+    # Check if check-in immediately followed by checkout (< 5 min)
+    if booking.actual_checkin and booking.actual_checkout:
+        elapsed = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
+        if elapsed < 5:
+            flags.append("check_in_checkout_too_fast")
+
+    # Check if checkin distance is too far
+    if booking.checkin_flagged:
+        flags.append("checkin_outside_radius")
+
+    if flags:
+        booking.gps_fraud_flags = flags
+        booking.gps_fraud_detected = True
+        # Don't auto-cancel, just flag for admin
+        return True
+    return False
+
+# ── #37: Late Arrival Logic ───────────────────────────────────────────────────
+
+LATE_ARRIVAL_TOLERANCE_MINUTES = 10
+
+@router.post("/{booking_id}/check-late-arrival")
+def check_late_arrival(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Check if professional arrived late (>10 min after scheduled start)."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    if not booking.actual_checkin or not booking.scheduled_start:
+        return {"late": False}
+
+    scheduled = booking.scheduled_start.replace(tzinfo=timezone.utc) if booking.scheduled_start.tzinfo is None else booking.scheduled_start
+    actual = booking.actual_checkin.replace(tzinfo=timezone.utc) if booking.actual_checkin.tzinfo is None else booking.actual_checkin
+    delay_minutes = (actual - scheduled).total_seconds() / 60
+
+    if delay_minutes > LATE_ARRIVAL_TOLERANCE_MINUTES:
+        booking.late_arrival = True
+
+        # Update professional's late arrival count
+        prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        if prof:
+            # Count late arrivals in last 90 days
+            ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
+            late_count = db.query(Booking).filter(
+                Booking.professional_id == booking.professional_id,
+                Booking.late_arrival == True,
+                Booking.actual_checkin > ninety_days_ago,
+            ).count()
+
+            # 1st-2nd: internal reliability only
+            if late_count <= 2:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - 3)
+            # 3rd+: also affects public rating
+            else:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - 5)
+                if prof.rating_avg and prof.rating_avg > 0:
+                    prof.rating_avg = max(1.0, (prof.rating_avg or 5.0) - 0.1)
+
+        db.commit()
+        return {"late": True, "delay_minutes": round(delay_minutes), "penalty_level": "internal" if late_count <= 2 else "public"}
+
+    return {"late": False, "delay_minutes": round(delay_minutes)}
+
+# ── #38: Cancellation Audit Log ────────────────────────────────────────────────
+
+@router.get("/{booking_id}/audit-log")
+def get_booking_audit(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Return full audit log for a booking."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    # Only admin or booking participants can view
+    if current.role.value != "admin":
+        prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        if booking.user_id != current.id and (not prof or prof.user_id != current.id):
+            raise HTTPException(403, "Access denied")
+
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+
+    return {
+        "booking_id": booking.id,
+        "client_id": booking.user_id,
+        "professional_id": booking.professional_id,
+        "status": booking.status.value if hasattr(booking.status, 'value') else str(booking.status),
+        "no_show_who": booking.no_show_who,
+        "review_type": booking.review_type,
+        "scheduled_start": booking.scheduled_start.isoformat() if booking.scheduled_start else None,
+        "scheduled_end": booking.scheduled_end.isoformat() if booking.scheduled_end else None,
+        "actual_checkin": booking.actual_checkin.isoformat() if booking.actual_checkin else None,
+        "actual_checkout": booking.actual_checkout.isoformat() if booking.actual_checkout else None,
+        "service_started_at": booking.service_started_at.isoformat() if booking.service_started_at else None,
+        "actual_duration_minutes": booking.actual_duration_minutes,
+        "cancelled_by": booking.cancelled_by,
+        "cancel_reason": booking.cancel_reason,
+        "cancelled_at": booking.cancelled_at.isoformat() if booking.cancelled_at else None,
+        "late_arrival": booking.late_arrival,
+        "checkin_flagged": booking.checkin_flagged,
+        "checkin_distance": booking.checkin_distance,
+        "gps_fraud_detected": getattr(booking, 'gps_fraud_detected', False),
+        "early_termination": booking.early_termination,
+        "early_termination_reason": booking.early_termination_reason,
+        "has_dispute": booking.has_dispute,
+        "dispute_reason": booking.dispute_reason,
+        "emergency_name": booking.emergency_name,
+        "emergency_phone": booking.emergency_phone,
+        "reschedule_status": booking.reschedule_status,
+        "match_batch": booking.match_batch,
+        "payment": {
+            "amount": payment.amount if payment else None,
+            "commission": payment.commission if payment else None,
+            "pro_payout": payment.pro_payout if payment else None,
+            "method": payment.method if payment else None,
+            "status": payment.status.value if payment and hasattr(payment.status, 'value') else None,
+            "refund_amount": payment.refund_amount if payment else None,
+        } if payment else None,
+        "created_at": booking.created_at.isoformat() if booking.created_at else None,
+    }
+
+# ── #9: Real-Time Service Extension ───────────────────────────────────────────
+
+class ExtensionRequest(BaseModel):
+    new_end_time:  datetime
+    requested_by:  str  # "client" or "professional"
+
+@router.post("/{booking_id}/request-extension")
+def request_extension(booking_id: str, body: ExtensionRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Request to extend an in-progress booking. Requires mutual confirmation."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if booking.status.value != "checked_in":
+        raise HTTPException(400, "Extensão só é possível para atendimentos em andamento")
+
+    # Calculate additional time and cost
+    current_end = booking.scheduled_end
+    new_end = body.new_end_time
+    if new_end <= current_end:
+        raise HTTPException(400, "Novo horário deve ser após o término atual")
+
+    additional_minutes = (new_end - current_end).total_seconds() / 60
+
+    # Calculate additional cost using pricing engine (no new Initial Fee)
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+    role = user.role.value if user and hasattr(user.role, 'value') else "caregiver"
+
+    from app.utils.pricing import _count_day_night_minutes, HOUR_RATES
+    split = _count_day_night_minutes(current_end, new_end)
+    additional_day = round(split["day"] / 60 * HOUR_RATES[role]["day"], 2)
+    additional_night = round(split["night"] / 60 * HOUR_RATES[role]["night"], 2)
+    additional_cost = round(additional_day + additional_night, 2)
+
+    # Check for schedule conflict
+    conflicting = db.query(Booking).filter(
+        Booking.professional_id == booking.professional_id,
+        Booking.id != booking_id,
+        Booking.status.in_(["accepted", "checked_in", "professional_arrived"]),
+        Booking.scheduled_start < new_end,
+        Booking.scheduled_end > current_end,
+    ).first()
+
+    booking.extension_new_end = new_end
+    booking.extension_requested_by = body.requested_by
+    booking.extension_additional_cost = additional_cost
+    booking.extension_status = "requested"
+    db.commit()
+
+    return {
+        "booking_id": booking_id,
+        "extension_status": "requested",
+        "additional_minutes": round(additional_minutes),
+        "additional_cost": additional_cost,
+        "has_conflict": conflicting is not None,
+        "conflict_warning": "⚠️ Profissional tem outro atendimento agendado após este horário." if conflicting else None,
+        "message": "Extensão solicitada. Aguardando confirmação da outra parte.",
+    }
+
+@router.patch("/{booking_id}/extension/confirm")
+def confirm_extension(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Other party confirms the extension request."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if booking.extension_status != "requested":
+        raise HTTPException(400, "Nenhuma extensão pendente")
+
+    booking.scheduled_end = booking.extension_new_end
+    booking.extension_status = "confirmed"
+    # Add cost to booking total
+    if booking.extension_additional_cost:
+        booking.total_price = (booking.total_price or 0) + booking.extension_additional_cost
+    db.commit()
+
+    return {
+        "booking_id": booking_id, "extension_status": "confirmed",
+        "new_end": booking.scheduled_end.isoformat(),
+        "new_total": booking.total_price,
+        "message": "Extensão confirmada. Horário e valor atualizados.",
+    }
+
+@router.patch("/{booking_id}/extension/decline")
+def decline_extension(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Other party declines the extension."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    booking.extension_status = "declined"
+    db.commit()
+    return {"booking_id": booking_id, "extension_status": "declined", "message": "Extensão recusada."}
