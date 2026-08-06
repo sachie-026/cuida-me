@@ -515,6 +515,10 @@ const NewBooking = () => {
               </div>
             )}
 
+            <p className="text-[10px] text-slate-400 mb-3 text-center">
+              A CuidaU é uma plataforma de tecnologia. Não fornece materiais médicos, medicamentos ou equipamentos. O cliente deve garantir que todos os materiais necessários estejam disponíveis antes do atendimento.
+            </p>
+
             <button onClick={handleConfirm} disabled={submitting}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60">
               <CheckCircle size={16}/>
