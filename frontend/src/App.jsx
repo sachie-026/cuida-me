@@ -25,6 +25,11 @@ import Availability          from "./pages/professional/Availability";
 import Alerts                from "./pages/alerts/Alerts";
 import AliceChatWidget       from "./components/common/AliceChatWidget";
 import SOSButton             from "./components/common/SOSButton";
+import InvitePage            from "./pages/InvitePage";
+import EarningsPage          from "./pages/professional/Earnings";
+import PaymentMethodsPage    from "./pages/client/PaymentMethods";
+import MyActivity            from "./pages/client/MyActivity";
+import AdminSettings         from "./pages/admin/Settings";
 import AdminDashboard        from "./pages/admin/Dashboard";
 import Messages              from "./pages/messages/Messages";
 
@@ -65,6 +70,11 @@ function App() {
           <Route path="/profile/professional"   element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalProfile /></ProtectedRoute>} />
           <Route path="/availability"           element={<ProtectedRoute allowedRoles={PRO_ROLES}><Availability /></ProtectedRoute>} />
           <Route path="/alerts"                element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
+          <Route path="/invite"                element={<ProtectedRoute><InvitePage /></ProtectedRoute>} />
+          <Route path="/activity"              element={<ProtectedRoute><MyActivity /></ProtectedRoute>} />
+          <Route path="/payment-methods"       element={<ProtectedRoute><PaymentMethodsPage /></ProtectedRoute>} />
+          <Route path="/earnings"              element={<ProtectedRoute allowedRoles={PRO_ROLES}><EarningsPage /></ProtectedRoute>} />
+          <Route path="/admin/settings"        element={<ProtectedRoute allowedRoles={["admin"]}><AdminSettings /></ProtectedRoute>} />
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminDashboard /></ProtectedRoute>} />
