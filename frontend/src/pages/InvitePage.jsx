@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Share2, Copy, CheckCircle, MessageCircle } from "lucide-react";
 import toast from "react-hot-toast";
-import Logo from "../../components/common/Logo";
-import ProfileMenu from "../../components/common/ProfileMenu";
+import Logo from "../components/common/Logo";
+import ProfileMenu from "../components/common/ProfileMenu";
 
 const InvitePage = () => {
   const userId = localStorage.getItem("user_id") || "";
