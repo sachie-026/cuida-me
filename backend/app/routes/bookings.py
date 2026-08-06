@@ -547,10 +547,29 @@ def report_client_no_show(booking_id: str, db: Session = Depends(get_db), curren
 # ── #17: Early Service Termination ────────────────────────────────────────────
 
 class EarlyTerminationRequest(BaseModel):
-    reason:    str
-    is_serious: bool = False  # triggers dispute + payment hold
-    latitude:  Optional[float] = None
-    longitude: Optional[float] = None
+    reason:      str
+    reason_category: Optional[str] = None  # "client_general","client_serious","professional"
+    detail:      Optional[str] = None
+    is_serious:  bool = False  # triggers dispute + payment hold
+    evidence_url: Optional[str] = None
+    latitude:    Optional[float] = None
+    longitude:   Optional[float] = None
+
+CLIENT_TERMINATION_REASONS = [
+    "Cuidado não é mais necessário", "Paciente hospitalizado", "Decisão familiar",
+    "Conflito de agenda", "Motivos financeiros", "Paciente faleceu", "Outro",
+]
+CLIENT_SERIOUS_REASONS = [
+    "Negligência profissional", "Prática clínica insegura", "Qualidade de cuidado ruim",
+    "Conduta inadequada", "Comportamento desrespeitoso", "Profissional sob efeito de substâncias",
+    "Profissional abandonou o serviço", "Profissional recusou deveres acordados",
+    "Comportamento fraudulento", "Conduta criminosa", "Violação ética grave", "Outra queixa grave",
+]
+PROFESSIONAL_TERMINATION_REASONS = [
+    "Emergência médica", "Emergência pessoal", "Ambiente de trabalho inseguro",
+    "Agressão do cliente", "Abuso verbal", "Violência física",
+    "Condições inseguras", "Cliente solicitou encerramento", "Outro",
+]
 
 MINIMUM_BILLABLE_MINUTES = 120  # 2 hours
 
@@ -579,7 +598,7 @@ def terminate_early(booking_id: str, body: EarlyTerminationRequest, db: Session 
     actual_minutes = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
     booking.actual_duration_minutes = max(round(actual_minutes), MINIMUM_BILLABLE_MINUTES)
     booking.early_termination = True
-    booking.early_termination_reason = body.reason
+    booking.early_termination_reason = f"[{body.reason_category or 'general'}] {body.reason}" + (f": {body.detail}" if body.detail else "")
 
     if body.is_serious:
         booking.has_dispute = True
@@ -1086,3 +1105,95 @@ def get_booking_audit(booking_id: str, db: Session = Depends(get_db), current: U
         } if payment else None,
         "created_at": booking.created_at.isoformat() if booking.created_at else None,
     }
+
+# ── #9: Real-Time Service Extension ───────────────────────────────────────────
+
+class ExtensionRequest(BaseModel):
+    new_end_time:  datetime
+    requested_by:  str  # "client" or "professional"
+
+@router.post("/{booking_id}/request-extension")
+def request_extension(booking_id: str, body: ExtensionRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Request to extend an in-progress booking. Requires mutual confirmation."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if booking.status.value != "checked_in":
+        raise HTTPException(400, "Extensão só é possível para atendimentos em andamento")
+
+    # Calculate additional time and cost
+    current_end = booking.scheduled_end
+    new_end = body.new_end_time
+    if new_end <= current_end:
+        raise HTTPException(400, "Novo horário deve ser após o término atual")
+
+    additional_minutes = (new_end - current_end).total_seconds() / 60
+
+    # Calculate additional cost using pricing engine (no new Initial Fee)
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+    role = user.role.value if user and hasattr(user.role, 'value') else "caregiver"
+
+    from app.utils.pricing import _count_day_night_minutes, HOUR_RATES
+    split = _count_day_night_minutes(current_end, new_end)
+    additional_day = round(split["day"] / 60 * HOUR_RATES[role]["day"], 2)
+    additional_night = round(split["night"] / 60 * HOUR_RATES[role]["night"], 2)
+    additional_cost = round(additional_day + additional_night, 2)
+
+    # Check for schedule conflict
+    conflicting = db.query(Booking).filter(
+        Booking.professional_id == booking.professional_id,
+        Booking.id != booking_id,
+        Booking.status.in_(["accepted", "checked_in", "professional_arrived"]),
+        Booking.scheduled_start < new_end,
+        Booking.scheduled_end > current_end,
+    ).first()
+
+    booking.extension_new_end = new_end
+    booking.extension_requested_by = body.requested_by
+    booking.extension_additional_cost = additional_cost
+    booking.extension_status = "requested"
+    db.commit()
+
+    return {
+        "booking_id": booking_id,
+        "extension_status": "requested",
+        "additional_minutes": round(additional_minutes),
+        "additional_cost": additional_cost,
+        "has_conflict": conflicting is not None,
+        "conflict_warning": "⚠️ Profissional tem outro atendimento agendado após este horário." if conflicting else None,
+        "message": "Extensão solicitada. Aguardando confirmação da outra parte.",
+    }
+
+@router.patch("/{booking_id}/extension/confirm")
+def confirm_extension(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Other party confirms the extension request."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if booking.extension_status != "requested":
+        raise HTTPException(400, "Nenhuma extensão pendente")
+
+    booking.scheduled_end = booking.extension_new_end
+    booking.extension_status = "confirmed"
+    # Add cost to booking total
+    if booking.extension_additional_cost:
+        booking.total_price = (booking.total_price or 0) + booking.extension_additional_cost
+    db.commit()
+
+    return {
+        "booking_id": booking_id, "extension_status": "confirmed",
+        "new_end": booking.scheduled_end.isoformat(),
+        "new_total": booking.total_price,
+        "message": "Extensão confirmada. Horário e valor atualizados.",
+    }
+
+@router.patch("/{booking_id}/extension/decline")
+def decline_extension(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Other party declines the extension."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    booking.extension_status = "declined"
+    db.commit()
+    return {"booking_id": booking_id, "extension_status": "declined", "message": "Extensão recusada."}

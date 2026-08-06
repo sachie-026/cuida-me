@@ -237,6 +237,11 @@ class Booking(Base):
     # GPS Fraud
     gps_fraud_detected = Column(Boolean, default=False)
     gps_fraud_flags    = Column(JSON, default=list)
+    # Service Extension
+    extension_new_end       = Column(DateTime(timezone=True), nullable=True)
+    extension_requested_by  = Column(String, nullable=True)
+    extension_additional_cost = Column(Float, nullable=True)
+    extension_status        = Column(String, nullable=True)  # requested, confirmed, declined
     # Smart matching
     match_deadline   = Column(DateTime(timezone=True), nullable=True)
     match_batch      = Column(Integer, nullable=True)
