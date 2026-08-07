@@ -385,3 +385,72 @@ def log_doc_access(doc_id: str, action: str = "viewed", db: Session = Depends(ge
 def get_doc_access_log(_=Depends(require_admin)):
     """Return document access audit log."""
     return _doc_access_log[-100:]  # Last 100 entries
+# ── #34: Request New Documents ─────────────────────────────────────────────────
+
+class DocRequestPayload(BaseModel):
+    user_id:  str
+    doc_type: str
+    reason:   str
+
+@router.post("/documents/request")
+def request_new_document(body: DocRequestPayload, db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """Admin requests a specific document from a user. Creates a placeholder pending doc."""
+    user = db.query(User).filter(User.id == body.user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    # Check if doc already exists
+    existing = db.query(Document).filter(
+        Document.user_id == body.user_id,
+        Document.doc_type == body.doc_type,
+    ).first()
+
+    if existing:
+        # Reset to pending with new request reason
+        existing.status = DocStatus.pending
+        existing.rejection_reason = f"[SOLICITADO] {body.reason}"
+        existing.file_url = None
+        db.commit()
+        doc_id = existing.id
+    else:
+        # Create placeholder doc entry
+        doc = Document(
+            user_id=body.user_id,
+            doc_type=body.doc_type,
+            status=DocStatus.pending,
+            rejection_reason=f"[SOLICITADO] {body.reason}",
+        )
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        doc_id = doc.id
+
+    # Revoke verification while waiting
+    role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    if role == "client":
+        user.is_verified = False
+    else:
+        prof = db.query(Professional).filter(Professional.user_id == body.user_id).first()
+        if prof:
+            prof.approval_status = DocStatus.pending
+    db.commit()
+
+    # Create notification for user
+    try:
+        from app.routes.notifications import create_notification
+        create_notification(
+            user_id=body.user_id,
+            type="system",
+            title="Documento solicitado",
+            message=f"A equipe CuidaU solicitou o documento '{body.doc_type}'. Motivo: {body.reason}. Acesse seu perfil para enviar.",
+        )
+    except:
+        pass
+
+    return {
+        "doc_id": doc_id,
+        "user_id": body.user_id,
+        "doc_type": body.doc_type,
+        "reason": body.reason,
+        "message": f"Documento '{body.doc_type}' solicitado. Usuário será notificado.",
+    }

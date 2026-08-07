@@ -122,9 +122,16 @@ def get_nearby(
                 continue
             role = user.role.value if hasattr(user.role, 'value') else str(user.role)
             prof_services = prof.services_offered or []
-            if professional_can_perform(role, required_services) and \
-               any(s in prof_services for s in required_services):
-                # Enrich with user data for display
+
+            # #31: Check primary role AND additional COREN categories
+            can_perform = professional_can_perform(role, required_services)
+            if not can_perform and prof.additional_categories:
+                for cat in prof.additional_categories:
+                    if professional_can_perform(cat.get("role", ""), required_services):
+                        can_perform = True
+                        break
+
+            if can_perform and any(s in prof_services for s in required_services):
                 filtered.append({
                     **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
                     "full_name": user.full_name,
@@ -202,3 +209,40 @@ def get_specialties(role: str):
     if role not in SPECIALTIES_BY_ROLE:
         raise HTTPException(400, f"Invalid role. Must be one of: {list(SPECIALTIES_BY_ROLE.keys())}")
     return {"role": role, "specialties": SPECIALTIES_BY_ROLE[role]}
+# ── #40: Distance/Travel Time Calculation ──────────────────────────────────────
+
+import math
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Calculate distance in km between two GPS coordinates."""
+    R = 6371
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+class DistanceRequest(BaseModel):
+    professional_id: str
+    client_lat:      float
+    client_lng:      float
+
+@router.post("/distance")
+def calculate_distance(body: DistanceRequest, db: Session = Depends(get_db)):
+    """Calculate distance between professional and client location."""
+    prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
+    if not prof:
+        raise HTTPException(404, "Professional not found")
+
+    if not prof.lat or not prof.lng:
+        return {"distance_km": None, "travel_time_minutes": None, "message": "Localização do profissional não disponível."}
+
+    dist = round(_haversine_km(prof.lat, prof.lng, body.client_lat, body.client_lng), 1)
+    # Estimate travel time: avg 30 km/h in urban Brazil
+    travel_min = round(dist / 30 * 60)
+
+    return {
+        "distance_km": dist,
+        "travel_time_minutes": travel_min,
+        "estimated_arrival": f"~{travel_min} min",
+    }

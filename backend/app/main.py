@@ -28,6 +28,7 @@ def run_migrations():
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS no_shows INTEGER DEFAULT 0",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS completed_count INTEGER DEFAULT 0",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS additional_categories JSON DEFAULT '[]'",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reschedule_new_start TIMESTAMPTZ",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reschedule_new_end TIMESTAMPTZ",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reschedule_status VARCHAR",
