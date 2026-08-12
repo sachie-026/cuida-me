@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 
 const ProfileMenu = () => {
   const [open, setOpen] = useState(false);
+  const [showSOS, setShowSOS] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
 
@@ -57,6 +58,7 @@ const ProfileMenu = () => {
       { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
       { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
       { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
+      { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
     ]},
   ];
 
@@ -82,6 +84,7 @@ const ProfileMenu = () => {
       { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
       { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
       { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
+      { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
     ]},
   ];
 
@@ -124,9 +127,10 @@ const ProfileMenu = () => {
                 <p className="text-[10px] font-bold text-slate-400 tracking-wider">{section.label}</p>
               </div>
               {section.items.map((item, ii) => (
-                <button key={ii} onClick={() => go(item.path)}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
-                  <span className="text-slate-400">{item.icon}</span> {item.text}
+                <button key={ii} onClick={() => item.action === "sos" ? setShowSOS(true) : go(item.path)}
+                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors ${
+                    item.action === "sos" ? "text-red-500 hover:bg-red-50" : "text-slate-600 hover:bg-slate-50"}`}>
+                  <span className={item.action === "sos" ? "text-red-400" : "text-slate-400"}>{item.icon}</span> {item.text}
                 </button>
               ))}
             </div>
@@ -154,6 +158,26 @@ const ProfileMenu = () => {
               className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">
               <LogOut size={15} /> Sair
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* SOS Emergency Modal */}
+      {showSOS && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowSOS(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-navy text-lg flex items-center gap-2"><Shield size={20} className="text-red-500"/> Assistência de Emergência</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-4">Se esta é uma emergência com risco de vida, entre em contato imediatamente.</p>
+            <div className="space-y-2 mb-4">
+              {[{n:"192",l:"SAMU",e:"🚑"},{n:"193",l:"Bombeiros",e:"🚒"},{n:"190",l:"Polícia Militar",e:"👮"}].map(e=>(
+                <a key={e.n} href={`tel:${e.n}`} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-red-300 hover:bg-red-50 transition-colors">
+                  <span className="flex items-center gap-3"><span className="text-xl">{e.e}</span><span className="text-sm font-semibold text-navy">{e.l} — {e.n}</span></span>
+                </a>
+              ))}
+            </div>
+            <button onClick={() => setShowSOS(false)} className="btn-outline w-full">Fechar</button>
           </div>
         </div>
       )}

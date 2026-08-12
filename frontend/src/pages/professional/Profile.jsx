@@ -298,34 +298,23 @@ const ProfessionalProfile = () => {
               {/* Platform pricing table */}
               {pricingTable && (
                 <div className="mt-6">
-                  <label className="form-label">Tabela de preços mínimos da plataforma</label>
-                  <p className="text-xs text-slate-400 mb-3">Estes são os valores base para a sua categoria. Seu acréscimo de {prof.markup_pct||0}% é aplicado sobre estes valores.</p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-                      <thead>
-                        <tr className="bg-slate-50">
-                          <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500">Duração</th>
-                          <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Diurno</th>
-                          <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Noturno</th>
-                          {prof.markup_pct > 0 && <th className="text-right px-3 py-2 text-xs font-semibold text-green-600">Seu valor (dia)</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pricingTable.durations.map(d => {
-                          const p = pricingTable.prices[d];
-                          if (!p) return null;
-                          const markup = 1 + (prof.markup_pct || 0) / 100;
-                          return (
-                            <tr key={d} className="border-t border-slate-100">
-                              <td className="px-3 py-2 font-medium text-navy">{d}h</td>
-                              <td className="px-3 py-2 text-right text-slate-600">R${p.day.toFixed(0)}</td>
-                              <td className="px-3 py-2 text-right text-slate-600">R${p.night.toFixed(0)}</td>
-                              {prof.markup_pct > 0 && <td className="px-3 py-2 text-right font-semibold text-green-600">R${(p.day * markup).toFixed(0)}</td>}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <label className="form-label">Suas taxas por hora</label>
+                  <p className="text-xs text-slate-400 mb-3">Valores que você recebe por hora (após comissão da plataforma de 12%). Seu acréscimo: +{prof.markup_pct||0}%</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
+                      <p className="text-xs font-semibold text-amber-600 uppercase mb-1">Diurno (06h–22h)</p>
+                      <p className="text-xl font-bold text-navy">R$ {((pricingTable.day_rate * (1 + (prof.markup_pct||0)/100)) * 0.88).toFixed(2)}<span className="text-xs text-slate-400">/hora</span></p>
+                      <p className="text-[10px] text-slate-400 mt-1">Base: R${pricingTable.day_rate}/h + {prof.markup_pct||0}% − 12% comissão</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200">
+                      <p className="text-xs font-semibold text-indigo-600 uppercase mb-1">Noturno (22h–06h)</p>
+                      <p className="text-xl font-bold text-navy">R$ {((pricingTable.night_rate * (1 + (prof.markup_pct||0)/100)) * 0.88).toFixed(2)}<span className="text-xs text-slate-400">/hora</span></p>
+                      <p className="text-[10px] text-slate-400 mt-1">Base: R${pricingTable.night_rate}/h + {prof.markup_pct||0}% − 12% comissão</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200">
+                    <p className="text-xs font-semibold text-green-600 uppercase mb-1">Taxa inicial de serviço</p>
+                    <p className="text-lg font-bold text-navy">R$ {pricingTable.initial_fee?.toFixed(2)} <span className="text-xs text-slate-400">(primeiras 2h inclusas)</span></p>
                   </div>
                 </div>
               )}

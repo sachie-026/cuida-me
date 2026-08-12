@@ -252,8 +252,8 @@ export const Stats = () => {
   const stats = [
     { num: "GPS",    label: "Check-in e check-out com verificação de localização", accent: false },
     { num: "100%",   label: "Pagamento seguro via PIX ou cartão com split automático", accent: true },
-    { num: "SOS",    label: "Atalho para emergência — liga para SAMU, Bombeiros ou contato de confiança", accent: false },
-    { num: "✓",      label: "Profissionais e clientes verificados com identidade e documentos", accent: true },
+    { num: "✓",      label: "Profissionais e clientes verificados com identidade e documentos", accent: false },
+    { num: "24/7",   label: "Suporte dedicado e central de ajuda disponíveis", accent: true },
   ];
 
   return (

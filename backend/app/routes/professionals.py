@@ -95,6 +95,8 @@ def get_nearby(
     lng:      float = -46.63,
     radius:   int   = 50,
     services: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time:   Optional[str] = None,
     db:       Session = Depends(get_db),
     current:  Optional[User] = Depends(get_optional_user),
 ):
@@ -132,11 +134,24 @@ def get_nearby(
                         break
 
             if can_perform and any(s in prof_services for s in required_services):
-                filtered.append({
+                pro_data = {
                     **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
                     "full_name": user.full_name,
                     "role": role,
-                })
+                }
+                # V8-11: Calculate per-pro price if start/end time provided
+                if start_time and end_time:
+                    try:
+                        from datetime import datetime as dt
+                        s = dt.fromisoformat(start_time) if isinstance(start_time, str) else start_time
+                        e = dt.fromisoformat(end_time) if isinstance(end_time, str) else end_time
+                        price = calculate_price(role=role, start_time=s, end_time=e, markup_pct=prof.markup_pct or 0)
+                        pro_data["total_price"] = price["total"]
+                        pro_data["base_price"] = price["base_price"]
+                        pro_data["pro_payout"] = price["pro_payout"]
+                    except:
+                        pass
+                filtered.append(pro_data)
         return {"professionals": filtered, "count": len(filtered)}
 
     # No service filter — enrich all with user data
@@ -245,4 +260,76 @@ def calculate_distance(body: DistanceRequest, db: Session = Depends(get_db)):
         "distance_km": dist,
         "travel_time_minutes": travel_min,
         "estimated_arrival": f"~{travel_min} min",
+    }
+
+# ── V8-5: Category Switch (Nurse/Tech/Assistant → Caregiver) ──────────────────
+
+CAREGIVER_TERMS = "Eu entendo que, ao aceitar atendimentos como Cuidador(a), prestarei exclusivamente cuidados não-técnicos (companhia, auxílio à mobilidade, cuidados pessoais) e não realizarei procedimentos técnicos de enfermagem durante este atendimento."
+TERMS_VERSION = "v1.0"
+
+class CategorySwitchRequest(BaseModel):
+    target_category: str  # "caregiver" or original role
+    accept_terms:    bool
+
+@router.post("/switch-category")
+def switch_category(body: CategorySwitchRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Switch active category (e.g. Nurse → Caregiver). Blocked if active bookings exist."""
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not prof:
+        raise HTTPException(404, "Professional profile not found")
+
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+
+    # Only nursing roles can switch to caregiver
+    if body.target_category == "caregiver" and current_role not in ("nurse", "technician", "nursing_assistant"):
+        raise HTTPException(400, "Apenas enfermeiros, técnicos e auxiliares podem atuar como cuidador")
+
+    if body.target_category == "caregiver" and not body.accept_terms:
+        raise HTTPException(400, "Você deve aceitar os termos para atuar como cuidador")
+
+    # Check for active/pending bookings
+    active = db.query(Booking).filter(
+        Booking.professional_id == prof.id,
+        Booking.status.in_(["pending", "accepted", "checked_in", "professional_arrived"]),
+    ).first()
+    if active:
+        raise HTTPException(400, "Você possui atendimentos pendentes ou confirmados. Conclua ou cancele-os antes de mudar de categoria.")
+
+    # Store acceptance record (V8-6)
+    from datetime import datetime, timezone
+    acceptance = {
+        "professional_id": prof.id,
+        "from_category": current_role,
+        "to_category": body.target_category,
+        "terms_text": CAREGIVER_TERMS if body.target_category == "caregiver" else None,
+        "terms_version": TERMS_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "type": "profile_switch",
+    }
+
+    # Update active category
+    prof.active_category = body.target_category
+    if not prof.category_acceptances:
+        prof.category_acceptances = []
+    prof.category_acceptances = prof.category_acceptances + [acceptance]
+    db.commit()
+
+    return {
+        "active_category": body.target_category,
+        "original_role": current_role,
+        "acceptance_recorded": True,
+        "message": f"Categoria ativa alterada para {body.target_category}.",
+    }
+
+@router.get("/active-category")
+def get_active_category(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Get current active category for the professional."""
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not prof:
+        raise HTTPException(404, "Professional profile not found")
+    role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    return {
+        "original_role": role,
+        "active_category": prof.active_category or role,
+        "can_switch_to_caregiver": role in ("nurse", "technician", "nursing_assistant"),
     }
