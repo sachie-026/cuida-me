@@ -76,7 +76,9 @@ class Professional(Base):
     council_number   = Column(String, nullable=True)
     council_state    = Column(String, nullable=True)
     council_type     = Column(String, default="COREN")
-    additional_categories = Column(JSON, default=list)  # e.g. [{"role":"technician","coren":"123456","state":"SP"}]
+    additional_categories = Column(JSON, default=list)
+    active_category      = Column(String, nullable=True)  # current working category (e.g. "caregiver" for a nurse)
+    category_acceptances = Column(JSON, default=list)  # audit log of category switch acceptances  # e.g. [{"role":"technician","coren":"123456","state":"SP"}]
     services_offered = Column(JSON, default=list)
     markup_pct       = Column(Integer, default=0)
     service_radius   = Column(Integer, default=15)

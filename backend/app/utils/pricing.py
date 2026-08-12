@@ -203,26 +203,31 @@ def calculate_price(
     if total_minutes < MINIMUM_DURATION_MINUTES:
         raise ValueError(f"Duração mínima é {MINIMUM_DURATION_MINUTES // 60} horas ({MINIMUM_DURATION_MINUTES} minutos)")
 
+    # Count ALL day/night minutes for the full booking (for display + shift detection)
+    full_split = _count_day_night_minutes(start_time, end_time)
+
     # Initial Service Fee covers the first 120 minutes
-    # Only remaining minutes after first 2h are charged at hourly rates
     INITIAL_FEE_MINUTES = 120
     remaining_minutes = max(0, total_minutes - INITIAL_FEE_MINUTES)
 
-    # Count day/night minutes for the REMAINING time only (after first 2h)
+    # Count day/night minutes for REMAINING time only (after first 2h) — for cost calculation
     from datetime import timedelta
     remaining_start = start_time + timedelta(minutes=INITIAL_FEE_MINUTES)
     if remaining_minutes > 0:
-        split = _count_day_night_minutes(remaining_start, end_time)
+        extra_split = _count_day_night_minutes(remaining_start, end_time)
     else:
-        split = {"day": 0, "night": 0}
+        extra_split = {"day": 0, "night": 0}
 
     # Calculate hour-rate portion (only for time beyond first 2h)
-    day_cost   = round(split["day"] / 60 * HOUR_RATES[role]["day"], 2)
-    night_cost = round(split["night"] / 60 * HOUR_RATES[role]["night"], 2)
+    day_cost   = round(extra_split["day"] / 60 * HOUR_RATES[role]["day"], 2)
+    night_cost = round(extra_split["night"] / 60 * HOUR_RATES[role]["night"], 2)
     hour_cost  = day_cost + night_cost
 
     # Initial service fee
     initial_fee = INITIAL_SERVICE_FEE[role]
+
+    # Count initial fee minutes split (first 2h day/night breakdown for display)
+    initial_split = _count_day_night_minutes(start_time, remaining_start if remaining_minutes > 0 else end_time)
 
     # Base = initial fee + hour cost
     base = round(initial_fee + hour_cost, 2)
@@ -231,10 +236,10 @@ def calculate_price(
     markup_amount = round(base * markup_pct / 100, 2)
     subtotal = round(base + markup_amount, 2)
 
-    # Surcharges
+    # Surcharges — use FULL split for shift detection
     surcharge_pct = 0.0
     surcharge_labels = []
-    primary_shift = "night" if split["night"] > split["day"] else "day"
+    primary_shift = "night" if full_split["night"] > full_split["day"] else "day"
 
     if is_urgent and is_holiday and primary_shift == "night":
         surcharge_pct = SURCHARGE_NIGHT_HOL + SURCHARGE_URGENT
@@ -268,15 +273,23 @@ def calculate_price(
         "end_time":         end_time.isoformat(),
         "duration_minutes": int(total_minutes),
         "duration_hours":   duration_hours,
-        "day_minutes":      split["day"],
-        "night_minutes":    split["night"],
-        "primary_shift":    primary_shift,
-        "initial_fee":      initial_fee,
+        # Full booking day/night split (for display)
+        "total_day_minutes":    full_split["day"],
+        "total_night_minutes":  full_split["night"],
+        # Initial fee covers first 2h
+        "initial_fee":          initial_fee,
+        "initial_fee_minutes":  INITIAL_FEE_MINUTES,
+        "initial_fee_day_min":  initial_split["day"],
+        "initial_fee_night_min":initial_split["night"],
+        # Extra hours (beyond first 2h)
+        "extra_day_minutes":    extra_split["day"],
+        "extra_night_minutes":  extra_split["night"],
         "day_rate":         HOUR_RATES[role]["day"],
         "night_rate":       HOUR_RATES[role]["night"],
         "day_cost":         day_cost,
         "night_cost":       night_cost,
         "hour_cost":        hour_cost,
+        "primary_shift":    primary_shift,
         "base_price":       base,
         "markup_pct":       markup_pct,
         "markup_amount":    markup_amount,
@@ -290,6 +303,9 @@ def calculate_price(
         "commission_pct":   commission_pct,
         "platform_fee":     platform_fee,
         "pro_payout":       pro_payout,
+        # Verification: these should always match
+        "_verify_minutes":  int(full_split["day"] + full_split["night"]),
+        "_verify_line_sum": round(initial_fee + day_cost + night_cost, 2),
     }
 
 # ── Legacy compatibility ──────────────────────────────────────────────────────

@@ -105,7 +105,11 @@ const NewBooking = () => {
     if (!emergencyContact.name || !emergencyContact.phone) { toast.error("Contato de emergência é obrigatório."); return; }
     setLoading(true);
     const svcParam = encodeURIComponent(selectedSvcs.join(","));
-    axios.get(`${API}/api/professionals/nearby?services=${svcParam}`, {headers})
+    const startISO = new Date(`${date}T${startTime}`).toISOString();
+    let endDt = new Date(`${date}T${endTime}`);
+    if (endDt <= new Date(`${date}T${startTime}`)) endDt.setDate(endDt.getDate() + 1);
+    const endISO = endDt.toISOString();
+    axios.get(`${API}/api/professionals/nearby?services=${svcParam}&start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`, {headers})
       .then(r => { setProfessionals(r.data.professionals||[]); setStep(2); })
       .catch(() => toast.error("Erro ao buscar profissionais."))
       .finally(() => setLoading(false));
@@ -293,8 +297,7 @@ const NewBooking = () => {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
-                    {shift === "day" ? <><Sun size={12} className="text-amber-400"/> <span className="text-amber-600">Diurno</span></> : <><Moon size={12} className="text-indigo-400"/> <span className="text-indigo-600">Noturno</span></>}
-                    {durationInfo.isOvernight && <span className="text-xs text-purple-600 font-medium ml-1">🌙 Pernoite</span>}
+                    {durationInfo.isOvernight && <span className="text-xs text-purple-600 font-medium">Pernoite</span>}
                   </div>
                 </div>
                 {durationInfo.totalMinutes < 120 && (
@@ -310,15 +313,6 @@ const NewBooking = () => {
                 <p className="text-xs text-amber-700">
                   <strong>Recomendação:</strong> Para atendimentos acima de 12 horas, considere dividir entre dois profissionais para garantir a qualidade do cuidado.
                 </p>
-              </div>
-            )}
-
-            {startTime && !durationInfo && (
-              <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-medium ${
-                shift==="day"?"bg-amber-50 text-amber-700":"bg-slate-800 text-white"
-              }`}>
-                {shift==="day"?<Sun size={16}/>:<Moon size={16}/>}
-                {shift==="day"?"Plantão diurno (6h–22h)":"Plantão noturno (22h–6h)"}
               </div>
             )}
 
@@ -413,6 +407,9 @@ const NewBooking = () => {
                             ))}
                           </div>
                         )}
+                        {pro.markup_pct > 0 && (
+                          <span className="text-[10px] text-slate-400 mt-1 block">+{pro.markup_pct}% acréscimo profissional</span>
+                        )}
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {(pro.services_offered||[]).slice(0,3).map(s=>(
                             <span key={s} className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{s}</span>
@@ -449,7 +446,7 @@ const NewBooking = () => {
             <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-slate-500">Profissional</span><span className="font-medium text-navy">{selectedPro.full_name||"—"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Serviço</span><span className="font-medium text-navy">{selectedSvcs.length} serviço(s)</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Duração</span><span className="font-medium text-navy">{priceResult.duration_hours}h ({priceResult.duration_minutes}min) · {priceResult.primary_shift==="day"?"Diurno ☀️":"Noturno 🌙"}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Duração</span><span className="font-medium text-navy">{priceResult.duration_hours}h ({priceResult.duration_minutes}min)</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Data</span><span className="font-medium text-navy">{new Date(`${date}T${startTime}`).toLocaleString("pt-BR")} – {endTime}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Paciente</span><span className="font-medium text-navy">{patientMode==="myself"?(patient?.patient_name||"Eu mesmo"):patientForm.patient_name}</span></div>
             </div>
@@ -467,18 +464,18 @@ const NewBooking = () => {
               </div>
               <div className="p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Taxa inicial de serviço</span>
+                  <span className="text-slate-500">Taxa inicial ({priceResult.initial_fee_minutes || 120}min inclusos)</span>
                   <span>R${priceResult.initial_fee?.toFixed(2)}</span>
                 </div>
-                {priceResult.day_cost > 0 && (
+                {priceResult.extra_day_minutes > 0 && (
                   <div className="flex justify-between text-slate-500">
-                    <span>Horas diurnas ({priceResult.day_minutes}min × R${priceResult.day_rate}/h)</span>
+                    <span>Horas diurnas extras ({priceResult.extra_day_minutes}min × R${priceResult.day_rate}/h)</span>
                     <span>R${priceResult.day_cost?.toFixed(2)}</span>
                   </div>
                 )}
-                {priceResult.night_cost > 0 && (
+                {priceResult.extra_night_minutes > 0 && (
                   <div className="flex justify-between text-slate-500">
-                    <span>Horas noturnas ({priceResult.night_minutes}min × R${priceResult.night_rate}/h)</span>
+                    <span>Horas noturnas extras ({priceResult.extra_night_minutes}min × R${priceResult.night_rate}/h)</span>
                     <span>R${priceResult.night_cost?.toFixed(2)}</span>
                   </div>
                 )}

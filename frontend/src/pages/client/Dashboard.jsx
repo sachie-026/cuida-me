@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import CancelBookingModal from "../../components/common/CancelBookingModal";
 import RatingModal from "../../components/common/RatingModal";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -27,6 +28,7 @@ const ClientDashboard = () => {
   const [loading,      setLoading]      = useState(true);
   const [ratingBooking,setRatingBooking] = useState(null);
   const [ratedIds,     setRatedIds]     = useState([]);
+  const [cancellingBooking, setCancellingBooking] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/api/users/${userId}/patient`, { headers })
@@ -138,6 +140,12 @@ const ClientDashboard = () => {
                         <CreditCard size={11} /> Pagar
                       </button>
                     )}
+                    {(b.status === "pending" || b.status === "accepted") && (
+                      <button onClick={() => setCancellingBooking(b)}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors">
+                        Cancelar
+                      </button>
+                    )}
                     {b.status === "completed" && !ratedIds.includes(b.id) && (
                       <button onClick={() => setRatingBooking(b)}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors">
@@ -158,6 +166,14 @@ const ClientDashboard = () => {
           revieweeId={ratingBooking.professional_id}
           onClose={() => setRatingBooking(null)}
           onDone={() => setRatedIds(prev => [...prev, ratingBooking.id])}
+        />
+      )}
+      {cancellingBooking && (
+        <CancelBookingModal
+          booking={cancellingBooking}
+          cancelledBy="client"
+          onClose={() => setCancellingBooking(null)}
+          onCancelled={() => { setCancellingBooking(null); window.location.reload(); }}
         />
       )}
     </div>
