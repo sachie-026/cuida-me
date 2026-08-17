@@ -24,7 +24,6 @@ import ProfessionalProfile   from "./pages/professional/Profile";
 import Availability          from "./pages/professional/Availability";
 import Alerts                from "./pages/alerts/Alerts";
 import AliceChatWidget       from "./components/common/AliceChatWidget";
-import SOSButton             from "./components/common/SOSButton";
 import InvitePage            from "./pages/InvitePage";
 import EarningsPage          from "./pages/professional/Earnings";
 import PaymentMethodsPage    from "./pages/client/PaymentMethods";
@@ -86,7 +85,6 @@ function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       <AliceChatWidget />
-      <SOSButton />
       </BrowserRouter>
     </GoogleOAuthProvider>
   );

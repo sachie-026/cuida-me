@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { MapPin, Lock, ClipboardList, AlertCircle, Star } from "lucide-react";
+import { MapPin, Lock, Shield, Star } from "lucide-react";
 
 const HeroCard = () => (
   <div className="space-y-3">
@@ -32,8 +32,8 @@ const HeroCard = () => (
       {[
         { icon: <MapPin size={20} className="text-blue-500" />, title: "GPS em tempo real", desc: "Check-in e check-out verificado" },
         { icon: <Lock size={20} className="text-green-500" />, title: "Pagamento seguro", desc: "PIX ou cartão com split automático" },
-        { icon: <ClipboardList size={20} className="text-blue-500" />, title: "Prontuário digital", desc: "Registro clínico após cada visita" },
-        { icon: <AlertCircle size={20} className="text-red-500" />, title: "Botão SOS", desc: "Para profissional e família" },
+        { icon: <Shield size={20} className="text-blue-500" />, title: "Profissionais e clientes verificados", desc: "Documentos e COREN validados" },
+        { icon: <Star size={20} className="text-amber-500" />, title: "Avaliações reais", desc: "Feedback de pacientes e famílias" },
       ].map((item, i) => (
         <div key={i} className="card p-3.5 hover:-translate-y-0.5 transition-transform duration-300">
           <div className="mb-2">{item.icon}</div>

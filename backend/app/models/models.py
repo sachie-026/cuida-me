@@ -356,3 +356,22 @@ class AvailabilityAlert(Base):
     expires_at      = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+class PlatformSettings(Base):
+    """Stores editable platform operating parameters. Single row, key-value."""
+    __tablename__ = "platform_settings"
+    id          = Column(String, primary_key=True, default="global")
+    data        = Column(JSON, default=dict)
+    updated_by  = Column(String, nullable=True)
+    updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+class SettingsAuditLog(Base):
+    """Audit log for platform settings changes."""
+    __tablename__ = "settings_audit_log"
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    admin_id    = Column(String, nullable=False)
+    admin_name  = Column(String, nullable=False)
+    field       = Column(String, nullable=False)
+    old_value   = Column(String, nullable=True)
+    new_value   = Column(String, nullable=False)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())

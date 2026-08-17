@@ -53,13 +53,17 @@ const Login = () => {
   const [error,         setError]         = useState("");
 
   const saveAndRedirect = (data) => {
+    // Save all tokens immediately
     localStorage.setItem("token",     data.access_token);
     localStorage.setItem("role",      data.role);
     localStorage.setItem("user_id",   data.user_id);
     localStorage.setItem("full_name", data.full_name);
     localStorage.setItem("email",     data.email || "");
-    toast.success(`Bem-vindo, ${data.full_name}!`);
-    navigate(ROLE_HOME[data.role] || "/dashboard/client");
+    // Navigate immediately — don't wait for toast animation
+    const destination = ROLE_HOME[data.role] || "/dashboard/client";
+    navigate(destination);
+    // Toast fires after navigation (non-blocking)
+    setTimeout(() => toast.success(`Bem-vindo, ${data.full_name}!`), 100);
   };
 
   const handleLogin = async () => {
@@ -68,8 +72,13 @@ const Login = () => {
     try {
       const { data } = await axios.post(`${API}/api/auth/login`, { email, password });
       saveAndRedirect(data);
-    } catch {
-      setError("E-mail ou senha incorretos.");
+    } catch (err) {
+      // Check if it's a cold start / timeout
+      if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+        setError("Servidor demorando para responder. Tente novamente.");
+      } else {
+        setError("E-mail ou senha incorretos.");
+      }
     } finally {
       setLoading(false);
     }

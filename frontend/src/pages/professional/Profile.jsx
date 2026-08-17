@@ -112,6 +112,96 @@ const VerificationBanner = ({approvalStatus,hasAllDocs,docs=[]}) => {
   );
 };
 
+const CAREGIVER_TERMS = "Eu entendo que, ao aceitar atendimentos como Cuidador(a), prestarei exclusivamente cuidados não-técnicos (companhia, auxílio à mobilidade, cuidados pessoais) e não realizarei procedimentos técnicos de enfermagem durante este atendimento.";
+
+const CategorySwitch = ({ userId, currentRole }) => {
+  const token = localStorage.getItem("token");
+  const headers = { Authorization: `Bearer ${token}` };
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [switching, setSwitching] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [blockReason, setBlockReason] = useState("");
+
+  const ROLE_LABELS_CAT = { nurse: "Enfermeiro(a)", technician: "Técnico(a) de Enfermagem", nursing_assistant: "Auxiliar de Enfermagem", caregiver: "Cuidador(a)" };
+
+  useEffect(() => {
+    axios.get(`${API}/api/professionals/active-category`, { headers })
+      .then(r => setActiveCategory(r.data.active_category || currentRole))
+      .catch(() => setActiveCategory(currentRole))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSwitch = async (target) => {
+    if (target === "caregiver" && !accepted) {
+      toast.error("Você deve aceitar os termos para atuar como cuidador(a).");
+      return;
+    }
+    setSwitching(true);
+    try {
+      const { data } = await axios.post(`${API}/api/professionals/switch-category`, {
+        target_category: target, accept_terms: target === "caregiver" ? accepted : true,
+      }, { headers });
+      setActiveCategory(target);
+      toast.success(data.message);
+      setAccepted(false);
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Erro ao trocar categoria.";
+      if (msg.includes("pendentes") || msg.includes("confirmados")) {
+        setBlocked(true);
+        setBlockReason(msg);
+      }
+      toast.error(msg);
+    } finally { setSwitching(false); }
+  };
+
+  if (loading) return null;
+
+  const isCaregiver = activeCategory === "caregiver";
+  const techLabel = ROLE_LABELS_CAT[currentRole] || currentRole;
+
+  return (
+    <div className="card p-6">
+      <h3 className="font-semibold text-navy mb-1">Alterar categoria profissional</h3>
+      <p className="text-xs text-slate-500 mb-4">Troque entre sua categoria técnica e Cuidador(a) para receber atendimentos diferentes.</p>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+          !isCaregiver ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300 opacity-60"}`}
+          onClick={() => isCaregiver && handleSwitch(currentRole)}>
+          <p className="text-sm font-bold text-navy">{techLabel}</p>
+          {!isCaregiver && <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full mt-1 inline-block">Ativa</span>}
+          <p className="text-xs text-slate-500 mt-1">Procedimentos técnicos de enfermagem</p>
+        </div>
+        <div className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+          isCaregiver ? "border-green-500 bg-green-50" : "border-slate-200 hover:border-slate-300 opacity-60"}`}
+          onClick={() => !isCaregiver && !blocked && handleSwitch("caregiver")}>
+          <p className="text-sm font-bold text-navy">Cuidador(a)</p>
+          {isCaregiver && <span className="text-[10px] font-semibold text-green-600 bg-green-100 px-2 py-0.5 rounded-full mt-1 inline-block">Ativa</span>}
+          <p className="text-xs text-slate-500 mt-1">Companhia, mobilidade, cuidados pessoais</p>
+        </div>
+      </div>
+
+      {blocked && (
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+          <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5"/>
+          <p className="text-xs text-amber-700">{blockReason}</p>
+        </div>
+      )}
+
+      {!isCaregiver && !blocked && (
+        <label className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mb-3">
+          <input type="checkbox" checked={accepted} onChange={e => setAccepted(e.target.checked)} className="accent-blue-500 mt-0.5" />
+          <span className="text-xs text-slate-600">{CAREGIVER_TERMS}</span>
+        </label>
+      )}
+
+      {switching && <p className="text-xs text-slate-400 text-center">Trocando categoria...</p>}
+    </div>
+  );
+};
+
 const ProfessionalProfile = () => {
   const navigate  = useNavigate();
   const userId    = localStorage.getItem("user_id");
@@ -359,6 +449,11 @@ const ProfessionalProfile = () => {
             <div className="card p-6">
               <AvailabilityCalendar userId={userId} />
             </div>
+
+            {/* Category Switch (V9-6 / Change 43) */}
+            {["nurse","technician","nursing_assistant"].includes(role) && (
+              <CategorySwitch userId={userId} currentRole={role} />
+            )}
 
             {/* Documents */}
             <div className="card p-6">
