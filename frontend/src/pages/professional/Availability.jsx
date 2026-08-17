@@ -362,15 +362,85 @@ const CalendarTab = ({ userId, profId }) => {
         </div>
       )}
 
-      {/* Date modal */}
+      {/* Date modal — shows bookings first, then add availability */}
       {selectedDate && (
-        <SlotModal
-          date={selectedDate}
-          existingSlots={slotsForDate(selectedDate)}
-          onClose={() => setSelectedDate(null)}
-          onAdd={handleAddSlot}
-          onDelete={async (id) => { await handleDeleteSlot(id); }}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedDate(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto z-10 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-lg font-bold text-navy">
+                {new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" })}
+              </h3>
+              <button onClick={() => setSelectedDate(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">✕</button>
+            </div>
+
+            {/* Day's bookings */}
+            {(() => {
+              const dayBookings = bookings.filter(b => b.scheduled_start?.startsWith(selectedDate));
+              return dayBookings.length > 0 ? (
+                <div className="mb-5">
+                  <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Agendamentos ({dayBookings.length})</p>
+                  <div className="space-y-2">
+                    {dayBookings.sort((a,b) => (a.scheduled_start||"").localeCompare(b.scheduled_start||"")).map(b => {
+                      const statusCfg = {
+                        pending: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },
+                        accepted: { label: "Confirmado", color: "bg-blue-100 text-blue-700" },
+                        professional_arrived: { label: "Profissional chegou", color: "bg-indigo-100 text-indigo-700" },
+                        checked_in: { label: "Em andamento", color: "bg-purple-100 text-purple-700" },
+                        completed: { label: "Concluído", color: "bg-green-100 text-green-700" },
+                        cancelled: { label: "Cancelado", color: "bg-red-100 text-red-600" },
+                      };
+                      const cfg = statusCfg[b.status] || statusCfg.pending;
+                      return (
+                        <div key={b.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors"
+                          onClick={() => navigate(`/messages?booking=${b.id}`)}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+                            <span className="text-xs text-slate-400">
+                              {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
+                              {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-navy">{b.service_type || "Atendimento"}</p>
+                          {b.total_price && <p className="text-xs text-slate-500">R$ {Number(b.total_price).toFixed(2)}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-5 p-4 bg-slate-50 rounded-xl text-center">
+                  <p className="text-sm text-slate-400">Nenhum agendamento neste dia</p>
+                </div>
+              );
+            })()}
+
+            {/* Existing availability slots */}
+            {slotsForDate(selectedDate).length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Horários disponíveis</p>
+                <div className="space-y-1">
+                  {slotsForDate(selectedDate).map(s => (
+                    <div key={s.id} className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-100">
+                      <span className="text-sm text-green-700">{s.start_time} – {s.end_time}</span>
+                      <button onClick={() => handleDeleteSlot(s.id)} className="text-xs text-red-400 hover:text-red-600">Remover</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add availability form — always accessible */}
+            <SlotModal
+              date={selectedDate}
+              existingSlots={slotsForDate(selectedDate)}
+              onClose={() => setSelectedDate(null)}
+              onAdd={handleAddSlot}
+              onDelete={async (id) => { await handleDeleteSlot(id); }}
+              embedded={true}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
