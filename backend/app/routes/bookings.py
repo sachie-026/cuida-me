@@ -185,12 +185,34 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
     ).order_by(Booking.scheduled_start.desc()).all()
 
 @router.patch("/{booking_id}/accept")
-def accept_booking(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
     if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
     if b.status != BookingStatus.pending:
         raise HTTPException(400, "Can only accept pending bookings")
+
+    # V9-6/Change 43: Per-booking caregiver terms acceptance
+    prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+    if prof and prof.active_category == "caregiver":
+        user = db.query(User).filter(User.id == prof.user_id).first()
+        original_role = user.role.value if user and hasattr(user.role, 'value') else ""
+        if original_role in ("nurse", "technician", "nursing_assistant"):
+            if not accept_caregiver_terms:
+                raise HTTPException(400, "Você deve aceitar os termos de atuação como Cuidador(a) para aceitar este agendamento.")
+            # Record per-booking acceptance
+            acceptance = {
+                "professional_id": prof.id,
+                "booking_id": booking_id,
+                "terms_text": "Eu entendo que, ao aceitar este atendimento como Cuidador(a), prestarei exclusivamente cuidados não-técnicos e não realizarei procedimentos técnicos de enfermagem.",
+                "terms_version": "v1.0",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "type": "per_booking",
+            }
+            if not prof.category_acceptances:
+                prof.category_acceptances = []
+            prof.category_acceptances = prof.category_acceptances + [acceptance]
+
     b.status = BookingStatus.accepted
     db.commit()
     db.refresh(b)
