@@ -355,29 +355,29 @@ def seed_dev(
     from datetime import datetime, timedelta, timezone
     now = datetime.now(timezone.utc)
     test_bookings = [
-        Booking(user_id="user-client-001", patient_id="patient-001", professional_id="pro-nurse-001",
+        Booking(patient_id="patient-001", professional_id="pro-nurse-001",
                 service_type="Companhia e supervisão", status=BookingStatus.pending,
                 scheduled_start=now + timedelta(days=2, hours=9), scheduled_end=now + timedelta(days=2, hours=13),
                 duration_hours=4, shift="day", total_price=144.0, pro_payout=128.57, platform_fee=15.43),
-        Booking(user_id="user-client-001", patient_id="patient-001", professional_id="pro-nurse-001",
+        Booking(patient_id="patient-001", professional_id="pro-nurse-001",
                 service_type="Aferição de sinais vitais, Curativos simples", status=BookingStatus.accepted,
                 scheduled_start=now + timedelta(days=4, hours=14), scheduled_end=now + timedelta(days=4, hours=20),
                 duration_hours=6, shift="day", total_price=220.0, pro_payout=196.43, platform_fee=23.57),
-        Booking(user_id="user-client-002", patient_id="patient-002", professional_id="pro-tech-001",
+        Booking(patient_id="patient-002", professional_id="pro-tech-001",
                 service_type="Monitoramento de sinais vitais", status=BookingStatus.pending,
                 scheduled_start=now + timedelta(days=3, hours=22), scheduled_end=now + timedelta(days=4, hours=6),
                 duration_hours=8, shift="night", total_price=280.0, pro_payout=250.0, platform_fee=30.0),
-        Booking(user_id="user-client-001", patient_id="patient-001", professional_id="pro-care-001",
+        Booking(patient_id="patient-001", professional_id="pro-care-001",
                 service_type="Auxílio alimentar, Higiene pessoal", status=BookingStatus.accepted,
                 scheduled_start=now + timedelta(days=5, hours=8), scheduled_end=now + timedelta(days=5, hours=12),
                 duration_hours=4, shift="day", total_price=112.0, pro_payout=100.0, platform_fee=12.0),
-        Booking(user_id="user-client-003", patient_id="patient-003", professional_id="pro-nurse-002",
+        Booking(patient_id="patient-003", professional_id="pro-nurse-002",
                 service_type="Administração de medicamentos orais", status=BookingStatus.pending,
                 scheduled_start=now + timedelta(days=6, hours=10), scheduled_end=now + timedelta(days=6, hours=14),
                 duration_hours=4, shift="day", total_price=250.0, pro_payout=223.21, platform_fee=26.79),
     ]
     for b in test_bookings:
-        existing = db.query(Booking).filter(Booking.user_id == b.user_id, Booking.scheduled_start == b.scheduled_start).first()
+        existing = db.query(Booking).filter(Booking.patient_id == b.patient_id, Booking.scheduled_start == b.scheduled_start).first()
         if not existing:
             db.add(b)
     db.commit()
