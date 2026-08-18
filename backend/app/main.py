@@ -398,8 +398,6 @@ def seed_dev(
             if not existing:
                 db.add(b)
         db.commit()
-            db.add(b)
-    db.commit()
 
     return {
         "status": "✅ seeded",
