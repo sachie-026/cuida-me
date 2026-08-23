@@ -56,7 +56,10 @@ class User(Base):
     date_of_birth = Column(String, nullable=True)   # ISO date string
     role          = Column(Enum(UserRole), nullable=False)
     is_active     = Column(Boolean, default=True)
-    is_verified   = Column(Boolean, default=False)
+    is_verified    = Column(Boolean, default=False)
+    phone_verified = Column(Boolean, default=False)
+    phone_otp_code = Column(String, nullable=True)
+    phone_otp_expires = Column(DateTime(timezone=True), nullable=True)
     google_id     = Column(String, unique=True, nullable=True)
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
@@ -79,6 +82,7 @@ class Professional(Base):
     additional_categories = Column(JSON, default=list)
     active_category      = Column(String, nullable=True)  # current working category (e.g. "caregiver" for a nurse)
     category_acceptances = Column(JSON, default=list)  # audit log of category switch acceptances  # e.g. [{"role":"technician","coren":"123456","state":"SP"}]
+    category_records     = Column(JSON, default=list)
     services_offered = Column(JSON, default=list)
     markup_pct       = Column(Integer, default=0)
     service_radius   = Column(Integer, default=15)

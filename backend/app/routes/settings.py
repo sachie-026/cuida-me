@@ -68,6 +68,20 @@ DEFAULTS = {
     "max_match_batch":              5,
     # Evaluation
     "eval_window_days":             7,
+    # 50d: Payment configuration
+    "payment_methods_enabled":      "pix,credit_card,debit_card",
+    "auto_release_after_hours":     48,
+    "dispute_review_hours":         48,
+    # 50b: Professional categories
+    "enabled_categories":           "nurse,technician,nursing_assistant,caregiver",
+    "min_booking_duration_minutes": 120,
+    # 50d: Platform content
+    "platform_name":                "CuidaU",
+    "support_email":                "suporte@cuidau.com.br",
+    "support_whatsapp":             "+5511999999999",
+    # 50d: General settings
+    "maintenance_mode":             "false",
+    "allow_new_registrations":      "true",
 }
 
 # Validation rules: { field: (min, max, type) }
@@ -153,6 +167,10 @@ def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
             "time_ranges":  ["day_start_hour", "night_start_hour", "rest_after_24h_hours"],
             "matching":     ["standard_response_hours", "urgent_response_minutes", "max_match_batch"],
             "evaluation":   ["eval_window_days"],
+            "payment":      ["payment_methods_enabled", "auto_release_after_hours", "dispute_review_hours"],
+            "categories":   ["enabled_categories", "min_booking_duration_minutes"],
+            "content":      ["platform_name", "support_email", "support_whatsapp"],
+            "general":      ["maintenance_mode", "allow_new_registrations"],
         },
     }
 

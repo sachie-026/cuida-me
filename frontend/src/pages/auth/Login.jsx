@@ -69,11 +69,18 @@ const Login = () => {
   const handleLogin = async () => {
     if (!email || !password) { setError("Preencha e-mail e senha."); return; }
     setLoading(true); setError("");
+    const t0 = performance.now();
     try {
-      const { data } = await axios.post(`${API}/api/auth/login`, { email, password });
+      const { data } = await axios.post(`${API}/api/auth/login`, { email, password }, { timeout: 15000 });
+      const t1 = performance.now();
+      const loginMs = Math.round(t1 - t0);
+      console.log(`[53e] Login API: ${loginMs}ms`);
       saveAndRedirect(data);
+      const t2 = performance.now();
+      console.log(`[53e] Total login→navigate: ${Math.round(t2 - t0)}ms (target: <3000ms)`);
     } catch (err) {
-      // Check if it's a cold start / timeout
+      const t1 = performance.now();
+      console.log(`[53e] Login FAILED after ${Math.round(t1 - t0)}ms`);
       if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
         setError("Servidor demorando para responder. Tente novamente.");
       } else {

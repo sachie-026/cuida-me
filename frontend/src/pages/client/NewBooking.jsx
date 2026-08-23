@@ -48,7 +48,7 @@ const NewBooking = () => {
   const [shift,       setShift]       = useState("day");
   const [isUrgent,    setIsUrgent]    = useState(false);
   const [notes,       setNotes]       = useState("");
-  const [durationInfo,setDurationInfo]= useState(null); // {hours, minutes, isOvernight}
+  const [durationInfo,setDurationInfo]= useState(null);
   const [patientMode, setPatientMode] = useState("myself");
   const [patientForm, setPatientForm] = useState({
     patient_name:"", age:"", relation:"", diagnoses:"", address:"",
@@ -56,18 +56,37 @@ const NewBooking = () => {
   });
   const [emergencyContact, setEmergencyContact] = useState({ name:"", phone:"" });
   const [isVerified, setIsVerified] = useState(true);
+  const [phoneVerified, setPhoneVerified] = useState(true);
+  const [svcLoadState, setSvcLoadState] = useState("loading");
+  const [svcError, setSvcError] = useState("");
+  const [showGuide, setShowGuide] = useState(false);
 
-  useEffect(() => {
+  // 44a-c: Load data with 15s timeout, 3 states, error logging
+  const loadData = () => {
+    setSvcLoadState("loading"); setSvcError("");
+    const timeout = setTimeout(() => {
+      setSvcLoadState("error"); setSvcError("Tempo limite atingido. Toque para tentar novamente.");
+    }, 15000);
     Promise.all([
       axios.get(`${API}/api/professionals/services`),
-      axios.get(`${API}/api/users/${userId}/patient`, {headers}),
+      axios.get(`${API}/api/users/${userId}/patient`, {headers}).catch(()=>({data:null})),
       axios.get(`${API}/api/users/${userId}`, {headers}).catch(()=>({data:{}})),
-    ]).then(([svcRes,patRes,userRes]) => {
-      setServicesMap(svcRes.data);
-      setPatient(patRes.data);
+      axios.get(`${API}/api/auth/phone/status`, {headers}).catch(()=>({data:{phone_verified:true}})),
+    ]).then(([svcRes,patRes,userRes,phoneRes]) => {
+      clearTimeout(timeout);
+      setServicesMap(svcRes.data || {});
+      if (patRes.data) setPatient(patRes.data);
       setIsVerified(userRes.data?.is_verified || false);
-    }).catch(() => toast.error("Erro ao carregar dados."));
-  }, []);
+      setPhoneVerified(phoneRes.data?.phone_verified ?? true);
+      setSvcLoadState(Object.keys(svcRes.data || {}).length > 0 ? "content" : "content");
+    }).catch((err) => {
+      clearTimeout(timeout);
+      console.error(`[44c] Service load failed: status=${err.response?.status}, detail=${err.response?.data?.detail || err.message}, userId=${userId}`);
+      setSvcError(`Erro ao carregar serviços (${err.response?.status || "rede"}). Toque para tentar novamente.`);
+      setSvcLoadState("error");
+    });
+  };
+  useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
     if (!startTime) return;
@@ -172,22 +191,26 @@ const NewBooking = () => {
         <p className="text-slate-500 text-sm mb-6">Passo {step} de 3</p>
         <StepDots total={3} current={step}/>
 
-        {/* Verification gate */}
-        {!isVerified && (
+        {/* 47a: Verification gate — document + phone */}
+        {(!isVerified || !phoneVerified) && (
           <div className="card p-6 mb-4 border-2 border-amber-300 bg-amber-50">
             <div className="flex items-start gap-3">
               <AlertCircle size={24} className="text-amber-500 flex-shrink-0 mt-0.5"/>
               <div>
-                <p className="font-bold text-navy mb-1">Verificação de identidade necessária</p>
-                <p className="text-sm text-slate-600 mb-3">Para agendar atendimentos, você precisa verificar sua identidade enviando seus documentos.</p>
-                <button onClick={()=>navigate("/profile/client")} className="btn-primary text-sm">Verificar minha identidade →</button>
+                <p className="font-bold text-navy mb-1">Verificação necessária para agendar</p>
+                {!isVerified && <p className="text-sm text-slate-600 mb-2">📄 Envie seus documentos de identidade.</p>}
+                {!phoneVerified && <p className="text-sm text-slate-600 mb-2">📱 Verifique seu telefone via SMS.</p>}
+                <div className="flex gap-2">
+                  {!isVerified && <button onClick={()=>navigate("/profile/client")} className="btn-primary text-sm">Verificar identidade</button>}
+                  {!phoneVerified && <button onClick={()=>navigate("/profile/client")} className="btn-outline text-sm">Verificar telefone</button>}
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {step===1 && (
-          <div className={`card p-6 space-y-5 ${!isVerified ? "opacity-50 pointer-events-none" : ""}`}>
+          <div className={`card p-6 space-y-5 ${(!isVerified || !phoneVerified) ? "opacity-50 pointer-events-none" : ""}`}>
             {/* Patient picker */}
             <div>
               <label className="form-label">Quem vai receber o atendimento? *</label>
@@ -231,21 +254,45 @@ const NewBooking = () => {
 
             <div>
               <label className="form-label">Serviços necessários * <span className="text-slate-400 font-normal">(selecione todos que precisar)</span></label>
-              {Object.keys(servicesMap).length===0 ? (
-                <p className="text-slate-400 text-sm mt-1">Carregando serviços...</p>
-              ) : (
+
+              {/* 44b: Loading state (15s cap) */}
+              {Object.keys(servicesMap).length===0 && !svcError && (
+                <div className="flex items-center gap-3 p-4 mt-2 bg-slate-50 rounded-xl">
+                  <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
+                  <span className="text-sm text-slate-500">Carregando serviços...</span>
+                </div>
+              )}
+
+              {/* 44b: Error state with retry */}
+              {svcError && (
+                <div className="p-4 mt-2 bg-red-50 border border-red-200 rounded-xl text-center">
+                  <p className="text-sm text-red-600 mb-2">{svcError}</p>
+                  <button onClick={loadData} className="btn-primary text-sm">Tentar novamente</button>
+                </div>
+              )}
+
+              {/* 44b: Content state */}
+              {Object.keys(servicesMap).length > 0 && (
                 <div className="mt-2 space-y-4">
                   {[
-                    {label:"Cuidados básicos (Cuidador)",key:"caregiver",filter:(s)=>s},
-                    {label:"Cuidados básicos de enfermagem (Auxiliar)",key:"nursing_assistant",filter:(s)=>!(servicesMap.caregiver||[]).includes(s)},
-                    {label:"Procedimentos técnicos (Técnico de Enfermagem)",key:"technician",filter:(s)=>!(servicesMap.nursing_assistant||[]).includes(s)},
-                    {label:"Procedimentos especializados (Enfermeiro)",key:"nurse",filter:(s)=>!(servicesMap.technician||[]).includes(s)},
+                    {label:"Cuidador(a)",key:"caregiver",filter:(s)=>s,
+                     desc:"Companhia, mobilidade, higiene pessoal. NÃO inclui medicamentos."},
+                    {label:"Auxiliar de Enfermagem",key:"nursing_assistant",filter:(s)=>!(servicesMap.caregiver||[]).includes(s),
+                     desc:"Sinais vitais, medicamentos orais/tópicos, curativos simples."},
+                    {label:"Técnico(a) de Enfermagem",key:"technician",filter:(s)=>!(servicesMap.nursing_assistant||[]).includes(s),
+                     desc:"Medicamentos IM/EV, curativos complexos, sondas, cateteres."},
+                    {label:"Enfermeiro(a)",key:"nurse",filter:(s)=>!(servicesMap.technician||[]).includes(s),
+                     desc:"Ventilação mecânica, nutrição parenteral, avaliação clínica, PICC."},
                   ].map(group=>(
-                    <div key={group.key}>
-                      <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">{group.label}</p>
-                      <div className="space-y-1">
+                    <div key={group.key} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="bg-slate-50 px-3 py-2">
+                        <p className="text-xs font-semibold text-navy uppercase tracking-wide">{group.label}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{group.desc}</p>
+                      </div>
+                      <div className="p-2 space-y-0.5">
                         {(servicesMap[group.key]||[]).filter(group.filter).map(svc=>(
-                          <label key={svc} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                          <label key={svc} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+                            selectedSvcs.includes(svc) ? "bg-blue-50 border border-blue-200" : "hover:bg-slate-50 border border-transparent"}`}>
                             <input type="checkbox" checked={selectedSvcs.includes(svc)} onChange={()=>toggleService(svc)} className="w-4 h-4 accent-blue-500 flex-shrink-0"/>
                             <span className={`text-sm ${selectedSvcs.includes(svc)?"text-navy font-medium":"text-slate-600"}`}>{svc}</span>
                           </label>
@@ -255,14 +302,26 @@ const NewBooking = () => {
                   ))}
                 </div>
               )}
-              {selectedSvcs.length>0 && (
+
+              {/* 44i: Visually distinct when nothing selected + 44d: count */}
+              {selectedSvcs.length > 0 ? (
                 <p className="text-xs text-blue-600 mt-2 font-medium">✓ {selectedSvcs.length} serviço(s) selecionado(s)</p>
+              ) : Object.keys(servicesMap).length > 0 ? (
+                <p className="text-xs text-red-500 mt-2 font-medium">⚠ Selecione pelo menos um serviço para continuar</p>
+              ) : null}
+
+              {/* 44h: One-line confirmation of selected services */}
+              {selectedSvcs.length > 0 && (
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
+                  <p className="text-xs text-blue-700"><strong>Resumo:</strong> {selectedSvcs.slice(0,3).join(", ")}{selectedSvcs.length>3?` +${selectedSvcs.length-3} mais`:""}</p>
+                </div>
               )}
+
               {selectedSvcs.some(s => s.toLowerCase().includes("medicamento") || s.toLowerCase().includes("insulina")) && (
                 <div className="flex items-start gap-2 p-3 mt-2 bg-amber-50 border border-amber-200 rounded-xl">
                   <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5"/>
                   <p className="text-xs text-amber-700">
-                    <strong>Aviso legal:</strong> A administração de medicamentos requer prescrição médica válida e deve seguir todas as regulamentações de saúde brasileiras aplicáveis.
+                    <strong>Aviso legal:</strong> A administração de medicamentos requer prescrição médica válida.
                   </p>
                 </div>
               )}

@@ -52,10 +52,13 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded}) => {
       const {data} = await axios.post(`${API}/api/documents/upload`, formData, {
         headers:{...headers,"Content-Type":"multipart/form-data"},
       });
+      if (!data || !data.id) { toast.error("Upload falhou: resposta inválida. Tente novamente."); setUploading(false); return; }
       toast.success(`${label} enviado!`);
       onUploaded(data);
     } catch(err) {
-      toast.error(err.response?.data?.detail||"Erro ao enviar documento.");
+      const status = err.response?.status; const detail = err.response?.data?.detail || err.message;
+      console.error(`[48b] Upload failed: doc_type=${docType}, status=${status}, detail=${detail}`);
+      toast.error(`Falha no envio (${status||"rede"}): ${detail||"tente novamente"}`);
     } finally { setUploading(false); }
   };
 

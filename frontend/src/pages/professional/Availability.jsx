@@ -374,9 +374,13 @@ const CalendarTab = ({ userId, profId }) => {
               <button onClick={() => setSelectedDate(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">✕</button>
             </div>
 
-            {/* Day's bookings */}
+            {/* Day's bookings — 51f: blocked ranges NEVER shown here */}
             {(() => {
-              const dayBookings = bookings.filter(b => b.scheduled_start?.startsWith(selectedDate));
+              const dayBookings = bookings.filter(b =>
+                b.scheduled_start?.startsWith(selectedDate) &&
+                !["cancelled","no_show"].includes(b.status) &&
+                b.status !== "blocked"
+              );
               return dayBookings.length > 0 ? (
                 <div className="mb-5">
                   <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Agendamentos ({dayBookings.length})</p>

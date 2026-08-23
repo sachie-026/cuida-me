@@ -108,10 +108,15 @@ const ProfileMenu = () => {
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 max-h-[80vh] overflow-y-auto">
-          {/* User info header */}
+          {/* User info header — 45f: Active side + category indicator */}
           <div className="px-4 py-3 border-b border-slate-100">
             <p className="text-sm font-bold text-navy">{fullName}</p>
-            <p className="text-xs text-slate-500">{roleLabel}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                isPro ? "bg-blue-100 text-blue-700" : isAdmin ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"
+              }`}>{isPro ? "Profissional" : isAdmin ? "Admin" : "Cliente"}</span>
+              <span className="text-xs text-slate-500">{roleLabel}</span>
+            </div>
           </div>
 
           {/* Dashboard link */}

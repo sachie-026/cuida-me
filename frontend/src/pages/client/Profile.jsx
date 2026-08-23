@@ -84,10 +84,44 @@ const ClientProfile = () => {
             {/* Verification Center */}
             <VerificationCenter role="client" userId={userId} />
 
-            {/* Client Identity Verification */}
+            {/* Client Identity + Phone Verification */}
             <div className="card p-6">
               <h3 className="font-semibold text-navy mb-2">Verificação de identidade</h3>
-              <p className="text-xs text-slate-500 mb-4">Envie seus documentos para verificar sua identidade e poder agendar atendimentos.</p>
+              <p className="text-xs text-slate-500 mb-4">Verifique sua identidade e telefone para poder agendar atendimentos.</p>
+
+              {/* 47b: Persistent verification badges */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+                  user.is_verified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                  {user.is_verified ? "✓ Documentos verificados" : "⏳ Documentos pendentes"}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+                  user.phone_verified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                  {user.phone_verified ? "✓ Telefone verificado" : "⏳ Telefone não verificado"}
+                </span>
+              </div>
+
+              {/* Phone verification section */}
+              {!user.phone_verified && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl mb-4">
+                  <p className="text-sm font-semibold text-navy mb-1">📱 Verificar telefone</p>
+                  <p className="text-xs text-slate-500 mb-3">Enviaremos um código SMS para confirmar seu número.</p>
+                  <div className="flex gap-2">
+                    <input className="form-input flex-1 text-sm" placeholder="(11) 99999-9999" value={user.phone||""} onChange={e=>setUser(p=>({...p,phone:e.target.value}))}/>
+                    <button onClick={async()=>{
+                      if(!user.phone){toast.error("Informe o telefone.");return;}
+                      try{
+                        const{data}=await axios.post(`${API}/api/auth/phone/send-code`,{phone:user.phone},{headers});
+                        if(data.sent){toast.success(data.message);const code=prompt("Digite o código recebido por SMS:");
+                          if(code){const r=await axios.post(`${API}/api/auth/phone/verify-code`,{phone:user.phone,code},{headers});
+                            if(r.data.verified){toast.success("Telefone verificado!");setUser(p=>({...p,phone_verified:true}));}}}
+                        else{toast.error(data.error||"Erro ao enviar SMS.");}
+                      }catch(e){toast.error(e.response?.data?.detail||"Erro ao verificar.");}
+                    }} className="btn-primary text-sm px-4">Verificar</button>
+                  </div>
+                </div>
+              )}
+
               {user.is_verified ? (
                 <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
                   <CheckCircle size={16} className="text-green-500"/>
@@ -132,9 +166,14 @@ const ClientProfile = () => {
                             try{
                               const fd=new FormData(); fd.append("file",file); fd.append("doc_type",d.key);
                               const{data}=await axios.post(`${API}/api/documents/upload`,fd,{headers:{...headers,"Content-Type":"multipart/form-data"}});
+                              if(!data||!data.id){toast.error("Upload falhou: resposta inválida do servidor. Tente novamente.");setDocUploading(false);return;}
                               toast.success("Documento enviado!");
                               setClientDocs(prev=>{const idx=prev.findIndex(x=>x.doc_type===d.key);if(idx>=0){const u=[...prev];u[idx]={...u[idx],...data};return u;}return[...prev,data];});
-                            }catch{toast.error("Erro ao enviar.");}finally{setDocUploading(false);}
+                            }catch(err){
+                              const status=err.response?.status;const detail=err.response?.data?.detail||err.message;
+                              console.error(`[48b] Upload failed: doc_type=${d.key}, status=${status}, detail=${detail}`);
+                              toast.error(`Falha no envio (${status||"rede"}): ${detail||"tente novamente"}`);
+                            }finally{setDocUploading(false);}
                           }}/>
                           {docUploading?"Enviando...":existing?"Reenviar":"Enviar"}
                         </label>
