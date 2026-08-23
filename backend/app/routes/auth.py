@@ -2,10 +2,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
+from app.core.auth_deps import get_current_user
 from app.models.models import User, UserRole, Professional, DocStatus
-import httpx, secrets, datetime
+import httpx, secrets
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -150,7 +152,7 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
     # Never return the token in the response — send via email only
     if user and user.password_hash:
         token = secrets.token_urlsafe(32)
-        expires = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        expires = datetime.now(timezone.utc) + timedelta(hours=1)
         _reset_tokens[token] = {"user_id": user.id, "expires_at": expires}
         # TODO: Send email with reset link: /reset-password?token={token}
         # Wire to SendGrid/Resend/SES before production
@@ -164,7 +166,7 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     entry = _reset_tokens.get(body.token)
     if not entry:
         raise HTTPException(400, "Token inválido ou expirado.")
-    if datetime.datetime.utcnow() > entry["expires_at"]:
+    if datetime.now(timezone.utc) > entry["expires_at"]:
         del _reset_tokens[body.token]
         raise HTTPException(400, "Token expirado. Solicite um novo link.")
     if len(body.new_password) < 8:
