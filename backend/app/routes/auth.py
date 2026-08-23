@@ -176,3 +176,66 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
     del _reset_tokens[body.token]
     return {"message": "Senha alterada com sucesso. Faça login com sua nova senha."}
+# ── Changes 46: Phone Verification ────────────────────────────────────────────
+import random, os
+
+SMS_PROVIDER = os.getenv("SMS_PROVIDER", "")
+
+def _send_sms(phone: str, code: str) -> bool:
+    if SMS_PROVIDER == "twilio":
+        try:
+            from twilio.rest import Client
+            client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+            client.messages.create(body=f"CuidaU: Seu código é {code}. Válido por 10 min.", from_=os.getenv("TWILIO_PHONE"), to=phone)
+            return True
+        except Exception as e:
+            print(f"SMS failed: {e}"); return False
+    elif SMS_PROVIDER == "zenvia":
+        try:
+            import httpx
+            resp = httpx.post("https://api.zenvia.com/v2/channels/sms/messages", json={"from": os.getenv("ZENVIA_SENDER"), "to": phone, "contents": [{"type": "text", "text": f"CuidaU: Seu código é {code}. Válido por 10 min."}]}, headers={"X-API-TOKEN": os.getenv("ZENVIA_TOKEN")})
+            return resp.status_code == 200
+        except Exception as e:
+            print(f"SMS failed: {e}"); return False
+    else:
+        print(f"📱 [DEV] OTP for {phone}: {code}")
+        return True
+
+class PhoneVerifyRequest(BaseModel):
+    phone: str
+
+class PhoneCodeConfirm(BaseModel):
+    phone: str
+    code:  str
+
+@router.post("/phone/send-code")
+def send_phone_code(body: PhoneVerifyRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    code = str(random.randint(100000, 999999))
+    expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+    current.phone_otp_code = code
+    current.phone_otp_expires = expires
+    current.phone = body.phone
+    db.commit()
+    sent = _send_sms(body.phone, code)
+    if not sent:
+        return {"sent": False, "error": "Não foi possível enviar o SMS. Tente novamente.", "can_retry": True}
+    return {"sent": True, "message": f"Código enviado para {body.phone}. Válido por 10 minutos."}
+
+@router.post("/phone/verify-code")
+def verify_phone_code(body: PhoneCodeConfirm, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    now = datetime.now(timezone.utc)
+    if not current.phone_otp_code:
+        raise HTTPException(400, "Nenhum código pendente. Solicite um novo código.")
+    if current.phone_otp_expires and current.phone_otp_expires.replace(tzinfo=timezone.utc) < now:
+        current.phone_otp_code = None; current.phone_otp_expires = None; db.commit()
+        raise HTTPException(400, "Código expirado. Solicite um novo código.")
+    if current.phone_otp_code != body.code:
+        raise HTTPException(400, "Código incorreto. Tente novamente.")
+    current.phone_verified = True
+    current.phone_otp_code = None; current.phone_otp_expires = None; current.phone = body.phone
+    db.commit()
+    return {"verified": True, "message": "Telefone verificado com sucesso!"}
+
+@router.get("/phone/status")
+def phone_status(current: User = Depends(get_current_user)):
+    return {"phone": current.phone, "phone_verified": current.phone_verified, "is_verified": current.is_verified}

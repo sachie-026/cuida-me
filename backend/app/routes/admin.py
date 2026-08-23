@@ -454,3 +454,20 @@ def request_new_document(body: DocRequestPayload, db: Session = Depends(get_db),
         "reason": body.reason,
         "message": f"Documento '{body.doc_type}' solicitado. Usuário será notificado.",
     }
+# ── 48c: Document Download Failure Logging ─────────────────────────────────────
+
+_download_failure_log = []
+
+@router.post("/documents/{doc_id}/log-download-failure")
+def log_download_failure(doc_id: str, status_code: int = 0, error: str = "", _=Depends(require_admin)):
+    """48c: Log every failed document download attempt."""
+    from datetime import datetime, timezone
+    entry = {"doc_id": doc_id, "status_code": status_code, "error": error,
+             "timestamp": datetime.now(timezone.utc).isoformat()}
+    _download_failure_log.append(entry)
+    return entry
+
+@router.get("/documents/download-failures")
+def get_download_failures(_=Depends(require_admin)):
+    """48c: Return recent download failure log."""
+    return _download_failure_log[-100:]
