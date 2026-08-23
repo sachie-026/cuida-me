@@ -61,30 +61,51 @@ const NewBooking = () => {
   const [svcError, setSvcError] = useState("");
   const [showGuide, setShowGuide] = useState(false);
 
-  // 44a-c: Load data with 15s timeout, 3 states, error logging
+  // 44a: Root-cause fix — each call independent, services never blocks on auth failures
   const loadData = () => {
     setSvcLoadState("loading"); setSvcError("");
     const timeout = setTimeout(() => {
       setSvcLoadState("error"); setSvcError("Tempo limite atingido. Toque para tentar novamente.");
     }, 15000);
-    Promise.all([
-      axios.get(`${API}/api/professionals/services`),
-      axios.get(`${API}/api/users/${userId}/patient`, {headers}).catch(()=>({data:null})),
-      axios.get(`${API}/api/users/${userId}`, {headers}).catch(()=>({data:{}})),
-      axios.get(`${API}/api/auth/phone/status`, {headers}).catch(()=>({data:{phone_verified:true}})),
-    ]).then(([svcRes,patRes,userRes,phoneRes]) => {
-      clearTimeout(timeout);
-      setServicesMap(svcRes.data || {});
-      if (patRes.data) setPatient(patRes.data);
-      setIsVerified(userRes.data?.is_verified || false);
-      setPhoneVerified(phoneRes.data?.phone_verified ?? true);
-      setSvcLoadState(Object.keys(svcRes.data || {}).length > 0 ? "content" : "content");
-    }).catch((err) => {
-      clearTimeout(timeout);
-      console.error(`[44c] Service load failed: status=${err.response?.status}, detail=${err.response?.data?.detail || err.message}, userId=${userId}`);
-      setSvcError(`Erro ao carregar serviços (${err.response?.status || "rede"}). Toque para tentar novamente.`);
-      setSvcLoadState("error");
-    });
+
+    // Services is public — never send auth headers (avoids 401 on expired token)
+    const svcPromise = axios.get(`${API}/api/professionals/services`)
+      .catch(err => {
+        console.error(`[44a] Services API failed: status=${err.response?.status}, msg=${err.message}`);
+        return { data: {} };
+      });
+
+    // Auth-dependent calls — only if userId + token exist
+    const hasAuth = userId && token;
+    const patPromise = hasAuth
+      ? axios.get(`${API}/api/users/${userId}/patient`, {headers}).catch(() => ({data:null}))
+      : Promise.resolve({data:null});
+    const userPromise = hasAuth
+      ? axios.get(`${API}/api/users/${userId}`, {headers}).catch(() => ({data:{}}))
+      : Promise.resolve({data:{}});
+    const phonePromise = hasAuth
+      ? axios.get(`${API}/api/auth/phone/status`, {headers}).catch(() => ({data:{phone_verified:true}}))
+      : Promise.resolve({data:{phone_verified:false}});
+
+    Promise.all([svcPromise, patPromise, userPromise, phonePromise])
+      .then(([svcRes, patRes, userRes, phoneRes]) => {
+        clearTimeout(timeout);
+        const services = svcRes.data || {};
+        setServicesMap(services);
+        if (patRes.data) setPatient(patRes.data);
+        setIsVerified(userRes.data?.is_verified || false);
+        setPhoneVerified(phoneRes.data?.phone_verified ?? true);
+        setSvcLoadState(Object.keys(services).length > 0 ? "content" : "error");
+        if (Object.keys(services).length === 0) {
+          setSvcError("Nenhum serviço disponível. Toque para tentar novamente.");
+        }
+      })
+      .catch((err) => {
+        clearTimeout(timeout);
+        console.error(`[44c] Critical load failed: ${err.message}, userId=${userId}`);
+        setSvcError("Erro inesperado ao carregar. Toque para tentar novamente.");
+        setSvcLoadState("error");
+      });
   };
   useEffect(() => { loadData(); }, []);
 
@@ -276,18 +297,23 @@ const NewBooking = () => {
                 <div className="mt-2 space-y-4">
                   {[
                     {label:"Cuidador(a)",key:"caregiver",filter:(s)=>s,
-                     desc:"Companhia, mobilidade, higiene pessoal. NÃO inclui medicamentos."},
+                     desc:"Acompanhamento, companhia, auxílio à mobilidade, banho, alimentação, higiene pessoal e prevenção de quedas.",
+                     notCover:"NÃO inclui: administração de medicamentos, curativos, procedimentos clínicos ou qualquer ato de enfermagem."},
                     {label:"Auxiliar de Enfermagem",key:"nursing_assistant",filter:(s)=>!(servicesMap.caregiver||[]).includes(s),
-                     desc:"Sinais vitais, medicamentos orais/tópicos, curativos simples."},
+                     desc:"Todos os cuidados do Cuidador + monitoramento de sinais vitais, pressão arterial, glicemia, medicamentos orais/tópicos, insulina e curativos simples.",
+                     notCover:"NÃO inclui: medicamentos injetáveis (IM/EV), curativos complexos, sondas, cateteres ou procedimentos invasivos."},
                     {label:"Técnico(a) de Enfermagem",key:"technician",filter:(s)=>!(servicesMap.nursing_assistant||[]).includes(s),
-                     desc:"Medicamentos IM/EV, curativos complexos, sondas, cateteres."},
+                     desc:"Todos os cuidados anteriores + medicamentos intramusculares e endovenosos, curativos complexos, cuidados com traqueostomia, sondas, cateteres e cuidados paliativos.",
+                     notCover:"NÃO inclui: ventilação mecânica, nutrição parenteral, avaliação clínica de enfermagem ou elaboração de plano de cuidados."},
                     {label:"Enfermeiro(a)",key:"nurse",filter:(s)=>!(servicesMap.technician||[]).includes(s),
-                     desc:"Ventilação mecânica, nutrição parenteral, avaliação clínica, PICC."},
+                     desc:"Todos os procedimentos anteriores + ventilação mecânica domiciliar, nutrição parenteral, cuidados críticos, avaliação clínica, plano de cuidados, PICC e Port-a-Cath.",
+                     notCover:"Categoria mais completa — cobre todos os procedimentos de enfermagem permitidos por lei."},
                   ].map(group=>(
                     <div key={group.key} className="border border-slate-200 rounded-xl overflow-hidden">
                       <div className="bg-slate-50 px-3 py-2">
                         <p className="text-xs font-semibold text-navy uppercase tracking-wide">{group.label}</p>
                         <p className="text-[10px] text-slate-500 mt-0.5">{group.desc}</p>
+                        <p className="text-[10px] text-red-400 mt-0.5">{group.notCover}</p>
                       </div>
                       <div className="p-2 space-y-0.5">
                         {(servicesMap[group.key]||[]).filter(group.filter).map(svc=>(
