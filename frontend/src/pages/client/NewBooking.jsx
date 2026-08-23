@@ -295,6 +295,52 @@ const NewBooking = () => {
               {/* 44b: Content state */}
               {Object.keys(servicesMap).length > 0 && (
                 <div className="mt-2 space-y-4">
+
+                  {/* 44f: "Not sure which one you need?" */}
+                  <button type="button" onClick={() => setShowGuide(!showGuide)}
+                    className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1">
+                    {showGuide ? "✕ Fechar ajuda" : "🤔 Não sabe qual categoria escolher?"}
+                  </button>
+
+                  {/* 44g: Guided fallback — step-by-step questions */}
+                  {showGuide && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-4">
+                      <p className="text-sm font-semibold text-navy">Vamos descobrir juntos:</p>
+
+                      <div className="space-y-3">
+                        <div className="p-3 bg-white rounded-lg border border-blue-100">
+                          <p className="text-xs text-slate-700 mb-2 font-medium">1. A pessoa precisa de administração de medicamentos injetáveis, curativos complexos ou sondas?</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => { setShowGuide(false); toast("Selecione serviços de Técnico de Enfermagem ou Enfermeiro abaixo.", {icon:"👇"}); }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-purple-100 text-purple-700 font-semibold hover:bg-purple-200">Sim → Técnico ou Enfermeiro</button>
+                            <button type="button" className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-semibold hover:bg-slate-200"
+                              onClick={() => document.getElementById("guide-q2")?.scrollIntoView({behavior:"smooth"})}>Não →</button>
+                          </div>
+                        </div>
+
+                        <div id="guide-q2" className="p-3 bg-white rounded-lg border border-blue-100">
+                          <p className="text-xs text-slate-700 mb-2 font-medium">2. A pessoa precisa de monitoramento de sinais vitais, pressão, glicemia ou medicamentos orais?</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => { setShowGuide(false); toast("Selecione serviços de Auxiliar de Enfermagem abaixo.", {icon:"👇"}); }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 font-semibold hover:bg-blue-200">Sim → Auxiliar de Enfermagem</button>
+                            <button type="button" className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-semibold hover:bg-slate-200"
+                              onClick={() => document.getElementById("guide-q3")?.scrollIntoView({behavior:"smooth"})}>Não →</button>
+                          </div>
+                        </div>
+
+                        <div id="guide-q3" className="p-3 bg-white rounded-lg border border-blue-100">
+                          <p className="text-xs text-slate-700 mb-2 font-medium">3. A pessoa precisa apenas de companhia, auxílio à mobilidade, banho ou alimentação?</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => { setShowGuide(false); toast("Selecione serviços de Cuidador abaixo.", {icon:"👇"}); }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200">Sim → Cuidador(a)</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-slate-400">Dica: você pode selecionar serviços de múltiplas categorias. O sistema encontrará o profissional com a qualificação adequada.</p>
+                    </div>
+                  )}
+
                   {[
                     {label:"Cuidador(a)",key:"caregiver",filter:(s)=>s,
                      desc:"Acompanhamento, companhia, auxílio à mobilidade, banho, alimentação, higiene pessoal e prevenção de quedas.",

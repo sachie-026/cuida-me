@@ -40,23 +40,26 @@ const ProfessionalDashboard = () => {
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
+    const t0 = performance.now();
 
-    // Step 1: get professional profile to get prof.id
+    // 53b: Get professional profile first (needed for profId), then bookings
     axios.get(`${API}/api/professionals/${userId}`, { headers })
       .then(profRes => {
         const prof = profRes.data;
         setAvailable(prof.is_available || false);
         setApprovalStatus(prof.approval_status || "pending");
         setProfId(prof.id);
+        setLoading(false); // 53c: Dashboard interactive immediately with profile
+        console.log(`[53a] Pro profile: ${Math.round(performance.now()-t0)}ms — dashboard interactive`);
 
-        // Step 2: use prof.id (not user_id) to fetch bookings
+        // 53c: Bookings load in background (deferred)
         return axios.get(`${API}/api/bookings/professional/${prof.id}`, { headers });
       })
       .then(bookRes => {
         setBookings(Array.isArray(bookRes.data) ? bookRes.data : []);
+        console.log(`[53a] Pro bookings: ${Math.round(performance.now()-t0)}ms`);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => { setLoading(false); });
   }, [userId]);
 
   const toggleAvailability = async () => {
