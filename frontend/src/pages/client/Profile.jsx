@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import PhoneVerificationModal from "../../components/common/PhoneVerificationModal";
 import VerificationCenter from "../../components/common/VerificationCenter";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -19,6 +20,7 @@ const ClientProfile = () => {
   const [saving,  setSaving]       = useState(false);
   const [clientDocs, setClientDocs]= useState([]);
   const [docUploading, setDocUploading] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const [user, setUser] = useState({ full_name: "", phone: "", cpf: "", email: "", is_verified: false });
   const [patient, setPatient] = useState({});
@@ -105,21 +107,18 @@ const ClientProfile = () => {
               {!user.phone_verified && (
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl mb-4">
                   <p className="text-sm font-semibold text-navy mb-1">📱 Verificar telefone</p>
-                  <p className="text-xs text-slate-500 mb-3">Enviaremos um código SMS para confirmar seu número.</p>
-                  <div className="flex gap-2">
-                    <input className="form-input flex-1 text-sm" placeholder="(11) 99999-9999" value={user.phone||""} onChange={e=>setUser(p=>({...p,phone:e.target.value}))}/>
-                    <button onClick={async()=>{
-                      if(!user.phone){toast.error("Informe o telefone.");return;}
-                      try{
-                        const{data}=await axios.post(`${API}/api/auth/phone/send-code`,{phone:user.phone},{headers});
-                        if(data.sent){toast.success(data.message);const code=prompt("Digite o código recebido por SMS:");
-                          if(code){const r=await axios.post(`${API}/api/auth/phone/verify-code`,{phone:user.phone,code},{headers});
-                            if(r.data.verified){toast.success("Telefone verificado!");setUser(p=>({...p,phone_verified:true}));}}}
-                        else{toast.error(data.error||"Erro ao enviar SMS.");}
-                      }catch(e){toast.error(e.response?.data?.detail||"Erro ao verificar.");}
-                    }} className="btn-primary text-sm px-4">Verificar</button>
-                  </div>
+                  <p className="text-xs text-slate-500 mb-3">Verifique seu número para poder agendar atendimentos.</p>
+                  <button onClick={() => setShowPhoneModal(true)} className="btn-primary text-sm">
+                    Verificar telefone →
+                  </button>
                 </div>
+              )}
+              {showPhoneModal && (
+                <PhoneVerificationModal
+                  phone={user.phone || ""}
+                  onClose={() => setShowPhoneModal(false)}
+                  onVerified={() => { setUser(p => ({ ...p, phone_verified: true })); setShowPhoneModal(false); }}
+                />
               )}
 
               {user.is_verified ? (

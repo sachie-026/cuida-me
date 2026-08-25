@@ -220,7 +220,15 @@ def send_phone_code(body: PhoneVerifyRequest, db: Session = Depends(get_db), cur
     db.commit()
     sent = _send_sms(body.phone, code)
     if not sent:
+        try:
+            from app.utils.observability import log_event
+            log_event("46", "sms_send_failed", {"phone": body.phone, "user_id": current.id})
+        except: pass
         return {"sent": False, "error": "Não foi possível enviar o SMS. Tente novamente.", "can_retry": True}
+    try:
+        from app.utils.observability import log_event
+        log_event("46", "sms_sent", {"phone": body.phone, "user_id": current.id})
+    except: pass
     return {"sent": True, "message": f"Código enviado para {body.phone}. Válido por 10 minutos."}
 
 @router.post("/phone/verify-code")

@@ -25,6 +25,15 @@ const FIELD_LABELS = {
   holiday_surcharge_pct: "Taxa feriado", standard_response_hours: "Resposta padrão",
   urgent_response_minutes: "Resposta urgente", max_match_batch: "Profissionais por lote",
   eval_window_days: "Janela de avaliação",
+  // 50d: Payment
+  payment_methods_enabled: "Métodos habilitados", auto_release_after_hours: "Liberação automática após",
+  dispute_review_hours: "Prazo revisão de disputa",
+  // 50b: Categories
+  enabled_categories: "Categorias habilitadas", min_booking_duration_minutes: "Duração mínima do agendamento",
+  // 50d: Content
+  platform_name: "Nome da plataforma", support_email: "E-mail de suporte", support_whatsapp: "WhatsApp suporte",
+  // 50d: General
+  maintenance_mode: "Modo manutenção", allow_new_registrations: "Permitir novos cadastros",
 };
 const FIELD_UNITS = {
   min_advance_hours: "h", min_booking_hours: "h", urgent_window_start_hours: "h",
@@ -34,7 +43,8 @@ const FIELD_UNITS = {
   checkin_reminder_minutes: "min", client_confirm_timeout_hours: "h", day_start_hour: "h",
   night_start_hour: "h", rest_after_24h_hours: "h", platform_commission_pct: "%",
   holiday_surcharge_pct: "%", standard_response_hours: "h", urgent_response_minutes: "min",
-  eval_window_days: "dias",
+  eval_window_days: "dias", auto_release_after_hours: "h", dispute_review_hours: "h",
+  min_booking_duration_minutes: "min",
 };
 
 const AdminSettings = () => {
@@ -42,7 +52,7 @@ const AdminSettings = () => {
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
-  const [tab, setTab] = useState("booking");
+  const [tab, setTab] = useState("pricing");
   const [settings, setSettings] = useState({});
   const [defaults, setDefaults] = useState({});
   const [groups, setGroups] = useState({});
@@ -91,14 +101,18 @@ const AdminSettings = () => {
   };
 
   const tabs = [
+    { id: "pricing", label: "Precificação", icon: <DollarSign size={14}/> },
+    { id: "commission", label: "Comissão", icon: <DollarSign size={14}/> },
     { id: "booking", label: "Agendamento", icon: <Clock size={14}/> },
     { id: "cancellation", label: "Cancelamento", icon: <Shield size={14}/> },
-    { id: "pricing", label: "Precificação", icon: <DollarSign size={14}/> },
+    { id: "categories", label: "Categorias", icon: <Shield size={14}/> },
     { id: "arrival_gps", label: "GPS e Check-in", icon: <Shield size={14}/> },
     { id: "time_ranges", label: "Horários", icon: <Clock size={14}/> },
-    { id: "commission", label: "Comissão", icon: <DollarSign size={14}/> },
     { id: "matching", label: "Matching", icon: <Clock size={14}/> },
     { id: "evaluation", label: "Avaliação", icon: <Clock size={14}/> },
+    { id: "payment", label: "Pagamento", icon: <DollarSign size={14}/> },
+    { id: "content", label: "Conteúdo", icon: <Clock size={14}/> },
+    { id: "general", label: "Geral", icon: <Shield size={14}/> },
     { id: "audit", label: "Auditoria", icon: <History size={14}/> },
   ];
 
@@ -109,18 +123,31 @@ const AdminSettings = () => {
     const defaultVal = defaults[field];
     const isDirty = dirty[field];
     const isRate = field.includes("_fee_") || field.includes("_rate_");
+    const isText = typeof defaultVal === "string" && !unit && !isRate && isNaN(Number(defaultVal));
+    const isBool = defaultVal === "true" || defaultVal === "false" || typeof defaultVal === "boolean";
 
     return (
       <div className={`flex items-center justify-between py-3 border-b border-slate-100 ${isDirty ? "bg-amber-50 -mx-2 px-2 rounded-lg" : ""}`}>
         <div>
           <span className="text-sm text-slate-700">{label}</span>
-          {defaultVal !== undefined && <span className="text-[10px] text-slate-400 ml-2">(padrão: {defaultVal}{unit})</span>}
+          {defaultVal !== undefined && !isBool && <span className="text-[10px] text-slate-400 ml-2">(padrão: {String(defaultVal).substring(0,30)}{unit})</span>}
         </div>
         <div className="flex items-center gap-2">
-          {isRate && <span className="text-xs text-slate-400">R$</span>}
-          <input type="number" step={isRate ? "0.01" : "1"} className="form-input w-24 text-sm text-right"
-            value={value} onChange={e => handleChange(field, e.target.value)} />
-          {unit && !isRate && <span className="text-xs text-slate-400 w-8">{unit}</span>}
+          {isBool ? (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={String(value) === "true"} onChange={e => handleChange(field, String(e.target.checked))} className="accent-blue-500 w-4 h-4" />
+              <span className="text-xs text-slate-500">{String(value) === "true" ? "Sim" : "Não"}</span>
+            </label>
+          ) : isText ? (
+            <input type="text" className="form-input w-48 text-sm" value={value} onChange={e => handleChange(field, e.target.value)} />
+          ) : (
+            <>
+              {isRate && <span className="text-xs text-slate-400">R$</span>}
+              <input type="number" step={isRate ? "0.01" : "1"} className="form-input w-24 text-sm text-right"
+                value={value} onChange={e => handleChange(field, e.target.value)} />
+              {unit && !isRate && <span className="text-xs text-slate-400 w-8">{unit}</span>}
+            </>
+          )}
           {isDirty && <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Alterado" />}
         </div>
       </div>

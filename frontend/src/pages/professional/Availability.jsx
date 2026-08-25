@@ -387,26 +387,56 @@ const CalendarTab = ({ userId, profId }) => {
                   <div className="space-y-2">
                     {dayBookings.sort((a,b) => (a.scheduled_start||"").localeCompare(b.scheduled_start||"")).map(b => {
                       const statusCfg = {
-                        pending: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },
-                        accepted: { label: "Confirmado", color: "bg-blue-100 text-blue-700" },
-                        professional_arrived: { label: "Profissional chegou", color: "bg-indigo-100 text-indigo-700" },
-                        checked_in: { label: "Em andamento", color: "bg-purple-100 text-purple-700" },
-                        completed: { label: "Concluído", color: "bg-green-100 text-green-700" },
-                        cancelled: { label: "Cancelado", color: "bg-red-100 text-red-600" },
+                        pending:              { label: "Pendente",           color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400", border: "border-l-yellow-400" },
+                        accepted:             { label: "Confirmado",         color: "bg-blue-100 text-blue-700",     dot: "bg-blue-500",   border: "border-l-blue-500" },
+                        professional_arrived:  { label: "Chegou",            color: "bg-indigo-100 text-indigo-700", dot: "bg-indigo-500", border: "border-l-indigo-500" },
+                        checked_in:           { label: "Em andamento",       color: "bg-purple-100 text-purple-700", dot: "bg-purple-500", border: "border-l-purple-500" },
+                        completed:            { label: "Concluído",          color: "bg-green-100 text-green-700",   dot: "bg-green-500",  border: "border-l-green-500" },
+                        cancelled:            { label: "Cancelado",          color: "bg-red-100 text-red-600",       dot: "bg-red-400",    border: "border-l-red-400" },
                       };
                       const cfg = statusCfg[b.status] || statusCfg.pending;
                       return (
-                        <div key={b.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors"
-                          onClick={() => navigate(`/messages?booking=${b.id}`)}>
+                        <div key={b.id} className={`p-3 rounded-xl bg-slate-50 border border-slate-100 border-l-4 ${cfg.border} hover:bg-slate-100 transition-colors`}>
                           <div className="flex items-center justify-between mb-1">
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+                            </div>
                             <span className="text-xs text-slate-400">
                               {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
                               {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`}
                             </span>
                           </div>
                           <p className="text-sm font-medium text-navy">{b.service_type || "Atendimento"}</p>
+                          {/* 51a: Client name */}
+                          {b.client_name && <p className="text-xs text-slate-500">Cliente: {b.client_name}</p>}
                           {b.total_price && <p className="text-xs text-slate-500">R$ {Number(b.total_price).toFixed(2)}</p>}
+
+                          {/* 51d: Confirm/Decline actions on Pending */}
+                          {b.status === "pending" && (
+                            <div className="flex gap-2 mt-2">
+                              <button onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await axios.patch(`${API}/api/bookings/${b.id}/accept`, {}, { headers: { Authorization: `Bearer ${token}` } });
+                                  toast.success("Agendamento aceito!");
+                                  window.location.reload();
+                                } catch (err) { toast.error(err.response?.data?.detail || "Erro ao aceitar."); }
+                              }} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600">
+                                Aceitar
+                              </button>
+                              <button onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await axios.patch(`${API}/api/bookings/${b.id}/decline`, {}, { headers: { Authorization: `Bearer ${token}` } });
+                                  toast.success("Agendamento recusado.");
+                                  window.location.reload();
+                                } catch (err) { toast.error(err.response?.data?.detail || "Erro ao recusar."); }
+                              }} className="text-xs px-3 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-semibold hover:bg-slate-300">
+                                Recusar
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -419,22 +449,43 @@ const CalendarTab = ({ userId, profId }) => {
               );
             })()}
 
-            {/* Existing availability slots */}
-            {slotsForDate(selectedDate).length > 0 && (
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Horários disponíveis</p>
-                <div className="space-y-1">
-                  {slotsForDate(selectedDate).map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-100">
-                      <span className="text-sm text-green-700">{s.start_time} – {s.end_time}</span>
-                      <button onClick={() => handleDeleteSlot(s.id)} className="text-xs text-red-400 hover:text-red-600">Remover</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* 51e: Section 2 — Existing Available + Blocked ranges */}
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Disponibilidade e bloqueios</p>
+              {(() => {
+                const dateSlots = slotsForDate(selectedDate);
+                const availSlots = dateSlots.filter(s => s.slot_type === "available" || !s.slot_type);
+                const blockedSlots = dateSlots.filter(s => s.slot_type === "blocked");
+                return dateSlots.length > 0 ? (
+                  <div className="space-y-1.5 mb-3">
+                    {availSlots.map(s => (
+                      <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-green-50 border border-green-100">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-green-400" />
+                          <span className="text-sm text-green-700 font-medium">{s.start_time} – {s.end_time}</span>
+                          <span className="text-[10px] text-green-500">Disponível</span>
+                        </div>
+                        <button onClick={() => handleDeleteSlot(s.id)} className="text-xs text-red-400 hover:text-red-600 font-medium">Remover</button>
+                      </div>
+                    ))}
+                    {blockedSlots.map(s => (
+                      <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-red-50 border border-red-100">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-red-400" />
+                          <span className="text-sm text-red-700 font-medium">{s.start_time} – {s.end_time}</span>
+                          <span className="text-[10px] text-red-500">Bloqueado</span>
+                        </div>
+                        <button onClick={() => handleDeleteSlot(s.id)} className="text-xs text-red-400 hover:text-red-600 font-medium">Remover</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 mb-3">Nenhum horário configurado para este dia.</p>
+                );
+              })()}
+            </div>
 
-            {/* Add availability form — always accessible */}
+            {/* Add availability form — always accessible AFTER listing */}
             <SlotModal
               date={selectedDate}
               existingSlots={slotsForDate(selectedDate)}

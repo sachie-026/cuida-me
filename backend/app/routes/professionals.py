@@ -262,68 +262,160 @@ def calculate_distance(body: DistanceRequest, db: Session = Depends(get_db)):
         "estimated_arrival": f"~{travel_min} min",
     }
 
-# ── V8-5: Category Switch (Nurse/Tech/Assistant → Caregiver) ──────────────────
+# ── 45c: Generalized Category Management ──────────────────────────────────────
 
-CAREGIVER_TERMS = "Eu entendo que, ao aceitar atendimentos como Cuidador(a), prestarei exclusivamente cuidados não-técnicos (companhia, auxílio à mobilidade, cuidados pessoais) e não realizarei procedimentos técnicos de enfermagem durante este atendimento."
+from app.utils.pricing import ROLE_RANK, HOUR_RATES, INITIAL_SERVICE_FEE
+
+CATEGORY_TERMS = {
+    "caregiver": "Eu entendo que, ao atuar como Cuidador(a), prestarei exclusivamente cuidados não-técnicos e não realizarei procedimentos técnicos de enfermagem.",
+    "nursing_assistant": "Eu confirmo que possuo registro COREN ativo como Auxiliar de Enfermagem e atuarei dentro do escopo permitido pela minha formação.",
+    "technician": "Eu confirmo que possuo registro COREN ativo como Técnico de Enfermagem e atuarei dentro do escopo permitido.",
+    "nurse": "Eu confirmo que possuo registro COREN ativo como Enfermeiro(a) e atuarei dentro do escopo completo da enfermagem.",
+}
 TERMS_VERSION = "v1.0"
 
+DERIVED_CATEGORIES = {
+    "nurse": ["technician", "nursing_assistant", "caregiver"],
+    "technician": ["nursing_assistant", "caregiver"],
+    "nursing_assistant": ["caregiver"],
+    "caregiver": [],
+}
+
 class CategorySwitchRequest(BaseModel):
-    target_category: str  # "caregiver" or original role
+    target_category: str
     accept_terms:    bool
 
 @router.post("/switch-category")
 def switch_category(body: CategorySwitchRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Switch active category (e.g. Nurse → Caregiver). Blocked if active bookings exist."""
+    """45c: Switch active category. Supports ALL derived transitions, not just caregiver."""
     prof = db.query(Professional).filter(Professional.user_id == current.id).first()
     if not prof:
         raise HTTPException(404, "Professional profile not found")
 
     current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    allowed = DERIVED_CATEGORIES.get(current_role, []) + [current_role]
 
-    # Only nursing roles can switch to caregiver
-    if body.target_category == "caregiver" and current_role not in ("nurse", "technician", "nursing_assistant"):
-        raise HTTPException(400, "Apenas enfermeiros, técnicos e auxiliares podem atuar como cuidador")
+    if body.target_category not in allowed:
+        raise HTTPException(400, f"Não é possível mudar para '{body.target_category}'. Categorias permitidas: {allowed}")
 
-    if body.target_category == "caregiver" and not body.accept_terms:
-        raise HTTPException(400, "Você deve aceitar os termos para atuar como cuidador")
+    if body.target_category != current_role and not body.accept_terms:
+        raise HTTPException(400, "Você deve aceitar os termos para atuar nesta categoria.")
 
-    # Check for active/pending bookings
+    # Check for active bookings
     active = db.query(Booking).filter(
         Booking.professional_id == prof.id,
         Booking.status.in_(["pending", "accepted", "checked_in", "professional_arrived"]),
     ).first()
     if active:
-        raise HTTPException(400, "Você possui atendimentos pendentes ou confirmados. Conclua ou cancele-os antes de mudar de categoria.")
+        raise HTTPException(400, "Conclua ou cancele atendimentos pendentes antes de mudar de categoria.")
 
-    # Store acceptance record (V8-6)
     from datetime import datetime, timezone
     acceptance = {
-        "professional_id": prof.id,
-        "from_category": current_role,
+        "professional_id": prof.id, "from_category": prof.active_category or current_role,
         "to_category": body.target_category,
-        "terms_text": CAREGIVER_TERMS if body.target_category == "caregiver" else None,
+        "terms_text": CATEGORY_TERMS.get(body.target_category, ""),
         "terms_version": TERMS_VERSION,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "type": "profile_switch",
+        "timestamp": datetime.now(timezone.utc).isoformat(), "type": "profile_switch",
     }
 
-    # Update active category
     prof.active_category = body.target_category
-    if not prof.category_acceptances:
-        prof.category_acceptances = []
-    prof.category_acceptances = prof.category_acceptances + [acceptance]
-    db.commit()
+    prof.category_acceptances = (prof.category_acceptances or []) + [acceptance]
 
+    # 45h: Auto-create category record if not exists
+    records = list(prof.category_records or [])
+    existing = next((r for r in records if r.get("role") == body.target_category), None)
+    if not existing:
+        records.append({
+            "role": body.target_category,
+            "verification_status": "approved" if body.target_category in DERIVED_CATEGORIES.get(current_role, []) else "pending",
+            "documents": [],
+            "rate_day": HOUR_RATES.get(body.target_category, {}).get("day", 0),
+            "rate_night": HOUR_RATES.get(body.target_category, {}).get("night", 0),
+            "is_active": True,
+            "added_at": datetime.now(timezone.utc).isoformat(),
+            "deactivated_at": None,
+        })
+        prof.category_records = records
+
+    db.commit()
+    return {"active_category": body.target_category, "original_role": current_role, "message": f"Categoria ativa: {body.target_category}."}
+
+# ── 45g: Category Deactivation/Reactivation ───────────────────────────────────
+
+@router.post("/category/{category}/deactivate")
+def deactivate_category(category: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """45g: Deactivate a category without full re-registration."""
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not prof:
+        raise HTTPException(404, "Professional profile not found")
+
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    if category == current_role:
+        raise HTTPException(400, "Não é possível desativar sua categoria principal.")
+
+    records = list(prof.category_records or [])
+    found = False
+    for r in records:
+        if r.get("role") == category:
+            r["is_active"] = False
+            r["deactivated_at"] = datetime.now(timezone.utc).isoformat()
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(404, f"Categoria '{category}' não encontrada no seu perfil.")
+
+    prof.category_records = records
+    if prof.active_category == category:
+        prof.active_category = current_role
+
+    db.commit()
+    return {"category": category, "is_active": False, "message": f"Categoria '{category}' desativada. Você pode reativá-la a qualquer momento."}
+
+@router.post("/category/{category}/reactivate")
+def reactivate_category(category: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """45g: Reactivate a previously deactivated category."""
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not prof:
+        raise HTTPException(404, "Professional profile not found")
+
+    records = list(prof.category_records or [])
+    found = False
+    for r in records:
+        if r.get("role") == category:
+            r["is_active"] = True
+            r["deactivated_at"] = None
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(404, f"Categoria '{category}' não encontrada.")
+
+    prof.category_records = records
+    db.commit()
+    return {"category": category, "is_active": True, "message": f"Categoria '{category}' reativada."}
+
+# ── 45h: Category Records Listing ─────────────────────────────────────────────
+
+@router.get("/categories")
+def get_my_categories(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """45h: Get all category records for the professional."""
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not prof:
+        raise HTTPException(404, "Professional profile not found")
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    available = DERIVED_CATEGORIES.get(current_role, [])
+    records = prof.category_records or []
+    held = [r["role"] for r in records]
     return {
-        "active_category": body.target_category,
         "original_role": current_role,
-        "acceptance_recorded": True,
-        "message": f"Categoria ativa alterada para {body.target_category}.",
+        "active_category": prof.active_category or current_role,
+        "available_to_add": [c for c in available if c not in held],
+        "categories": records,
     }
 
 @router.get("/active-category")
 def get_active_category(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Get current active category for the professional."""
     prof = db.query(Professional).filter(Professional.user_id == current.id).first()
     if not prof:
         raise HTTPException(404, "Professional profile not found")
@@ -331,5 +423,5 @@ def get_active_category(db: Session = Depends(get_db), current: User = Depends(g
     return {
         "original_role": role,
         "active_category": prof.active_category or role,
-        "can_switch_to_caregiver": role in ("nurse", "technician", "nursing_assistant"),
+        "can_switch_to": DERIVED_CATEGORIES.get(role, []) + [role],
     }
