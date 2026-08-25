@@ -31,26 +31,39 @@ const ClientDashboard = () => {
   const [cancellingBooking, setCancellingBooking] = useState(null);
 
   useEffect(() => {
+    const t0 = performance.now();
+
+    // 53b: First get patient (required for bookings), then parallelize the rest
     axios.get(`${API}/api/users/${userId}/patient`, { headers })
       .then(r => {
         const patientId = r.data.id;
+        console.log(`[53a] Patient fetch: ${Math.round(performance.now()-t0)}ms`);
+
+        // 53b: Bookings fetch — this is critical, show dashboard as soon as this arrives
         return axios.get(`${API}/api/bookings/patient/${patientId}`, { headers });
       })
       .then(r => {
         const fetchedBookings = r.data;
         setBookings(fetchedBookings);
-        // Pre-populate ratedIds: check which completed bookings already have a rating from this user
+        setLoading(false); // 53c: Dashboard interactive immediately with bookings
+        console.log(`[53a] Bookings loaded: ${Math.round(performance.now()-t0)}ms — dashboard interactive`);
+
+        // 53c: Defer non-essential — ratings check runs in background
         const completedIds = fetchedBookings.filter(b => b.status === "completed").map(b => b.id);
-        Promise.all(
-          completedIds.map(id =>
-            axios.get(`${API}/api/ratings/booking/${id}`, { headers })
-              .then(res => res.data.some(rating => rating.reviewer_id === userId) ? id : null)
-              .catch(() => null)
-          )
-        ).then(results => setRatedIds(results.filter(Boolean)));
+        if (completedIds.length > 0) {
+          Promise.all(
+            completedIds.map(id =>
+              axios.get(`${API}/api/ratings/booking/${id}`, { headers })
+                .then(res => res.data.some(rating => rating.reviewer_id === userId) ? id : null)
+                .catch(() => null)
+            )
+          ).then(results => {
+            setRatedIds(results.filter(Boolean));
+            console.log(`[53a] Ratings deferred: ${Math.round(performance.now()-t0)}ms`);
+          });
+        }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => { setLoading(false); });
   }, []);
 
   const [filter, setFilter] = useState("all");

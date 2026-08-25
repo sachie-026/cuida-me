@@ -120,87 +120,149 @@ const CAREGIVER_TERMS = "Eu entendo que, ao aceitar atendimentos como Cuidador(a
 const CategorySwitch = ({ userId, currentRole }) => {
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
-  const [activeCategory, setActiveCategory] = useState(null);
+  const [catData, setCatData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState(null);
   const [blocked, setBlocked] = useState(false);
   const [blockReason, setBlockReason] = useState("");
 
-  const ROLE_LABELS_CAT = { nurse: "Enfermeiro(a)", technician: "Técnico(a) de Enfermagem", nursing_assistant: "Auxiliar de Enfermagem", caregiver: "Cuidador(a)" };
+  const ROLE_LABELS_CAT = { nurse: "Enfermeiro(a)", technician: "Técnico(a)", nursing_assistant: "Auxiliar", caregiver: "Cuidador(a)" };
+  const VERIFY_COLOR = { approved: "bg-green-100 text-green-700", pending: "bg-amber-100 text-amber-700", rejected: "bg-red-100 text-red-600" };
 
-  useEffect(() => {
-    axios.get(`${API}/api/professionals/active-category`, { headers })
-      .then(r => setActiveCategory(r.data.active_category || currentRole))
-      .catch(() => setActiveCategory(currentRole))
+  const loadCategories = () => {
+    axios.get(`${API}/api/professionals/categories`, { headers })
+      .then(r => setCatData(r.data))
+      .catch(() => setCatData({ original_role: currentRole, active_category: currentRole, available_to_add: [], categories: [] }))
       .finally(() => setLoading(false));
-  }, []);
+  };
+  useEffect(() => { loadCategories(); }, []);
 
   const handleSwitch = async (target) => {
-    if (target === "caregiver" && !accepted) {
-      toast.error("Você deve aceitar os termos para atuar como cuidador(a).");
-      return;
-    }
-    setSwitching(true);
+    if (target !== currentRole && !accepted) { toast.error("Aceite os termos para atuar nesta categoria."); return; }
+    setSwitching(true); setBlocked(false);
     try {
       const { data } = await axios.post(`${API}/api/professionals/switch-category`, {
-        target_category: target, accept_terms: target === "caregiver" ? accepted : true,
+        target_category: target, accept_terms: true,
       }, { headers });
-      setActiveCategory(target);
       toast.success(data.message);
-      setAccepted(false);
+      setAccepted(false); setSelectedTarget(null);
+      loadCategories();
     } catch (err) {
       const msg = err.response?.data?.detail || "Erro ao trocar categoria.";
-      if (msg.includes("pendentes") || msg.includes("confirmados")) {
-        setBlocked(true);
-        setBlockReason(msg);
-      }
+      if (msg.includes("pendentes") || msg.includes("Conclua")) { setBlocked(true); setBlockReason(msg); }
       toast.error(msg);
     } finally { setSwitching(false); }
   };
 
-  if (loading) return null;
+  const handleDeactivate = async (cat) => {
+    try {
+      const { data } = await axios.post(`${API}/api/professionals/category/${cat}/deactivate`, {}, { headers });
+      toast.success(data.message); loadCategories();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+  };
 
-  const isCaregiver = activeCategory === "caregiver";
-  const techLabel = ROLE_LABELS_CAT[currentRole] || currentRole;
+  const handleReactivate = async (cat) => {
+    try {
+      const { data } = await axios.post(`${API}/api/professionals/category/${cat}/reactivate`, {}, { headers });
+      toast.success(data.message); loadCategories();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+  };
+
+  if (loading || !catData) return null;
 
   return (
-    <div className="card p-6">
-      <h3 className="font-semibold text-navy mb-1">Alterar categoria profissional</h3>
-      <p className="text-xs text-slate-500 mb-4">Troque entre sua categoria técnica e Cuidador(a) para receber atendimentos diferentes.</p>
+    <div className="card p-6" id="categories">
+      <h3 className="font-semibold text-navy mb-1">Categorias profissionais</h3>
+      <p className="text-xs text-slate-500 mb-4">Gerencie suas categorias de atuação. Sua categoria principal é {ROLE_LABELS_CAT[currentRole] || currentRole}.</p>
 
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-          !isCaregiver ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300 opacity-60"}`}
-          onClick={() => isCaregiver && handleSwitch(currentRole)}>
-          <p className="text-sm font-bold text-navy">{techLabel}</p>
-          {!isCaregiver && <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full mt-1 inline-block">Ativa</span>}
-          <p className="text-xs text-slate-500 mt-1">Procedimentos técnicos de enfermagem</p>
+      {/* 45h: Category records list */}
+      <div className="space-y-2 mb-4">
+        {/* Primary role — always shown */}
+        <div className={`p-3 rounded-xl border-2 ${catData.active_category === currentRole ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-navy">{ROLE_LABELS_CAT[currentRole]}</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Principal</span>
+              {catData.active_category === currentRole && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Ativa</span>}
+            </div>
+            {catData.active_category !== currentRole && (
+              <button onClick={() => handleSwitch(currentRole)} className="text-xs text-blue-600 font-semibold hover:underline">Ativar</button>
+            )}
+          </div>
         </div>
-        <div className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-          isCaregiver ? "border-green-500 bg-green-50" : "border-slate-200 hover:border-slate-300 opacity-60"}`}
-          onClick={() => !isCaregiver && !blocked && handleSwitch("caregiver")}>
-          <p className="text-sm font-bold text-navy">Cuidador(a)</p>
-          {isCaregiver && <span className="text-[10px] font-semibold text-green-600 bg-green-100 px-2 py-0.5 rounded-full mt-1 inline-block">Ativa</span>}
-          <p className="text-xs text-slate-500 mt-1">Companhia, mobilidade, cuidados pessoais</p>
-        </div>
+
+        {/* Additional category records */}
+        {(catData.categories || []).map(cat => (
+          <div key={cat.role} className={`p-3 rounded-xl border-2 ${
+            catData.active_category === cat.role ? "border-green-500 bg-green-50" :
+            !cat.is_active ? "border-slate-200 bg-slate-50 opacity-60" : "border-slate-200"}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-bold text-navy">{ROLE_LABELS_CAT[cat.role] || cat.role}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${VERIFY_COLOR[cat.verification_status] || VERIFY_COLOR.pending}`}>
+                    {cat.verification_status === "approved" ? "✓ Verificado" : cat.verification_status === "rejected" ? "✗ Rejeitado" : "⏳ Pendente"}
+                  </span>
+                  {catData.active_category === cat.role && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Ativa</span>}
+                  {!cat.is_active && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">Desativada</span>}
+                </div>
+                <p className="text-xs text-slate-500">Diurno: R${cat.rate_day}/h · Noturno: R${cat.rate_night}/h</p>
+              </div>
+              <div className="flex gap-1.5">
+                {cat.is_active && catData.active_category !== cat.role && (
+                  <button onClick={() => { setSelectedTarget(cat.role); setAccepted(false); }} className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100">Ativar</button>
+                )}
+                {cat.is_active && cat.role !== currentRole && (
+                  <button onClick={() => handleDeactivate(cat.role)} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 font-semibold hover:bg-red-100">Desativar</button>
+                )}
+                {!cat.is_active && (
+                  <button onClick={() => handleReactivate(cat.role)} className="text-xs px-2 py-1 rounded-lg bg-green-50 text-green-600 font-semibold hover:bg-green-100">Reativar</button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
+      {/* Add new category */}
+      {catData.available_to_add?.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-slate-500 mb-2">Adicionar categoria:</p>
+          <div className="flex flex-wrap gap-2">
+            {catData.available_to_add.map(cat => (
+              <button key={cat} onClick={() => { setSelectedTarget(cat); setAccepted(false); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100">
+                + {ROLE_LABELS_CAT[cat] || cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Terms acceptance for switching/adding */}
+      {selectedTarget && selectedTarget !== currentRole && (
+        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mb-3">
+          <p className="text-sm font-semibold text-navy mb-2">Termos para {ROLE_LABELS_CAT[selectedTarget] || selectedTarget}</p>
+          <label className="flex items-start gap-3 cursor-pointer mb-3">
+            <input type="checkbox" checked={accepted} onChange={e => setAccepted(e.target.checked)} className="accent-blue-500 mt-0.5" />
+            <span className="text-xs text-slate-600">Eu confirmo que entendo o escopo de atuação desta categoria e atuarei dentro dos limites permitidos.</span>
+          </label>
+          <div className="flex gap-2">
+            <button onClick={() => setSelectedTarget(null)} className="btn-outline text-xs flex-1">Cancelar</button>
+            <button onClick={() => handleSwitch(selectedTarget)} disabled={!accepted || switching}
+              className="btn-primary text-xs flex-1 disabled:opacity-50">{switching ? "..." : "Confirmar"}</button>
+          </div>
+        </div>
+      )}
+
       {blocked && (
-        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
           <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5"/>
           <p className="text-xs text-amber-700">{blockReason}</p>
         </div>
       )}
-
-      {!isCaregiver && !blocked && (
-        <label className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mb-3">
-          <input type="checkbox" checked={accepted} onChange={e => setAccepted(e.target.checked)} className="accent-blue-500 mt-0.5" />
-          <span className="text-xs text-slate-600">{CAREGIVER_TERMS}</span>
-        </label>
-      )}
-
-      {switching && <p className="text-xs text-slate-400 text-center">Trocando categoria...</p>}
     </div>
   );
 };

@@ -164,6 +164,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "holidays",      label: "Feriados",      icon: <CalendarRange size={18} /> },
     { key: "reports",       label: "Denúncias",     icon: <FileText size={18} /> },
     { key: "alice",          label: "Alice IA",       icon: <Bot size={18} /> },
+    { key: "validation",     label: "Validação COREN", icon: <ShieldCheck size={18} /> },
   ];
 
   const content = (
@@ -777,6 +778,159 @@ const ReportsPanel = () => {
   );
 };
 
+/* ── 49b-g: COREN Validation Panel ── */
+const ValidationPanel = () => {
+  const { headers } = useAdmin();
+  const [docId, setDocId] = useState("");
+  const [result, setResult] = useState(null);
+  const [calibration, setCalibration] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleValidate = async () => {
+    if (!docId.trim()) { toast.error("Informe o ID do documento."); return; }
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/api/admin/documents/${docId}/validate`, {}, { headers });
+      setResult(data);
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro na validação."); }
+    finally { setLoading(false); }
+  };
+
+  const handleCalibrate = async (verdict) => {
+    try {
+      await axios.post(`${API}/api/admin/documents/${docId}/calibrate?human_verdict=${verdict}`, {}, { headers });
+      toast.success("Calibração registrada!");
+      loadCalibration();
+    } catch { toast.error("Erro ao calibrar."); }
+  };
+
+  const loadCalibration = () => {
+    axios.get(`${API}/api/admin/documents/calibration-report`, { headers })
+      .then(r => setCalibration(r.data)).catch(() => {});
+  };
+
+  const loadConfig = () => {
+    axios.get(`${API}/api/admin/documents/auto-approval-config`, { headers })
+      .then(r => setConfig(r.data)).catch(() => {});
+  };
+
+  useEffect(() => { loadCalibration(); loadConfig(); }, []);
+
+  const classColor = { auto_approved: "bg-green-100 text-green-700", needs_manual_review: "bg-amber-100 text-amber-700", auto_rejected: "bg-red-100 text-red-600" };
+  const classLabel = { auto_approved: "Auto-aprovado", needs_manual_review: "Revisão manual", auto_rejected: "Auto-rejeitado" };
+
+  return (
+    <div>
+      <h2 className="font-bold text-navy text-lg">Validação Automática COREN</h2>
+      <p className="text-xs text-slate-500 mt-0.5 mb-6">OCR + verificação cruzada de documentos profissionais</p>
+
+      {/* Validate a document */}
+      <div className="card p-5 mb-4">
+        <p className="font-semibold text-navy mb-3">Validar documento</p>
+        <div className="flex gap-2 mb-3">
+          <input type="text" className="form-input flex-1 text-sm" placeholder="ID do documento" value={docId} onChange={e => setDocId(e.target.value)} />
+          <button onClick={handleValidate} disabled={loading} className="btn-primary text-sm px-4 disabled:opacity-50">
+            {loading ? "..." : "Validar"}
+          </button>
+        </div>
+
+        {/* 49e: Display classification + criteria */}
+        {result && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${classColor[result.classification]}`}>
+                {classLabel[result.classification]}
+              </span>
+              <span className="text-xs text-slate-500">Confiança: {result.confidence}%</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {[
+                { label: "Nome", val: result.extracted_name, match: result.name_match },
+                { label: "CPF", val: result.extracted_cpf, match: result.cpf_match },
+                { label: "Categoria", val: result.extracted_category, match: result.category_match },
+                { label: "Estado", val: result.extracted_state, match: result.state_match },
+              ].map(item => (
+                <div key={item.label} className={`p-2 rounded-lg border ${item.match === true ? "bg-green-50 border-green-200" : item.match === false ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
+                  <p className="text-slate-500">{item.label}</p>
+                  <p className="font-medium text-navy">{item.val || "—"}</p>
+                  <p className={`text-[10px] ${item.match === true ? "text-green-600" : item.match === false ? "text-red-500" : "text-slate-400"}`}>
+                    {item.match === true ? "✓ Match" : item.match === false ? "✗ Mismatch" : "? N/A"}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {result.extracted_coren && <p className="text-xs text-slate-500">COREN: {result.extracted_coren}</p>}
+
+            {/* 49f: Phase 1 calibration — human verdict */}
+            <div className="pt-3 border-t border-slate-100">
+              <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Fase 1 — Calibração: qual seu veredito?</p>
+              <div className="flex gap-2">
+                <button onClick={() => handleCalibrate("auto_approved")} className="text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200">Aprovar</button>
+                <button onClick={() => handleCalibrate("needs_manual_review")} className="text-xs px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 font-semibold hover:bg-amber-200">Revisão</button>
+                <button onClick={() => handleCalibrate("auto_rejected")} className="text-xs px-3 py-1.5 rounded-lg bg-red-100 text-red-600 font-semibold hover:bg-red-200">Rejeitar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 49f: Calibration report */}
+      {calibration && (
+        <div className="card p-5 mb-4">
+          <p className="font-semibold text-navy mb-3">Relatório de calibração</p>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="text-center p-3 rounded-xl bg-slate-50">
+              <p className="text-2xl font-bold text-navy">{calibration.total_reviews}</p>
+              <p className="text-xs text-slate-500">Revisões</p>
+            </div>
+            <div className="text-center p-3 rounded-xl bg-slate-50">
+              <p className="text-2xl font-bold text-navy">{calibration.matches}</p>
+              <p className="text-xs text-slate-500">Concordâncias</p>
+            </div>
+            <div className={`text-center p-3 rounded-xl ${calibration.accuracy_pct >= 98 ? "bg-green-50" : "bg-amber-50"}`}>
+              <p className="text-2xl font-bold text-navy">{calibration.accuracy_pct}%</p>
+              <p className="text-xs text-slate-500">Precisão</p>
+            </div>
+          </div>
+          {calibration.phase_2_ready ? (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700 font-medium">
+              ✅ Fase 2 disponível — auto-aprovação pode ser habilitada
+            </div>
+          ) : (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+              ⏳ Fase 1 em andamento — necessário ≥100 revisões com ≥98% precisão para Fase 2
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 49g: Phase 2 threshold config */}
+      {config && (
+        <div className="card p-5">
+          <p className="font-semibold text-navy mb-3">Configuração auto-aprovação (Fase {config.phase})</p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between py-1 border-b border-slate-100">
+              <span className="text-slate-500">Confiança mínima</span>
+              <span className="font-medium">{config.min_confidence_for_auto_approve}%</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-slate-100">
+              <span className="text-slate-500">Revisões mínimas</span>
+              <span className="font-medium">{config.min_calibration_reviews}</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">Precisão mínima</span>
+              <span className="font-medium">{config.min_accuracy_pct}%</span>
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-3">{config.note}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Alice Panel ── */
 const AlicePanel = () => {
   const { headers } = useAdmin();
@@ -844,12 +998,14 @@ const AdminDashboard = () => {
     holidays:      <HolidaysPanel />,
     reports:       <ReportsPanel />,
     alice:         <AlicePanel />,
+    validation:    <ValidationPanel />,
   };
 
   const sectionLabel = {
     overview: "Visão geral", professionals: "Profissionais",
     users: "Usuários", bookings: "Agendamentos", commission: "Comissão",
     holidays: "Feriados", reports: "Denúncias", alice: "Alice IA",
+    validation: "Validação COREN",
   };
 
   return (

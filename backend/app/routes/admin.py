@@ -471,3 +471,11 @@ def log_download_failure(doc_id: str, status_code: int = 0, error: str = "", _=D
 def get_download_failures(_=Depends(require_admin)):
     """48c: Return recent download failure log."""
     return _download_failure_log[-100:]
+
+# ── 52e: Observability Dashboard ───────────────────────────────────────────────
+
+@router.get("/observability")
+def get_observability(_=Depends(require_admin)):
+    """52e: Return recent observability events for Changes 44, 46, 48."""
+    from app.utils.observability import get_recent_events
+    return get_recent_events()

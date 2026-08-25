@@ -141,21 +141,37 @@ const ProfileMenu = () => {
             </div>
           ))}
 
-          {/* Switch Role (#46) */}
-          {(isPro || role === "client") && (
-            <div className="border-t border-slate-100 mt-1 pt-1">
+          {/* 45e: Contextual role/category actions */}
+          <div className="border-t border-slate-100 mt-1 pt-1">
+            {/* Client → wants to become professional */}
+            {role === "client" && (
+              <button onClick={() => { navigate("/register/professional"); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                <RefreshCw size={15} /> Quero ser Profissional
+              </button>
+            )}
+
+            {/* Professional → switch to client mode */}
+            {isPro && (
               <button onClick={() => {
-                const newRole = isPro ? "client" : "nurse";
-                localStorage.setItem("role", newRole);
-                toast.success(`Modo alterado para ${newRole === "client" ? "Cliente" : "Profissional"}`);
-                navigate(newRole === "client" ? "/dashboard/client" : "/dashboard/professional");
+                localStorage.setItem("role", "client");
+                toast.success("Modo alterado para Cliente");
+                navigate("/dashboard/client");
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                <RefreshCw size={15} /> Mudar para {isPro ? "Cliente" : "Profissional"}
+                <RefreshCw size={15} /> Mudar para Cliente
               </button>
-            </div>
-          )}
+            )}
+
+            {/* Professional → manage categories */}
+            {isPro && (
+              <button onClick={() => { navigate("/profile/professional#categories"); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-green-600 hover:bg-green-50 transition-colors">
+                <RefreshCw size={15} /> Gerenciar categorias
+              </button>
+            )}
+          </div>
 
           {/* Logout */}
           <div className="border-t border-slate-100 mt-1 pt-1">
