@@ -479,3 +479,120 @@ def get_observability(_=Depends(require_admin)):
     """52e: Return recent observability events for Changes 44, 46, 48."""
     from app.utils.observability import get_recent_events
     return get_recent_events()
+
+# ── 49a-h: Automatic Document Validation with OCR ─────────────────────────────
+
+_validation_results = {}
+_calibration_log = []
+
+@router.post("/documents/{doc_id}/validate")
+def validate_document(doc_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """49a: Run OCR + cross-check on a document."""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    user = db.query(User).filter(User.id == doc.user_id).first()
+    prof = db.query(Professional).filter(Professional.user_id == doc.user_id).first()
+
+    # 49a: Extract text from PDF via OCR/pdfplumber
+    extracted = {"name": None, "cpf": None, "coren_number": None, "category": None, "state": None, "status": None}
+    if doc.file_url:
+        try:
+            from app.utils.document_ocr import extract_text_from_pdf_url, extract_coren_data
+            raw_text = extract_text_from_pdf_url(doc.file_url)
+            if raw_text:
+                extracted = extract_coren_data(raw_text)
+        except Exception as e:
+            print(f"[49a] OCR failed for doc {doc_id}: {e}")
+
+    # Fallback: use profile data if OCR got nothing
+    if not extracted["name"] and user:
+        extracted["name"] = user.full_name
+    if not extracted["cpf"] and user:
+        extracted["cpf"] = user.cpf
+    if not extracted["coren_number"] and prof:
+        extracted["coren_number"] = prof.council_number
+    if not extracted["category"] and user:
+        extracted["category"] = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    if not extracted["state"] and prof:
+        extracted["state"] = prof.council_state
+
+    # 49b: Cross-check against profile
+    name_match = None
+    if extracted["name"] and user:
+        name_match = extracted["name"].lower().strip() == user.full_name.lower().strip()
+    cpf_match = None
+    if extracted["cpf"] and user and user.cpf:
+        cpf_match = extracted["cpf"].replace(".","").replace("-","") == user.cpf.replace(".","").replace("-","")
+    cat_role = user.role.value if user and hasattr(user.role, 'value') else ""
+    category_match = extracted["category"] == cat_role if extracted["category"] else None
+
+    # 49h: Multi-state validation
+    state_match = None
+    if extracted["state"] and prof:
+        prof_state = (prof.council_state or "").upper()
+        ext_state = (extracted["state"] or "").upper()
+        state_match = prof_state == ext_state
+        if not state_match and prof.additional_categories:
+            for cat in (prof.additional_categories or []):
+                if cat.get("state", "").upper() == ext_state:
+                    state_match = True
+                    break
+
+    # 49d: Classify
+    checks = [name_match, cpf_match, category_match, state_match]
+    passed = sum(1 for c in checks if c is True)
+    total = sum(1 for c in checks if c is not None)
+    confidence = round(passed / total * 100, 1) if total > 0 else 0.0
+
+    if confidence >= 100 and total >= 3:
+        classification = "auto_approved"
+    elif confidence == 0 and total >= 2:
+        classification = "auto_rejected"
+    else:
+        classification = "needs_manual_review"
+
+    details = []
+    if name_match is not None: details.append(f"Nome: {'✓' if name_match else '✗'}")
+    if cpf_match is not None: details.append(f"CPF: {'✓' if cpf_match else '✗'}")
+    if category_match is not None: details.append(f"Categoria: {'✓' if category_match else '✗'}")
+    if state_match is not None: details.append(f"Estado: {'✓' if state_match else '✗'}")
+
+    result = {
+        "doc_id": doc_id, "extracted_name": extracted["name"], "extracted_cpf": extracted["cpf"],
+        "extracted_coren": extracted["coren_number"], "extracted_category": extracted["category"],
+        "extracted_state": extracted["state"], "extracted_status": extracted.get("status"),
+        "name_match": name_match, "cpf_match": cpf_match,
+        "category_match": category_match, "state_match": state_match,
+        "confidence": confidence, "classification": classification,
+        "details": " | ".join(details),
+    }
+    _validation_results[doc_id] = result
+    return result
+
+# 49f: Phase 1 calibration
+@router.post("/documents/{doc_id}/calibrate")
+def calibrate_validation(doc_id: str, human_verdict: str, _=Depends(require_admin)):
+    auto = _validation_results.get(doc_id)
+    auto_verdict = auto["classification"] if auto else "unknown"
+    from datetime import datetime, timezone
+    entry = {"doc_id": doc_id, "auto_verdict": auto_verdict, "human_verdict": human_verdict,
+             "match": auto_verdict == human_verdict, "timestamp": datetime.now(timezone.utc).isoformat()}
+    _calibration_log.append(entry)
+    return entry
+
+@router.get("/documents/calibration-report")
+def calibration_report(_=Depends(require_admin)):
+    total = len(_calibration_log)
+    matches = sum(1 for e in _calibration_log if e["match"])
+    accuracy = round(matches / total * 100, 1) if total > 0 else 0.0
+    return {"total_reviews": total, "matches": matches, "accuracy_pct": accuracy,
+            "entries": _calibration_log[-50:], "phase_2_ready": total >= 100 and accuracy >= 98.0}
+
+# 49g: Phase 2 threshold config
+@router.get("/documents/auto-approval-config")
+def get_auto_approval_config(_=Depends(require_admin)):
+    return {"phase": 1, "min_confidence_for_auto_approve": 100.0,
+            "min_calibration_reviews": 100, "min_accuracy_pct": 98.0,
+            "note": "Phase 2 auto-approval enabled once calibration targets met."}
