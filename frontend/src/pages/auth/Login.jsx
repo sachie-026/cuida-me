@@ -53,16 +53,15 @@ const Login = () => {
   const [error,         setError]         = useState("");
 
   const saveAndRedirect = (data) => {
-    // Save all tokens immediately
     localStorage.setItem("token",     data.access_token);
     localStorage.setItem("role",      data.role);
     localStorage.setItem("user_id",   data.user_id);
     localStorage.setItem("full_name", data.full_name);
     localStorage.setItem("email",     data.email || "");
-    // Navigate immediately — don't wait for toast animation
+    localStorage.setItem("roles",     JSON.stringify(data.roles || [data.role]));
+    localStorage.setItem("has_pro",   String(data.has_professional_profile || false));
     const destination = ROLE_HOME[data.role] || "/dashboard/client";
     navigate(destination);
-    // Toast fires after navigation (non-blocking)
     setTimeout(() => toast.success(`Bem-vindo, ${data.full_name}!`), 100);
   };
 

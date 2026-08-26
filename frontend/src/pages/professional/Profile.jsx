@@ -125,6 +125,9 @@ const CategorySwitch = ({ userId, currentRole }) => {
   const [switching, setSwitching] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState(null);
+  const [independentMode, setIndependentMode] = useState(false);
+  const [indCorenNum, setIndCorenNum] = useState("");
+  const [indCorenState, setIndCorenState] = useState("");
   const [blocked, setBlocked] = useState(false);
   const [blockReason, setBlockReason] = useState("");
 
@@ -226,23 +229,41 @@ const CategorySwitch = ({ userId, currentRole }) => {
         ))}
       </div>
 
-      {/* Add new category */}
+      {/* Add new category — derived (terms only) or independent (needs docs) */}
       {catData.available_to_add?.length > 0 && (
         <div className="mb-4">
           <p className="text-xs font-semibold text-slate-500 mb-2">Adicionar categoria:</p>
           <div className="flex flex-wrap gap-2">
             {catData.available_to_add.map(cat => (
-              <button key={cat} onClick={() => { setSelectedTarget(cat); setAccepted(false); }}
+              <button key={cat} onClick={() => { setSelectedTarget(cat); setAccepted(false); setIndependentMode(false); }}
                 className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100">
                 + {ROLE_LABELS_CAT[cat] || cat}
               </button>
             ))}
           </div>
+          {/* 45d: Independent category — roles NOT in derived list */}
+          {["nurse","technician","nursing_assistant","caregiver"].filter(c =>
+            c !== currentRole && !(catData.available_to_add || []).includes(c) && !(catData.categories || []).some(r => r.role === c)
+          ).length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-400 mb-1">Categoria independente (requer documentos adicionais):</p>
+              <div className="flex flex-wrap gap-2">
+                {["nurse","technician","nursing_assistant","caregiver"].filter(c =>
+                  c !== currentRole && !(catData.available_to_add || []).includes(c) && !(catData.categories || []).some(r => r.role === c)
+                ).map(cat => (
+                  <button key={cat} onClick={() => { setSelectedTarget(cat); setAccepted(false); setIndependentMode(true); }}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-purple-50 text-purple-600 font-semibold hover:bg-purple-100">
+                    + {ROLE_LABELS_CAT[cat] || cat} (independente)
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Terms acceptance for switching/adding */}
-      {selectedTarget && selectedTarget !== currentRole && (
+      {/* Terms acceptance for derived switching */}
+      {selectedTarget && !independentMode && selectedTarget !== currentRole && (
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mb-3">
           <p className="text-sm font-semibold text-navy mb-2">Termos para {ROLE_LABELS_CAT[selectedTarget] || selectedTarget}</p>
           <label className="flex items-start gap-3 cursor-pointer mb-3">
@@ -253,6 +274,42 @@ const CategorySwitch = ({ userId, currentRole }) => {
             <button onClick={() => setSelectedTarget(null)} className="btn-outline text-xs flex-1">Cancelar</button>
             <button onClick={() => handleSwitch(selectedTarget)} disabled={!accepted || switching}
               className="btn-primary text-xs flex-1 disabled:opacity-50">{switching ? "..." : "Confirmar"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* 45d: Independent category — shows doc requirements */}
+      {selectedTarget && independentMode && (
+        <div className="p-4 bg-purple-50 rounded-xl border border-purple-200 mb-3">
+          <p className="text-sm font-semibold text-navy mb-2">Adicionar {ROLE_LABELS_CAT[selectedTarget]} (categoria independente)</p>
+          <p className="text-xs text-slate-500 mb-3">Esta categoria requer documentação própria. Após adicionar, envie os documentos para verificação.</p>
+          {selectedTarget !== "caregiver" && (
+            <div className="space-y-2 mb-3">
+              <input className="form-input text-sm" placeholder="Número COREN para esta categoria" value={indCorenNum} onChange={e => setIndCorenNum(e.target.value)} />
+              <input className="form-input text-sm" placeholder="Estado (ex: SP)" value={indCorenState} onChange={e => setIndCorenState(e.target.value)} maxLength={2} />
+            </div>
+          )}
+          <label className="flex items-start gap-3 cursor-pointer mb-3">
+            <input type="checkbox" checked={accepted} onChange={e => setAccepted(e.target.checked)} className="accent-blue-500 mt-0.5" />
+            <span className="text-xs text-slate-600">Eu confirmo que possuo formação e registro válido para esta categoria.</span>
+          </label>
+          <div className="flex gap-2">
+            <button onClick={() => { setSelectedTarget(null); setIndependentMode(false); }} className="btn-outline text-xs flex-1">Cancelar</button>
+            <button onClick={async () => {
+              if (!accepted) { toast.error("Aceite os termos."); return; }
+              setSwitching(true);
+              try {
+                const { data } = await axios.post(`${API}/api/professionals/add-independent-category`, {
+                  category: selectedTarget, accept_terms: true,
+                  council_number: indCorenNum || null, council_state: indCorenState || null,
+                }, { headers });
+                toast.success(data.message);
+                setSelectedTarget(null); setIndependentMode(false);
+                loadCategories();
+              } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+              finally { setSwitching(false); }
+            }} disabled={!accepted || switching}
+              className="btn-primary text-xs flex-1 disabled:opacity-50">{switching ? "..." : "Adicionar categoria"}</button>
           </div>
         </div>
       )}

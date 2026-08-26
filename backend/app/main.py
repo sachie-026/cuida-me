@@ -35,6 +35,9 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_otp_code VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_otp_expires TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS roles JSON DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_client_profile BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_professional_profile BOOLEAN DEFAULT FALSE",
         """CREATE TABLE IF NOT EXISTS platform_settings (
             id VARCHAR PRIMARY KEY DEFAULT 'global',
             data JSON DEFAULT '{}',

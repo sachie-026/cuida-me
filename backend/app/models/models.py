@@ -61,6 +61,10 @@ class User(Base):
     phone_otp_code = Column(String, nullable=True)
     phone_otp_expires = Column(DateTime(timezone=True), nullable=True)
     google_id     = Column(String, unique=True, nullable=True)
+    # 45a: Two-tier profile — one User can be both Client and Professional
+    roles                  = Column(JSON, default=list)    # ["client","nurse"] — all held roles
+    has_client_profile     = Column(Boolean, default=False)
+    has_professional_profile = Column(Boolean, default=False)
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
     reliability_score = Column(Integer, default=100)
