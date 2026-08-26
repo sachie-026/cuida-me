@@ -265,6 +265,27 @@ def verify_phone_code(body: PhoneCodeConfirm, db: Session = Depends(get_db), cur
 def phone_status(current: User = Depends(get_current_user)):
     return {"phone": current.phone, "phone_verified": current.phone_verified, "is_verified": current.is_verified}
 
+@router.get("/sms/health")
+def sms_health():
+    """46b: Check if SMS provider is configured and ready."""
+    provider = SMS_PROVIDER or "dev_stub"
+    configured = False
+    if provider == "twilio":
+        configured = bool(os.getenv("TWILIO_SID") and os.getenv("TWILIO_AUTH_TOKEN") and os.getenv("TWILIO_PHONE"))
+    elif provider == "zenvia":
+        configured = bool(os.getenv("ZENVIA_TOKEN") and os.getenv("ZENVIA_SENDER"))
+    elif provider == "dev_stub":
+        configured = True  # always works, prints to logs
+    return {
+        "provider": provider,
+        "configured": configured,
+        "production_ready": provider != "dev_stub" and configured,
+        "env_vars_needed": {
+            "twilio": ["SMS_PROVIDER=twilio", "TWILIO_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE"],
+            "zenvia": ["SMS_PROVIDER=zenvia", "ZENVIA_TOKEN", "ZENVIA_SENDER"],
+        }.get(provider, []),
+    }
+
 # ── 45a/45b: Add Professional Profile to existing Client account ──────────────
 
 class BecomeProfessionalRequest(BaseModel):

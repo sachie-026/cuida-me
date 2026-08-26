@@ -14,3 +14,5 @@ pydantic-settings==2.2.1
 python-dotenv==1.0.1
 cloudinary==1.44.0
 stripe==8.9.0
+twilio==9.0.0
+pdfplumber==0.10.3
