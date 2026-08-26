@@ -425,3 +425,104 @@ def get_active_category(db: Session = Depends(get_db), current: User = Depends(g
         "active_category": prof.active_category or role,
         "can_switch_to": DERIVED_CATEGORIES.get(role, []) + [role],
     }
+
+# ── 45d: Independent Category Addition ────────────────────────────────────────
+
+# Docs required per independent category
+INDEPENDENT_CATEGORY_DOCS = {
+    "nurse":              ["coren_card", "coren_negative", "rg_cpf"],
+    "technician":         ["coren_card", "coren_negative", "rg_cpf"],
+    "nursing_assistant":  ["coren_card", "coren_negative", "rg_cpf"],
+    "caregiver":          ["rg_cpf", "proof_of_training"],
+}
+
+class IndependentCategoryRequest(BaseModel):
+    category:       str
+    council_number: Optional[str] = None
+    council_state:  Optional[str] = None
+    accept_terms:   bool = False
+
+@router.post("/add-independent-category")
+def add_independent_category(body: IndependentCategoryRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """45d: Add an independent category that requires new docs (not a derived category)."""
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not prof:
+        raise HTTPException(404, "Professional profile not found")
+
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    valid_roles = ["nurse", "technician", "nursing_assistant", "caregiver"]
+
+    if body.category not in valid_roles:
+        raise HTTPException(400, f"Categoria inválida. Use: {valid_roles}")
+
+    # Check if already held
+    records = list(prof.category_records or [])
+    existing = next((r for r in records if r.get("role") == body.category), None)
+    if existing:
+        raise HTTPException(400, f"Você já possui a categoria '{body.category}'. Use a opção de reativar se estiver desativada.")
+
+    # Derived categories don't need new docs — redirect to switch-category
+    derived = DERIVED_CATEGORIES.get(current_role, [])
+    if body.category in derived:
+        raise HTTPException(400, f"'{body.category}' é uma categoria derivada da sua. Use 'Trocar categoria' em vez de adicionar independente.")
+
+    if not body.accept_terms:
+        raise HTTPException(400, "Aceite os termos para adicionar esta categoria.")
+
+    # Determine required docs
+    required_docs = INDEPENDENT_CATEGORY_DOCS.get(body.category, ["rg_cpf"])
+
+    from datetime import datetime, timezone
+    new_record = {
+        "role": body.category,
+        "verification_status": "pending",
+        "documents": [],
+        "required_documents": required_docs,
+        "council_number": body.council_number,
+        "council_state": body.council_state,
+        "rate_day": HOUR_RATES.get(body.category, {}).get("day", 0),
+        "rate_night": HOUR_RATES.get(body.category, {}).get("night", 0),
+        "is_active": False,  # stays inactive until docs approved
+        "added_at": datetime.now(timezone.utc).isoformat(),
+        "deactivated_at": None,
+    }
+    records.append(new_record)
+    prof.category_records = records
+
+    # Add to additional_categories for COREN lookup
+    if body.council_number:
+        additional = list(prof.additional_categories or [])
+        additional.append({"role": body.category, "coren": body.council_number, "state": body.council_state})
+        prof.additional_categories = additional
+
+    # Update user roles
+    user_roles = list(current.roles or [current_role])
+    if body.category not in user_roles:
+        user_roles.append(body.category)
+    current.roles = user_roles
+
+    db.commit()
+
+    return {
+        "category": body.category,
+        "verification_status": "pending",
+        "required_documents": required_docs,
+        "message": f"Categoria '{body.category}' adicionada. Envie os documentos necessários para ativação: {', '.join(required_docs)}",
+    }
+
+@router.get("/category/{category}/required-docs")
+def get_required_docs(category: str):
+    """45d: Return list of required documents for an independent category."""
+    docs = INDEPENDENT_CATEGORY_DOCS.get(category)
+    if not docs:
+        raise HTTPException(400, f"Categoria '{category}' inválida.")
+    doc_labels = {
+        "coren_card": "Carteira COREN",
+        "coren_negative": "Certidão Negativa COREN",
+        "rg_cpf": "RG ou CPF com foto",
+        "proof_of_training": "Certificado de formação / curso",
+    }
+    return {
+        "category": category,
+        "required_documents": [{"key": d, "label": doc_labels.get(d, d)} for d in docs],
+    }

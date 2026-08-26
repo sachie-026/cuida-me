@@ -14,6 +14,8 @@ const ProfileMenu = () => {
 
   const fullName = localStorage.getItem("full_name") || "Usuário";
   const role     = localStorage.getItem("role") || "";
+  const roles    = JSON.parse(localStorage.getItem("roles") || "[]");
+  const hasPro   = localStorage.getItem("has_pro") === "true" || roles.some(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r));
   const initials = fullName.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
   const isPro    = ["nurse","technician","nursing_assistant","caregiver"].includes(role);
   const isAdmin  = role === "admin";
@@ -143,11 +145,25 @@ const ProfileMenu = () => {
 
           {/* 45e: Contextual role/category actions */}
           <div className="border-t border-slate-100 mt-1 pt-1">
-            {/* Client → wants to become professional */}
-            {role === "client" && (
+            {/* Client with no pro profile → become professional */}
+            {role === "client" && !hasPro && (
               <button onClick={() => { navigate("/register/professional"); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
                 <RefreshCw size={15} /> Quero ser Profissional
+              </button>
+            )}
+
+            {/* Client with existing pro profile → switch to professional */}
+            {role === "client" && hasPro && (
+              <button onClick={() => {
+                const proRole = roles.find(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r)) || "nurse";
+                localStorage.setItem("role", proRole);
+                toast.success("Modo alterado para Profissional");
+                navigate("/dashboard/professional");
+                setOpen(false);
+              }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                <RefreshCw size={15} /> Mudar para Profissional
               </button>
             )}
 

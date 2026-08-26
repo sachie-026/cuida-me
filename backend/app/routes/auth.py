@@ -41,6 +41,9 @@ class TokenResponse(BaseModel):
     email:           str
     is_new_user:     bool = False
     approval_status: Optional[str] = None
+    roles:           list = []
+    has_client_profile:     bool = False
+    has_professional_profile: bool = False
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -111,19 +114,28 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     # Fix 4 — enforce uniqueness, return 409
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="E-mail já cadastrado. Faça login ou use outro e-mail.")
+    # 45a: CPF uniqueness check
+    if body.cpf:
+        existing_cpf = db.query(User).filter(User.cpf == body.cpf).first()
+        if existing_cpf:
+            raise HTTPException(status_code=409, detail="CPF já cadastrado. Cada CPF pode ter apenas uma conta.")
+    is_pro = body.role in PRO_ROLES
     user = User(
         email=body.email, password_hash=hash_password(body.password),
         full_name=body.full_name, phone=body.phone, cpf=body.cpf,
         role=UserRole(body.role),
+        roles=[body.role],
+        has_client_profile=not is_pro,
+        has_professional_profile=is_pro,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    if body.role in PRO_ROLES:
+    if is_pro:
         _create_professional_profile(db, user.id)
     token = create_access_token({"sub": user.id, "role": user.role})
     approval_status = None
-    if body.role in PRO_ROLES:
+    if is_pro:
         prof = db.query(Professional).filter(Professional.user_id == user.id).first()
         approval_status = prof.approval_status.value if prof and hasattr(prof.approval_status, "value") else "pending"
     return TokenResponse(
@@ -143,6 +155,9 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     return TokenResponse(
         access_token=token, role=user.role.value,
         user_id=user.id, full_name=user.full_name, email=user.email,
+        roles=user.roles or [user.role.value],
+        has_client_profile=user.has_client_profile or user.role.value == "client",
+        has_professional_profile=user.has_professional_profile or user.role.value in PRO_ROLES,
     )
 
 @router.post("/forgot-password")
@@ -249,3 +264,47 @@ def verify_phone_code(body: PhoneCodeConfirm, db: Session = Depends(get_db), cur
 @router.get("/phone/status")
 def phone_status(current: User = Depends(get_current_user)):
     return {"phone": current.phone, "phone_verified": current.phone_verified, "is_verified": current.is_verified}
+
+# ── 45a/45b: Add Professional Profile to existing Client account ──────────────
+
+class BecomeProfessionalRequest(BaseModel):
+    professional_role: str  # nurse, technician, nursing_assistant, caregiver
+    council_number: Optional[str] = None
+    council_state: Optional[str] = None
+
+@router.post("/become-professional")
+def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """45b: Client adds a Professional profile to their existing account."""
+    if body.professional_role not in PRO_ROLES:
+        raise HTTPException(400, f"Categoria inválida. Use: {PRO_ROLES}")
+
+    # Check if already has a professional profile
+    existing = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if existing:
+        raise HTTPException(400, "Você já possui um perfil profissional.")
+
+    # Create professional record
+    prof = Professional(
+        user_id=current.id,
+        council_number=body.council_number,
+        council_state=body.council_state,
+        council_type="COREN" if body.professional_role != "caregiver" else None,
+        approval_status=DocStatus.pending,
+    )
+    db.add(prof)
+
+    # Update user roles
+    roles = list(current.roles or [current.role.value])
+    if body.professional_role not in roles:
+        roles.append(body.professional_role)
+    current.roles = roles
+    current.has_professional_profile = True
+
+    db.commit()
+    db.refresh(prof)
+
+    return {
+        "message": f"Perfil profissional criado como {body.professional_role}. Envie seus documentos para verificação.",
+        "professional_id": prof.id,
+        "roles": current.roles,
+    }
