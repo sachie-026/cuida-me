@@ -596,3 +596,23 @@ def get_auto_approval_config(_=Depends(require_admin)):
     return {"phase": 1, "min_confidence_for_auto_approve": 100.0,
             "min_calibration_reviews": 100, "min_accuracy_pct": 98.0,
             "note": "Phase 2 auto-approval enabled once calibration targets met."}
+
+# ── 49c: COREN Website Lookup ─────────────────────────────────────────────────
+
+@router.post("/coren-lookup/{state}/{coren_number}")
+def coren_web_lookup(state: str, coren_number: str, _=Depends(require_admin)):
+    """49c: Query COREN state website to verify registration status."""
+    from app.utils.coren_lookup import lookup_coren
+    return lookup_coren(state, coren_number)
+
+@router.get("/coren-lookup/log")
+def coren_lookup_log(_=Depends(require_admin)):
+    """49c: Return COREN lookup audit log for compliance."""
+    from app.utils.coren_lookup import get_lookup_log
+    return get_lookup_log()
+
+@router.get("/coren-lookup/supported-states")
+def coren_supported_states():
+    """49c: Return list of supported states for COREN lookup."""
+    from app.utils.coren_lookup import COREN_URLS
+    return {"states": sorted(COREN_URLS.keys()), "count": len(COREN_URLS)}
