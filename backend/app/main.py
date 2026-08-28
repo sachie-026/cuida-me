@@ -38,6 +38,7 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS roles JSON DEFAULT '[]'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_client_profile BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_professional_profile BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role VARCHAR",
         """CREATE TABLE IF NOT EXISTS platform_settings (
             id VARCHAR PRIMARY KEY DEFAULT 'global',
             data JSON DEFAULT '{}',
