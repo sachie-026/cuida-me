@@ -616,3 +616,54 @@ def coren_supported_states():
     """49c: Return list of supported states for COREN lookup."""
     from app.utils.coren_lookup import COREN_URLS
     return {"states": sorted(COREN_URLS.keys()), "count": len(COREN_URLS)}
+
+# ── 50c: Admin Role Management ────────────────────────────────────────────────
+
+from app.utils.admin_permissions import ADMIN_PERMISSIONS, get_admin_permissions, is_super_admin
+
+@router.get("/roles/permissions")
+def get_permissions_matrix(_=Depends(require_admin)):
+    """50c: Return permission matrix + current admin's permissions."""
+    return {"matrix": ADMIN_PERMISSIONS}
+
+@router.get("/roles/my-permissions")
+def get_my_permissions(current: User = Depends(require_admin)):
+    """50c: Return current admin's role and allowed sections."""
+    admin_role = getattr(current, 'admin_role', None) or "super_admin"
+    return {
+        "admin_role": admin_role,
+        "permissions": get_admin_permissions(current),
+    }
+
+@router.patch("/roles/{user_id}/assign")
+def assign_admin_role(user_id: str, admin_role: str, db: Session = Depends(get_db), current: User = Depends(is_super_admin)):
+    """50c: Super Admin assigns a sub-role to another admin user."""
+    valid_roles = list(ADMIN_PERMISSIONS.keys())
+    if admin_role not in valid_roles:
+        raise HTTPException(400, f"Papel inválido. Use: {valid_roles}")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "Usuário não encontrado")
+    if target.role.value != "admin":
+        raise HTTPException(400, "O usuário deve ser admin para receber um papel administrativo.")
+
+    target.admin_role = admin_role
+    db.commit()
+    return {
+        "user_id": user_id,
+        "admin_role": admin_role,
+        "permissions": ADMIN_PERMISSIONS[admin_role],
+        "message": f"Papel '{admin_role}' atribuído com sucesso.",
+    }
+
+@router.get("/roles/admins")
+def list_admin_users(db: Session = Depends(get_db), _=Depends(is_super_admin)):
+    """50c: List all admin users with their sub-roles."""
+    from app.models.models import UserRole
+    admins = db.query(User).filter(User.role == UserRole.admin).all()
+    return [{
+        "id": a.id, "full_name": a.full_name, "email": a.email,
+        "admin_role": getattr(a, 'admin_role', None) or "super_admin",
+        "permissions": get_admin_permissions(a),
+    } for a in admins]

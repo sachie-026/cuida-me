@@ -65,6 +65,8 @@ class User(Base):
     roles                  = Column(JSON, default=list)    # ["client","nurse"] — all held roles
     has_client_profile     = Column(Boolean, default=False)
     has_professional_profile = Column(Boolean, default=False)
+    # 50c: Admin sub-role (only applies when role=admin)
+    admin_role   = Column(String, nullable=True)  # super_admin, finance, support, operations
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
     reliability_score = Column(Integer, default=100)
