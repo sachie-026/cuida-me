@@ -364,10 +364,18 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                   </div>
                   {doc.file_url && !doc.file_url.includes("placeholder.com") && (
                     <div className="flex items-center gap-1.5">
-                      <a href={doc.file_url} target="_blank" rel="noreferrer"
+                      {/* 10.1-11: Download button */}
+                      <button onClick={async()=>{
+                        try{
+                          const{data}=await axios.get(`${API}/api/admin/documents/${doc.id}/download`,{headers});
+                          window.open(data.file_url,"_blank");
+                        }catch{window.open(doc.file_url,"_blank");}
+                      }}
                         className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors">
-                        <ExternalLink size={11} /> Abrir
-                      </a>
+                        <ExternalLink size={11} /> Abrir/Baixar
+                      </button>
+                    </div>
+                  )}
                       <a href={doc.file_url} download
                         className="flex items-center gap-1 text-xs font-semibold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors">
                         ⬇ Baixar
@@ -379,12 +387,18 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                 {doc.file_url && !doc.file_url.includes("placeholder.com") && /\.(jpg|jpeg|png|webp)/i.test(doc.file_url) && (
                   <DocImagePreview url={doc.file_url} />
                 )}
-                {/* Approve/Reject actions */}
+                {/* Approve/Reject/Replace actions */}
                 {doc.status !== "approved" && doc.file_url && !doc.file_url.includes("placeholder.com") && (
                   <div className="mt-2 pt-2 border-t border-slate-200">
                     {rejectingId === doc.id ? (
                       <div className="space-y-2">
-                        <input type="text" className="form-input text-sm" placeholder="Motivo da rejeição..." value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+                        {/* 10.1-18: Rejection reasons dropdown */}
+                        <select className="form-input text-sm w-full" value={rejectReason} onChange={e => setRejectReason(e.target.value)}>
+                          <option value="">Selecione o motivo...</option>
+                          {["Nome não corresponde","CPF não corresponde","Número COREN não corresponde","Estado COREN não corresponde","Categoria não corresponde","Registro não está ativo","Documento ilegível","Documento expirado","Documento obrigatório ausente","Informação adicional necessária","Outro"].map(r=>(
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
                         <div className="flex gap-2">
                           <button onClick={() => handleReject(doc.id)} disabled={actionLoading === doc.id}
                             className="text-xs px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold disabled:opacity-50">
@@ -395,7 +409,7 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button onClick={() => handleApprove(doc.id)} disabled={actionLoading === doc.id}
                           className="flex items-center gap-1 text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold disabled:opacity-50">
                           <CheckCircle size={12} /> Aprovar
@@ -403,6 +417,13 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                         <button onClick={() => setRejectingId(doc.id)}
                           className="flex items-center gap-1 text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-semibold">
                           <XCircle size={12} /> Rejeitar
+                        </button>
+                        {/* 10.1-15: Request replacement */}
+                        <button onClick={async()=>{
+                          try{await axios.patch(`${API}/api/admin/documents/${doc.id}/status?status=replacement_requested&reason=Documento precisa ser reenviado`,{},{headers});toast.success("Reenvio solicitado!");onDocUpdate();}
+                          catch{toast.error("Erro.");}
+                        }} className="flex items-center gap-1 text-xs px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 font-semibold">
+                          ⟳ Solicitar reenvio
                         </button>
                       </div>
                     )}
@@ -458,6 +479,9 @@ const ProfessionalsPanel = () => {
   const [list,       setList]       = useState([]);
   const [filter,     setFilter]     = useState("pending");
   const [viewingDoc, setViewingDoc] = useState(null);
+  const [checklist,  setChecklist]  = useState(null);
+  const [unifiedProfile, setUnifiedProfile] = useState(null);
+  const [verifyAction, setVerifyAction] = useState(null);
 
   const loadProfessionals = () => {
     axios.get(`${API}/api/admin/professionals?status=${filter}`, { headers })
@@ -478,9 +502,140 @@ const ProfessionalsPanel = () => {
     toast("Profissional rejeitado.", { icon: "❌" });
   };
 
+  // 10.1-17: Load approval checklist
+  const loadChecklist = async (profId) => {
+    try {
+      const { data } = await axios.get(`${API}/api/admin/professionals/${profId}/approval-checklist`, { headers });
+      setChecklist(data);
+    } catch { toast.error("Erro ao carregar checklist."); }
+  };
+
+  // 10.3-28: Load unified profile
+  const loadUnifiedProfile = async (userId) => {
+    try {
+      const { data } = await axios.get(`${API}/api/admin/users/${userId}/unified-profile`, { headers });
+      setUnifiedProfile(data);
+    } catch { toast.error("Erro ao carregar perfil."); }
+  };
+
+  // 10.1-16: Professional verification action
+  const handleVerificationAction = async (profId, action, reason = "") => {
+    try {
+      const { data } = await axios.patch(`${API}/api/admin/professionals/${profId}/verification-action?action=${action}&reason=${encodeURIComponent(reason)}`, {}, { headers });
+      toast.success(data.message || `Ação '${action}' aplicada.`);
+      setVerifyAction(null);
+      loadProfessionals();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+  };
+
+  // 10.3-30: Set account status
+  const setAccountStatus = async (userId, status) => {
+    try {
+      await axios.patch(`${API}/api/admin/users/${userId}/account-status?status=${status}`, {}, { headers });
+      toast.success(`Status da conta alterado para '${status}'.`);
+      if (unifiedProfile) loadUnifiedProfile(userId);
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+  };
+
   return (
     <div>
       {viewingDoc && <DocModal prof={viewingDoc} onClose={() => setViewingDoc(null)} onDocUpdate={() => { loadProfessionals(); setViewingDoc(null); }} />}
+
+      {/* 10.1-17: Approval Checklist Modal */}
+      {checklist && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setChecklist(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 max-h-[80vh] overflow-y-auto">
+            <h3 className="font-bold text-navy mb-3">Checklist de Aprovação</h3>
+            <div className="space-y-2 mb-4">
+              {checklist.checklist.map((item, i) => (
+                <div key={i} className={`flex items-center gap-2 p-2 rounded-lg ${item.passed ? "bg-green-50" : "bg-red-50"}`}>
+                  <span className={`text-sm ${item.passed ? "text-green-600" : "text-red-500"}`}>{item.passed ? "✓" : "✗"}</span>
+                  <span className="text-sm text-slate-700">{item.item}</span>
+                </div>
+              ))}
+            </div>
+            {checklist.can_approve ? (
+              <button onClick={() => { approve(checklist.professional_id); setChecklist(null); }}
+                className="btn-primary w-full text-sm">✓ Aprovar profissional</button>
+            ) : (
+              <p className="text-xs text-red-500 text-center">Todos os itens devem estar ✓ para aprovar.</p>
+            )}
+            <button onClick={() => setChecklist(null)} className="btn-outline w-full mt-2 text-sm">Fechar</button>
+          </div>
+        </div>
+      )}
+
+      {/* 10.3-28: Unified Profile Modal */}
+      {unifiedProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setUnifiedProfile(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 z-10 max-h-[85vh] overflow-y-auto">
+            <h3 className="font-bold text-navy mb-1">{unifiedProfile.full_name}</h3>
+            <p className="text-xs text-slate-500 mb-3">{unifiedProfile.email} · CPF: {unifiedProfile.cpf || "N/A"} · Tel: {unifiedProfile.phone || "N/A"}</p>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${unifiedProfile.account_status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                Conta: {unifiedProfile.account_status}
+              </span>
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${unifiedProfile.phone_verified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                Tel: {unifiedProfile.phone_verified ? "✓" : "✗"}
+              </span>
+              {unifiedProfile.roles?.map(r => (
+                <span key={r} className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-100 text-blue-700">{r}</span>
+              ))}
+            </div>
+
+            {/* 10.3-30: Account status actions */}
+            <div className="flex gap-2 mb-4">
+              {["active","suspended","banned"].map(s => (
+                <button key={s} onClick={() => setAccountStatus(unifiedProfile.user_id, s)} disabled={unifiedProfile.account_status === s}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-30 ${
+                    s === "active" ? "bg-green-100 text-green-700" : s === "suspended" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"}`}>
+                  {s === "active" ? "Ativar" : s === "suspended" ? "Suspender" : "Banir"}
+                </button>
+              ))}
+            </div>
+
+            {unifiedProfile.professional && (
+              <div className="p-3 bg-slate-50 rounded-xl mb-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Perfil Profissional</p>
+                <p className="text-sm text-navy">COREN: {unifiedProfile.professional.council_number}-{unifiedProfile.professional.council_state}</p>
+                <p className="text-xs text-slate-500">Status: {unifiedProfile.professional.verification_status} · Ativo: {unifiedProfile.professional.active_category}</p>
+                {(unifiedProfile.professional.categories || []).map((cat, i) => (
+                  <div key={i} className="mt-1 text-xs text-slate-600">• {cat.role}: {cat.is_active ? "Ativo" : "Inativo"} ({cat.verification_status || "pendente"})</div>
+                ))}
+              </div>
+            )}
+
+            {/* 10.3-29: Future bookings by category */}
+            {unifiedProfile.total_future_bookings > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-3">
+                <p className="text-xs font-semibold text-amber-700">{unifiedProfile.total_future_bookings} agendamento(s) futuro(s)</p>
+              </div>
+            )}
+
+            {/* 10.3-37: Documents grouped by category */}
+            {unifiedProfile.professional && (
+              <button onClick={async()=>{
+                try{
+                  const{data}=await axios.get(`${API}/api/admin/professionals/${unifiedProfile.professional.id}/documents-by-category`,{headers});
+                  toast((t)=>(
+                    <div className="text-xs"><p className="font-bold mb-1">Docs por categoria:</p>
+                    <p>Identidade: {data.identity?.length||0} doc(s)</p>
+                    {Object.entries(data.categories||{}).map(([cat,v])=>(
+                      <p key={cat}>{cat}: {v.submitted?.length||0}/{v.required?.length||0}</p>
+                    ))}
+                    <button onClick={()=>toast.dismiss(t.id)} className="mt-1 text-blue-500 underline">Fechar</button></div>
+                  ),{duration:10000});
+                }catch{toast.error("Erro ao carregar docs.");}
+              }} className="btn-outline w-full text-sm mb-2">📄 Ver documentos por categoria</button>
+            )}
+
+            <button onClick={() => setUnifiedProfile(null)} className="btn-outline w-full text-sm">Fechar</button>
+          </div>
+        </div>
+      )}
 
       <h2 className="font-display text-xl font-bold text-navy mb-4">Profissionais</h2>
       <div className="flex gap-2 mb-5">
@@ -520,30 +675,45 @@ const ProfessionalsPanel = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* View documents button */}
+                <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                  {/* View documents */}
                   <button onClick={() => setViewingDoc(p)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors">
-                    <FileText size={13} /> Documentos ({p.documents?.length || 0})
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50">
+                    <FileText size={13} /> Docs ({p.documents?.length || 0})
+                  </button>
+                  {/* 10.1-17: Checklist */}
+                  <button onClick={() => loadChecklist(p.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-blue-200 text-blue-600 rounded-lg text-xs font-semibold hover:bg-blue-50">
+                    ☑ Checklist
+                  </button>
+                  {/* 10.3-28: Unified profile */}
+                  <button onClick={() => loadUnifiedProfile(p.user_id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-purple-200 text-purple-600 rounded-lg text-xs font-semibold hover:bg-purple-50">
+                    👤 Perfil
                   </button>
 
                   {filter === "pending" && (
                     <>
                       <button onClick={() => approve(p.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition-colors">
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200">
                         <CheckCircle size={14} /> Aprovar
                       </button>
                       <button onClick={() => reject(p.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-200 transition-colors">
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-200">
                         <XCircle size={14} /> Rejeitar
                       </button>
                     </>
                   )}
+                  {/* 10.1-16: Verification actions for non-pending */}
                   {filter !== "pending" && (
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full
-                      ${filter === "approved" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                      {filter === "approved" ? "Aprovado" : "Rejeitado"}
-                    </span>
+                    <div className="flex gap-1">
+                      <button onClick={() => handleVerificationAction(p.id, "keep_under_review")}
+                        className="text-[10px] px-2 py-1 bg-amber-50 text-amber-600 rounded font-semibold hover:bg-amber-100">Revisão</button>
+                      <button onClick={() => handleVerificationAction(p.id, "request_info", "Documentação adicional necessária")}
+                        className="text-[10px] px-2 py-1 bg-blue-50 text-blue-600 rounded font-semibold hover:bg-blue-100">Pedir info</button>
+                      <button onClick={() => handleVerificationAction(p.id, "trigger_reverification")}
+                        className="text-[10px] px-2 py-1 bg-purple-50 text-purple-600 rounded font-semibold hover:bg-purple-100">Re-verificar</button>
+                    </div>
                   )}
                 </div>
               </div>
