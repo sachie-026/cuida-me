@@ -11,11 +11,13 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
 
   const [step, setStep] = useState("phone"); // phone, code, success
   const [phone, setPhone] = useState(initialPhone || "");
+  const [channel, setChannel] = useState("sms"); // sms or whatsapp
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
+  const [channelLabel, setChannelLabel] = useState("SMS");
   const inputRefs = useRef([]);
 
   // Resend countdown
@@ -29,10 +31,11 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
     if (!phone || phone.length < 10) { setError("Informe um número válido."); return; }
     setSending(true); setError("");
     try {
-      const { data } = await axios.post(`${API}/api/auth/phone/send-code`, { phone }, { headers });
+      const { data } = await axios.post(`${API}/api/auth/phone/send-code`, { phone, channel }, { headers });
       if (data.sent) {
         setStep("code");
         setCountdown(60);
+        setChannelLabel(data.channel || "SMS");
         toast.success(data.message);
       } else {
         setError(data.error || "Falha ao enviar SMS.");
@@ -105,6 +108,22 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
                   value={phone} onChange={e => setPhone(e.target.value)} maxLength={15} autoFocus />
               </div>
             </div>
+            {/* 10.2-4: Channel selection */}
+            <div className="mb-4">
+              <label className="form-label">Enviar código via</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setChannel("sms")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${
+                    channel === "sms" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                  📱 SMS
+                </button>
+                <button type="button" onClick={() => setChannel("whatsapp")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${
+                    channel === "whatsapp" ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                  💬 WhatsApp
+                </button>
+              </div>
+            </div>
             {error && (
               <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-lg mb-3">
                 <AlertCircle size={13} className="text-red-500" />
@@ -121,7 +140,7 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
         {/* Step 2: Enter verification code */}
         {step === "code" && (
           <div>
-            <p className="text-sm text-slate-600 mb-1">Código enviado para <strong>{phone}</strong></p>
+            <p className="text-sm text-slate-600 mb-1">Código enviado via <strong>{channelLabel}</strong> para <strong>{phone}</strong></p>
             <p className="text-xs text-slate-400 mb-4">Digite os 6 dígitos recebidos por SMS.</p>
 
             <div className="flex justify-center gap-2 mb-4">
@@ -153,10 +172,16 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
               {countdown > 0 ? (
                 <p className="text-xs text-slate-400">Reenviar em {countdown}s</p>
               ) : (
-                <button onClick={handleSendCode} disabled={sending}
-                  className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 mx-auto">
-                  <RefreshCw size={11} /> Reenviar código
-                </button>
+                <div className="flex flex-col items-center gap-1">
+                  <button onClick={() => { setChannel("sms"); handleSendCode(); }} disabled={sending}
+                    className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1">
+                    <RefreshCw size={11} /> Reenviar via SMS
+                  </button>
+                  <button onClick={() => { setChannel("whatsapp"); handleSendCode(); }} disabled={sending}
+                    className="text-xs text-green-600 hover:underline font-medium flex items-center gap-1">
+                    💬 Receber via WhatsApp
+                  </button>
+                </div>
               )}
               <button onClick={() => { setStep("phone"); setCode(["","","","","",""]); setError(""); }}
                 className="text-xs text-slate-400 hover:underline mt-2 block mx-auto">Alterar número</button>

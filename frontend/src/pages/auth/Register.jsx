@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { GoogleLogin } from "@react-oauth/google";
 import { Link, useNavigate } from "react-router-dom";
 import { Upload, CheckCircle, X, AlertCircle, ArrowLeft } from "lucide-react";
+import PhoneVerificationModal from "../../components/common/PhoneVerificationModal";
 import axios from "axios";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
@@ -81,6 +82,7 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
   const navigate  = useNavigate();
   const [step,    setStep]    = useState(1);
   const [done,    setDone]    = useState(false);
+  const [showPhoneVerify, setShowPhoneVerify] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
   const f = t("register.fields", { returnObjects: true });
@@ -121,14 +123,28 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
       localStorage.setItem("user_id",   data.user_id);
       localStorage.setItem("full_name", data.full_name);
       localStorage.setItem("email",     data.email || form.email);
-      setDone(true);
-      setTimeout(() => navigate("/dashboard/client"), 2000);
+      localStorage.setItem("roles",     JSON.stringify(data.roles || [data.role]));
+      // 10.2-13: Show phone verification step instead of immediate redirect
+      if (form.phone) {
+        setShowPhoneVerify(true);
+      } else {
+        setDone(true);
+        setTimeout(() => navigate("/dashboard/client"), 2000);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || "Erro ao criar conta. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (showPhoneVerify) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <PhoneVerificationModal phone={form.phone}
+        onClose={() => { setShowPhoneVerify(false); setDone(true); setTimeout(() => navigate("/dashboard/client"), 2000); }}
+        onVerified={() => { setShowPhoneVerify(false); setDone(true); setTimeout(() => navigate("/dashboard/client"), 2000); }} />
+    </div>
+  );
 
   if (done) return (
     <div className="text-center py-8">

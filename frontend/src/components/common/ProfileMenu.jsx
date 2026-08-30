@@ -143,17 +143,9 @@ const ProfileMenu = () => {
             </div>
           ))}
 
-          {/* 45e: Contextual role/category actions */}
+          {/* 10.3-1,5: Proper profile management — no instant switching */}
           <div className="border-t border-slate-100 mt-1 pt-1">
-            {/* Client with no pro profile → become professional */}
-            {role === "client" && !hasPro && (
-              <button onClick={() => { navigate("/register/professional"); setOpen(false); }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                <RefreshCw size={15} /> Quero ser Profissional
-              </button>
-            )}
-
-            {/* Client with existing pro profile → switch to professional */}
+            {/* Client with existing pro profile → switch view (not create) */}
             {role === "client" && hasPro && (
               <button onClick={() => {
                 const proRole = roles.find(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r)) || "nurse";
@@ -163,11 +155,19 @@ const ProfileMenu = () => {
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                <RefreshCw size={15} /> Mudar para Profissional
+                <RefreshCw size={15} /> Mudar para modo Profissional
               </button>
             )}
 
-            {/* Professional → switch to client mode */}
+            {/* Client WITHOUT pro profile → request professional registration */}
+            {role === "client" && !hasPro && (
+              <button onClick={() => { navigate("/register/professional"); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+                <RefreshCw size={15} /> Solicitar perfil Profissional
+              </button>
+            )}
+
+            {/* Professional → switch to client view */}
             {isPro && (
               <button onClick={() => {
                 localStorage.setItem("role", "client");
@@ -176,7 +176,7 @@ const ProfileMenu = () => {
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                <RefreshCw size={15} /> Mudar para Cliente
+                <RefreshCw size={15} /> Mudar para modo Cliente
               </button>
             )}
 

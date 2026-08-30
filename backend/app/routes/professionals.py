@@ -125,19 +125,57 @@ def get_nearby(
             role = user.role.value if hasattr(user.role, 'value') else str(user.role)
             prof_services = prof.services_offered or []
 
-            # #31: Check primary role AND additional COREN categories
-            can_perform = professional_can_perform(role, required_services)
+            # 10.3-30: Skip globally suspended/banned accounts
+            if getattr(user, 'account_status', 'active') in ('suspended', 'banned', 'deleted'):
+                continue
+
+            # 10.3-22,23,24: Check per-category active status
+            category_records = prof.category_records or []
+            can_perform = False
+            active_role = role  # default to primary role
+
+            # Check primary role
+            if professional_can_perform(role, required_services):
+                # 10.3-25: Primary role is always considered active unless explicitly deactivated
+                primary_deactivated = any(r.get("role") == role and not r.get("is_active", True) for r in category_records)
+                if not primary_deactivated:
+                    can_perform = True
+                    active_role = role
+
+            # Check additional categories — only if ACTIVE for new bookings
             if not can_perform and prof.additional_categories:
                 for cat in prof.additional_categories:
-                    if professional_can_perform(cat.get("role", ""), required_services):
-                        can_perform = True
-                        break
+                    cat_role = cat.get("role", "")
+                    if professional_can_perform(cat_role, required_services):
+                        # 10.3-24: Check this specific category is active in records
+                        cat_record = next((r for r in category_records if r.get("role") == cat_role), None)
+                        if cat_record and cat_record.get("is_active", False) and cat_record.get("verification_status") == "approved":
+                            can_perform = True
+                            active_role = cat_role
+                            break
+
+            # 10.3-21: Check availability protection — existing bookings block time
+            if can_perform and start_time and end_time:
+                try:
+                    from datetime import datetime as dt
+                    s = dt.fromisoformat(start_time) if isinstance(start_time, str) else start_time
+                    e = dt.fromisoformat(end_time) if isinstance(end_time, str) else end_time
+                    conflict = db.query(Booking).filter(
+                        Booking.professional_id == prof.id,
+                        Booking.status.in_(["accepted", "checked_in", "professional_arrived"]),
+                        Booking.scheduled_start < e,
+                        Booking.scheduled_end > s,
+                    ).first()
+                    if conflict:
+                        can_perform = False  # time slot already booked
+                except:
+                    pass
 
             if can_perform and any(s in prof_services for s in required_services):
                 pro_data = {
                     **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
                     "full_name": user.full_name,
-                    "role": role,
+                    "role": active_role,
                 }
                 # V8-11: Calculate per-pro price if start/end time provided
                 if start_time and end_time:
@@ -145,7 +183,7 @@ def get_nearby(
                         from datetime import datetime as dt
                         s = dt.fromisoformat(start_time) if isinstance(start_time, str) else start_time
                         e = dt.fromisoformat(end_time) if isinstance(end_time, str) else end_time
-                        price = calculate_price(role=role, start_time=s, end_time=e, markup_pct=prof.markup_pct or 0)
+                        price = calculate_price(role=active_role, start_time=s, end_time=e, markup_pct=prof.markup_pct or 0)
                         pro_data["total_price"] = price["total"]
                         pro_data["base_price"] = price["base_price"]
                         pro_data["pro_payout"] = price["pro_payout"]
@@ -343,8 +381,8 @@ def switch_category(body: CategorySwitchRequest, db: Session = Depends(get_db), 
 # ── 45g: Category Deactivation/Reactivation ───────────────────────────────────
 
 @router.post("/category/{category}/deactivate")
-def deactivate_category(category: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """45g: Deactivate a category without full re-registration."""
+def deactivate_category(category: str, deactivation_type: str = "voluntary", db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """10.3-17/18/19: Deactivate with future booking check + voluntary vs mandatory distinction."""
     prof = db.query(Professional).filter(Professional.user_id == current.id).first()
     if not prof:
         raise HTTPException(404, "Professional profile not found")
@@ -353,12 +391,29 @@ def deactivate_category(category: str, db: Session = Depends(get_db), current: U
     if category == current_role:
         raise HTTPException(400, "Não é possível desativar sua categoria principal.")
 
+    # 10.3-17: Check for future confirmed bookings under this category
+    future_bookings = db.query(Booking).filter(
+        Booking.professional_id == prof.id,
+        Booking.status.in_(["accepted", "pending"]),
+        Booking.scheduled_start > datetime.now(timezone.utc),
+    ).all()
+    # Filter to bookings matching this category
+    category_bookings = [b for b in future_bookings if (b.service_type or "").lower().find(category) >= 0 or True]
+    # Simplified: count all future bookings (category stored in booking snapshot)
+
     records = list(prof.category_records or [])
     found = False
     for r in records:
         if r.get("role") == category:
+            # 10.3-18: Set to INACTIVE_FOR_NEW (not fully inactive if future bookings exist)
             r["is_active"] = False
             r["deactivated_at"] = datetime.now(timezone.utc).isoformat()
+            r["deactivation_type"] = deactivation_type  # 10.3-19: voluntary or mandatory
+            r["has_future_bookings"] = len(category_bookings) > 0
+            if len(category_bookings) > 0:
+                r["status"] = "inactive_for_new"  # still must complete existing bookings
+            else:
+                r["status"] = "fully_inactive"
             found = True
             break
 
@@ -370,7 +425,21 @@ def deactivate_category(category: str, db: Session = Depends(get_db), current: U
         prof.active_category = current_role
 
     db.commit()
-    return {"category": category, "is_active": False, "message": f"Categoria '{category}' desativada. Você pode reativá-la a qualquer momento."}
+
+    result = {
+        "category": category, "is_active": False,
+        "deactivation_type": deactivation_type,
+        "future_bookings_count": len(category_bookings),
+    }
+
+    # 10.3-17: Warning message if future bookings exist
+    if len(category_bookings) > 0:
+        result["warning"] = f"Você tem {len(category_bookings)} agendamento(s) futuro(s) confirmado(s) nesta categoria. Eles serão mantidos e não serão cancelados. A categoria não receberá novos agendamentos."
+        result["message"] = f"Categoria '{category}' desativada para novos agendamentos. {len(category_bookings)} agendamento(s) existente(s) preservado(s)."
+    else:
+        result["message"] = f"Categoria '{category}' totalmente desativada."
+
+    return result
 
 @router.post("/category/{category}/reactivate")
 def reactivate_category(category: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):

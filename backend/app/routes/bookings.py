@@ -152,6 +152,18 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
             "surcharge_pct":server_price["surcharge_pct"],
         })
 
+    # 50-37: Save pricing snapshot at creation — historical bookings never recalculate
+    try:
+        from app.routes.settings import get_all_settings
+        pricing_snapshot = get_all_settings(db)
+        # Store only pricing-relevant keys
+        snapshot_keys = [k for k in pricing_snapshot if any(k.startswith(p) for p in
+            ["initial_fee_", "day_rate_", "night_rate_", "platform_commission", "holiday_",
+             "urgent_", "travel_", "client_service_fee", "professional_payout", "cancel_"])]
+        booking_data["pricing_snapshot"] = {k: pricing_snapshot[k] for k in snapshot_keys}
+    except:
+        pass
+
     booking = Booking(**booking_data)
     db.add(booking)
     db.commit()
