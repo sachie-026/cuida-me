@@ -118,7 +118,9 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if body.cpf:
         existing_cpf = db.query(User).filter(User.cpf == body.cpf).first()
         if existing_cpf:
-            raise HTTPException(status_code=409, detail="CPF já cadastrado. Cada CPF pode ter apenas uma conta.")
+            if not existing_cpf.is_active:
+                raise HTTPException(status_code=403, detail="Este CPF pertence a uma conta suspensa ou banida. Entre em contato com o suporte.")
+            raise HTTPException(status_code=409, detail="Este CPF já possui uma conta. Faça login em sua conta existente ou recupere seu acesso.")
     is_pro = body.role in PRO_ROLES
     user = User(
         email=body.email, password_hash=hash_password(body.password),
@@ -220,31 +222,81 @@ def _send_sms(phone: str, code: str) -> bool:
 
 class PhoneVerifyRequest(BaseModel):
     phone: str
+    channel: str = "sms"  # "sms" or "whatsapp"
 
 class PhoneCodeConfirm(BaseModel):
     phone: str
     code:  str
 
+def _send_whatsapp(phone: str, code: str) -> bool:
+    """10.2-4: Send OTP via WhatsApp (Twilio or Zenvia)."""
+    if SMS_PROVIDER == "twilio":
+        try:
+            from twilio.rest import Client
+            client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+            client.messages.create(
+                body=f"CuidaU: Seu código de verificação é {code}. Válido por 10 minutos.",
+                from_=f'whatsapp:{os.getenv("TWILIO_WHATSAPP", os.getenv("TWILIO_PHONE"))}',
+                to=f'whatsapp:{phone}',
+            )
+            return True
+        except Exception as e:
+            print(f"WhatsApp send failed: {e}"); return False
+    elif SMS_PROVIDER == "zenvia":
+        try:
+            import httpx
+            resp = httpx.post("https://api.zenvia.com/v2/channels/whatsapp/messages", json={
+                "from": os.getenv("ZENVIA_SENDER"),
+                "to": phone,
+                "contents": [{"type": "text", "text": f"CuidaU: Seu código de verificação é {code}. Válido por 10 minutos."}]
+            }, headers={"X-API-TOKEN": os.getenv("ZENVIA_TOKEN")})
+            return resp.status_code == 200
+        except Exception as e:
+            print(f"WhatsApp send failed: {e}"); return False
+    else:
+        print(f"📱 [DEV] WhatsApp OTP for {phone}: {code}")
+        return True
+
 @router.post("/phone/send-code")
 def send_phone_code(body: PhoneVerifyRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     code = str(random.randint(100000, 999999))
     expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    # 10.2-8: If phone number changed, reset verification
+    if current.phone and current.phone != body.phone:
+        current.phone_verified = False
+        current.phone_status = "not_verified"
+
     current.phone_otp_code = code
     current.phone_otp_expires = expires
     current.phone = body.phone
+    current.phone_status = "in_progress"
     db.commit()
-    sent = _send_sms(body.phone, code)
+
+    # Send via selected channel
+    if body.channel == "whatsapp":
+        sent = _send_whatsapp(body.phone, code)
+        channel_label = "WhatsApp"
+    else:
+        sent = _send_sms(body.phone, code)
+        channel_label = "SMS"
+
     if not sent:
+        current.phone_status = "failed"
+        db.commit()
         try:
             from app.utils.observability import log_event
-            log_event("46", "sms_send_failed", {"phone": body.phone, "user_id": current.id})
+            log_event("46", f"{channel_label.lower()}_send_failed", {"phone": body.phone, "user_id": current.id})
         except: pass
-        return {"sent": False, "error": "Não foi possível enviar o SMS. Tente novamente.", "can_retry": True}
+        return {"sent": False, "error": f"Não foi possível enviar o código via {channel_label}. Tente novamente.", "can_retry": True, "channel": channel_label}
+
     try:
         from app.utils.observability import log_event
-        log_event("46", "sms_sent", {"phone": body.phone, "user_id": current.id})
+        log_event("46", f"{channel_label.lower()}_sent", {"phone": body.phone, "user_id": current.id})
     except: pass
-    return {"sent": True, "message": f"Código enviado para {body.phone}. Válido por 10 minutos."}
+    masked = phone[:4] + "*" * (len(phone) - 6) + phone[-2:] if len(phone) > 6 else phone
+    return {"sent": True, "channel": channel_label,
+            "message": f"Código enviado via {channel_label} para {masked}. Válido por 10 minutos."}
 
 @router.post("/phone/verify-code")
 def verify_phone_code(body: PhoneCodeConfirm, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
@@ -252,18 +304,23 @@ def verify_phone_code(body: PhoneCodeConfirm, db: Session = Depends(get_db), cur
     if not current.phone_otp_code:
         raise HTTPException(400, "Nenhum código pendente. Solicite um novo código.")
     if current.phone_otp_expires and current.phone_otp_expires.replace(tzinfo=timezone.utc) < now:
-        current.phone_otp_code = None; current.phone_otp_expires = None; db.commit()
+        current.phone_otp_code = None; current.phone_otp_expires = None
+        current.phone_status = "expired"
+        db.commit()
         raise HTTPException(400, "Código expirado. Solicite um novo código.")
     if current.phone_otp_code != body.code:
         raise HTTPException(400, "Código incorreto. Tente novamente.")
     current.phone_verified = True
+    current.phone_status = "verified"
     current.phone_otp_code = None; current.phone_otp_expires = None; current.phone = body.phone
     db.commit()
     return {"verified": True, "message": "Telefone verificado com sucesso!"}
 
 @router.get("/phone/status")
 def phone_status(current: User = Depends(get_current_user)):
-    return {"phone": current.phone, "phone_verified": current.phone_verified, "is_verified": current.is_verified}
+    return {"phone": current.phone, "phone_verified": current.phone_verified,
+            "phone_status": getattr(current, 'phone_status', 'not_verified') or "not_verified",
+            "is_verified": current.is_verified}
 
 @router.get("/sms/health")
 def sms_health():

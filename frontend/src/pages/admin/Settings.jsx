@@ -14,7 +14,9 @@ const ROLE_LABELS = { caregiver: "Cuidador(a)", nursing_assistant: "Auxiliar de 
 const FIELD_LABELS = {
   min_advance_hours: "Antecedência mínima", min_booking_hours: "Duração mínima",
   urgent_window_start_hours: "Urgência: início", urgent_window_end_hours: "Urgência: fim",
-  urgent_surcharge_pct: "Taxa de urgência", refund_full_hours: "Reembolso total (antes de)",
+  urgent_surcharge_pct: "Taxa de urgência (%)", urgent_booking_enabled: "Urgência habilitada",
+  urgent_fee_method: "Método taxa urgente", urgent_fixed_amount: "Valor fixo urgência (R$)",
+  refund_full_hours: "Reembolso total (antes de)",
   refund_partial_hours: "Reembolso parcial (antes de)", refund_partial_pct: "% reembolso parcial",
   grace_period_minutes: "Período de graça", grace_max_uses_30d: "Usos do grace (30 dias)",
   penalty_reset_days: "Reset de penalidades", late_arrival_tolerance_min: "Tolerância atraso",
@@ -22,18 +24,51 @@ const FIELD_LABELS = {
   checkin_reminder_minutes: "Lembrete check-in", client_confirm_timeout_hours: "Timeout confirmação",
   day_start_hour: "Início período diurno", night_start_hour: "Início período noturno",
   rest_after_24h_hours: "Descanso após 24h", platform_commission_pct: "Comissão plataforma",
-  holiday_surcharge_pct: "Taxa feriado", standard_response_hours: "Resposta padrão",
+  holiday_surcharge_pct: "Taxa feriado (%)", holiday_pricing_enabled: "Precificação feriado habilitada",
+  holiday_pricing_method: "Método feriado", holiday_specific_rate: "Taxa fixa feriado (R$)",
+  holiday_dates: "Datas de feriados",
+  standard_response_hours: "Resposta padrão",
   urgent_response_minutes: "Resposta urgente", max_match_batch: "Profissionais por lote",
   eval_window_days: "Janela de avaliação",
   // 50d: Payment
-  payment_methods_enabled: "Métodos habilitados", auto_release_after_hours: "Liberação automática após",
-  dispute_review_hours: "Prazo revisão de disputa",
+  payment_methods_enabled: "Métodos habilitados", auto_release_after_hours: "Liberação automática",
+  dispute_review_hours: "Prazo revisão disputa",
   // 50b: Categories
-  enabled_categories: "Categorias habilitadas", min_booking_duration_minutes: "Duração mínima do agendamento",
+  enabled_categories: "Categorias habilitadas", min_booking_duration_minutes: "Duração mínima agendamento",
+  category_active_caregiver: "Cuidador ativo", category_active_nursing_assistant: "Auxiliar ativo",
+  category_active_technician: "Técnico ativo", category_active_nurse: "Enfermeiro ativo",
   // 50d: Content
-  platform_name: "Nome da plataforma", support_email: "E-mail de suporte", support_whatsapp: "WhatsApp suporte",
+  platform_name: "Nome da plataforma", support_email: "E-mail suporte", support_whatsapp: "WhatsApp suporte",
   // 50d: General
-  maintenance_mode: "Modo manutenção", allow_new_registrations: "Permitir novos cadastros",
+  maintenance_mode: "Modo manutenção", allow_new_registrations: "Permitir cadastros",
+  // 50-4: Weekend
+  weekend_pricing_enabled: "Precificação fim de semana", weekend_saturday_applies: "Sábado aplica",
+  weekend_sunday_applies: "Domingo aplica", weekend_pricing_method: "Método",
+  weekend_surcharge_pct: "Taxa fim de semana", weekend_specific_rate: "Taxa fixa (R$)",
+  // 50-6: Min prices
+  min_price_caregiver: "Preço mín. Cuidador", min_price_nursing_assistant: "Preço mín. Auxiliar",
+  min_price_technician: "Preço mín. Técnico", min_price_nurse: "Preço mín. Enfermeiro",
+  // 50-12: Travel
+  travel_fee_enabled: "Taxa deslocamento", travel_free_distance_km: "Distância grátis",
+  travel_fee_method: "Método cálculo", travel_fee_rate: "Valor por km",
+  // 50-14: Client fee
+  client_service_fee_enabled: "Taxa serviço cliente", client_service_fee_method: "Método taxa",
+  client_service_fee_pct: "Taxa cliente (%)", client_service_fee_fixed: "Taxa fixa (R$)",
+  // 50-15: Payout
+  professional_payout_pct: "Payout profissional",
+  // 50-22-25: Limits
+  max_booking_duration_enabled: "Duração máxima habilitada", max_booking_duration_hours: "Duração máxima",
+  max_future_booking_days: "Máx. dias futuro", max_active_bookings_per_client: "Máx. agendamentos ativos",
+  max_consecutive_work_hours: "Máx. horas consecutivas",
+  // 50-26: Cancel tiers
+  cancel_tier1_hours: "Tier 1: horas antes", cancel_tier1_refund_pct: "Tier 1: reembolso (%)",
+  cancel_tier1_pro_pct: "Tier 1: compensação pro (%)", cancel_tier2_hours: "Tier 2: horas antes",
+  cancel_tier2_refund_pct: "Tier 2: reembolso (%)", cancel_tier2_pro_pct: "Tier 2: compensação pro (%)",
+  cancel_tier3_refund_pct: "Tier 3: reembolso (%)", cancel_tier3_pro_pct: "Tier 3: compensação pro (%)",
+  cancel_noshow_refund_pct: "No-show: reembolso (%)", cancel_noshow_pro_pct: "No-show: compensação pro (%)",
+  // 50-28: Pro penalties
+  pro_cancel_warning_threshold: "Aviso após N cancelamentos", pro_cancel_suspend_days_first: "Suspensão 1ª vez (dias)",
+  pro_cancel_suspend_days_repeat: "Suspensão reincidência (dias)", pro_cancel_review_threshold: "Revisão após N cancelamentos",
 };
 const FIELD_UNITS = {
   min_advance_hours: "h", min_booking_hours: "h", urgent_window_start_hours: "h",
@@ -60,15 +95,19 @@ const AdminSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState({});
+  const [loadError, setLoadError] = useState("");
+  const [configVersion, setConfigVersion] = useState(0);
 
   useEffect(() => {
+    setLoadError("");
     axios.get(`${API}/api/settings`, { headers })
       .then(r => {
         setSettings(r.data.settings);
         setDefaults(r.data.defaults);
         setGroups(r.data.groups);
+        setConfigVersion(r.data.settings?._version || 0);
       })
-      .catch(() => toast.error("Erro ao carregar configurações."))
+      .catch(() => setLoadError("Não foi possível carregar as configurações."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -89,24 +128,37 @@ const AdminSettings = () => {
       if (isDirty) updates[field] = settings[field];
     }
     if (Object.keys(updates).length === 0) { toast("Nenhuma alteração."); return; }
+    updates._loaded_version = configVersion;
 
     setSaving(true);
     try {
-      await axios.patch(`${API}/api/settings`, { updates }, { headers });
+      const { data } = await axios.patch(`${API}/api/settings`, { updates }, { headers });
       toast.success("Configurações salvas!");
       setDirty({});
+      if (data.version) setConfigVersion(data.version);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao salvar.");
+      const status = err.response?.status;
+      if (status === 409) { toast.error("Configurações foram alteradas por outro admin. Recarregue a página."); }
+      else if (status === 403) { toast.error("Você não tem permissão para alterar estas configurações."); }
+      else { toast.error(err.response?.data?.detail || "Erro ao salvar. As configurações anteriores permanecem ativas."); }
     } finally { setSaving(false); }
   };
 
   const tabs = [
     { id: "pricing", label: "Precificação", icon: <DollarSign size={14}/> },
     { id: "commission", label: "Comissão", icon: <DollarSign size={14}/> },
+    { id: "payout", label: "Payout", icon: <DollarSign size={14}/> },
+    { id: "client_fee", label: "Taxa cliente", icon: <DollarSign size={14}/> },
+    { id: "min_prices", label: "Preço mínimo", icon: <DollarSign size={14}/> },
+    { id: "weekend", label: "Fim de semana", icon: <Clock size={14}/> },
+    { id: "travel", label: "Deslocamento", icon: <Clock size={14}/> },
     { id: "booking", label: "Agendamento", icon: <Clock size={14}/> },
+    { id: "booking_limits", label: "Limites", icon: <Clock size={14}/> },
     { id: "cancellation", label: "Cancelamento", icon: <Shield size={14}/> },
+    { id: "cancel_tiers", label: "Tiers reembolso", icon: <Shield size={14}/> },
+    { id: "pro_penalties", label: "Penalidades pro", icon: <Shield size={14}/> },
     { id: "categories", label: "Categorias", icon: <Shield size={14}/> },
-    { id: "arrival_gps", label: "GPS e Check-in", icon: <Shield size={14}/> },
+    { id: "arrival_gps", label: "GPS", icon: <Shield size={14}/> },
     { id: "time_ranges", label: "Horários", icon: <Clock size={14}/> },
     { id: "matching", label: "Matching", icon: <Clock size={14}/> },
     { id: "evaluation", label: "Avaliação", icon: <Clock size={14}/> },
@@ -155,6 +207,15 @@ const AdminSettings = () => {
   };
 
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><p className="text-slate-400">Carregando...</p></div>;
+
+  if (loadError) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="text-center">
+        <p className="text-sm text-red-600 mb-3">{loadError}</p>
+        <button onClick={() => window.location.reload()} className="btn-primary text-sm">Tentar novamente</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -228,19 +289,25 @@ const AdminSettings = () => {
           </div>
         )}
 
-        {/* Save button */}
+        {/* Save / Cancel / Discard */}
         {tab !== "audit" && (
           <div className="mt-6">
             {Object.keys(dirty).length > 0 && (
               <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-3">
                 <AlertTriangle size={14} className="text-amber-500" />
-                <p className="text-xs text-amber-700">{Object.keys(dirty).length} campo(s) alterado(s) — clique em Salvar para aplicar</p>
+                <p className="text-xs text-amber-700">{Object.keys(dirty).length} campo(s) alterado(s)</p>
               </div>
             )}
-            <button onClick={handleSave} disabled={saving || Object.keys(dirty).length === 0}
-              className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
-              <Save size={16}/> {saving ? "Salvando..." : "Salvar configurações"}
-            </button>
+            <div className="flex gap-2">
+              {Object.keys(dirty).length > 0 && (
+                <button onClick={() => { setSettings({...settings, ...Object.fromEntries(Object.keys(dirty).map(k => [k, defaults[k]]))}); setDirty({}); toast("Alterações descartadas."); }}
+                  className="btn-outline flex-1 text-sm">Descartar</button>
+              )}
+              <button onClick={handleSave} disabled={saving || Object.keys(dirty).length === 0}
+                className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">
+                <Save size={16}/> {saving ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
           </div>
         )}
       </div>

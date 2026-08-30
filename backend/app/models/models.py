@@ -56,8 +56,10 @@ class User(Base):
     date_of_birth = Column(String, nullable=True)   # ISO date string
     role          = Column(Enum(UserRole), nullable=False)
     is_active     = Column(Boolean, default=True)
+    account_status = Column(String, default="active")  # active, suspended, banned, deleted
     is_verified    = Column(Boolean, default=False)
     phone_verified = Column(Boolean, default=False)
+    phone_status   = Column(String, default="not_verified")  # not_verified, in_progress, verified, failed, expired
     phone_otp_code = Column(String, nullable=True)
     phone_otp_expires = Column(DateTime(timezone=True), nullable=True)
     google_id     = Column(String, unique=True, nullable=True)
@@ -83,7 +85,16 @@ class Professional(Base):
     id               = Column(String, primary_key=True, default=gen_uuid)
     user_id          = Column(String, ForeignKey("users.id"), unique=True)
     council_number   = Column(String, nullable=True)
-    council_state    = Column(String, nullable=True)
+    council_state    = Column(String, nullable=True)   # COREN registration state
+    activity_state   = Column(String, nullable=True)   # Where pro currently operates
+    service_states   = Column(JSON, default=list)       # States eligible for bookings
+    # 10.1-10: Extended verification status
+    verification_status = Column(String, default="pending_verification")
+    # Valid: pending_verification, auto_in_progress, auto_verified, manual_review_required,
+    #        additional_docs_required, rejected, reverification_required, approved
+    verification_reason = Column(String, nullable=True)
+    last_verified_at    = Column(DateTime(timezone=True), nullable=True)
+    reverification_due  = Column(DateTime(timezone=True), nullable=True)
     council_type     = Column(String, default="COREN")
     additional_categories = Column(JSON, default=list)
     active_category      = Column(String, nullable=True)  # current working category (e.g. "caregiver" for a nurse)
@@ -207,6 +218,7 @@ class Booking(Base):
     base_price      = Column(Float, nullable=True)
     markup_pct      = Column(Integer, default=0)
     surcharge_pct   = Column(Float, default=0.0)
+    pricing_snapshot = Column(JSON, nullable=True)  # 50-37: Full pricing config at booking creation
     total_price     = Column(Float)
     platform_fee    = Column(Float)
     pro_payout      = Column(Float)
