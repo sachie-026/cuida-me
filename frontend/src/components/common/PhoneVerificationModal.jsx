@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) => {
+const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allowSkip = true }) => {
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -134,6 +134,11 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
               className="btn-primary w-full disabled:opacity-50">
               {sending ? "Enviando..." : "Enviar código SMS"}
             </button>
+            {allowSkip && (
+              <button onClick={onClose} className="w-full text-center text-xs text-slate-400 hover:text-slate-600 mt-2 py-1">
+                Pular por enquanto →
+              </button>
+            )}
           </div>
         )}
 
@@ -185,6 +190,11 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified }) =>
               )}
               <button onClick={() => { setStep("phone"); setCode(["","","","","",""]); setError(""); }}
                 className="text-xs text-slate-400 hover:underline mt-2 block mx-auto">Alterar número</button>
+              {allowSkip && (
+                <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 mt-1 block mx-auto">
+                  Pular verificação →
+                </button>
+              )}
             </div>
           </div>
         )}
