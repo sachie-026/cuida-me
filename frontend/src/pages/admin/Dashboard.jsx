@@ -376,12 +376,6 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                       </button>
                     </div>
                   )}
-                      <a href={doc.file_url} download
-                        className="flex items-center gap-1 text-xs font-semibold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors">
-                        ⬇ Baixar
-                      </a>
-                    </div>
-                  )}
                 </div>
                 {/* Inline image preview */}
                 {doc.file_url && !doc.file_url.includes("placeholder.com") && /\.(jpg|jpeg|png|webp)/i.test(doc.file_url) && (

@@ -107,7 +107,7 @@ const ClientProfile = () => {
               {!user.phone_verified && (
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl mb-4">
                   <p className="text-sm font-semibold text-navy mb-1">📱 Verificar telefone</p>
-                  <p className="text-xs text-slate-500 mb-3">Verifique seu número para poder agendar atendimentos.</p>
+                  <p className="text-xs text-slate-500 mb-3">Quando o serviço de SMS estiver ativo, a verificação será obrigatória.</p>
                   <button onClick={() => setShowPhoneModal(true)} className="btn-primary text-sm">
                     Verificar telefone →
                   </button>
