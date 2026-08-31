@@ -212,26 +212,33 @@ const NewBooking = () => {
         <p className="text-slate-500 text-sm mb-6">Passo {step} de 3</p>
         <StepDots total={3} current={step}/>
 
-        {/* 47a: Verification gate — document + phone */}
-        {(!isVerified || !phoneVerified) && (
+        {/* 47a: Verification gate — docs block, phone is informational until SMS goes live */}
+        {!isVerified && (
           <div className="card p-6 mb-4 border-2 border-amber-300 bg-amber-50">
             <div className="flex items-start gap-3">
               <AlertCircle size={24} className="text-amber-500 flex-shrink-0 mt-0.5"/>
               <div>
                 <p className="font-bold text-navy mb-1">Verificação necessária para agendar</p>
-                {!isVerified && <p className="text-sm text-slate-600 mb-2">📄 Envie seus documentos de identidade.</p>}
-                {!phoneVerified && <p className="text-sm text-slate-600 mb-2">📱 Verifique seu telefone via SMS.</p>}
-                <div className="flex gap-2">
-                  {!isVerified && <button onClick={()=>navigate("/profile/client")} className="btn-primary text-sm">Verificar identidade</button>}
-                  {!phoneVerified && <button onClick={()=>navigate("/profile/client")} className="btn-outline text-sm">Verificar telefone</button>}
-                </div>
+                <p className="text-sm text-slate-600 mb-2">📄 Envie seus documentos de identidade.</p>
+                <button onClick={()=>navigate("/profile/client")} className="btn-primary text-sm">Verificar identidade</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {isVerified && !phoneVerified && (
+          <div className="card p-4 mb-4 border border-blue-200 bg-blue-50">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">📱</span>
+              <div className="flex-1">
+                <p className="text-sm text-blue-700 font-medium">Verificação de telefone pendente</p>
+                <p className="text-xs text-blue-500">Quando o SMS estiver disponível, será necessário verificar seu telefone.</p>
               </div>
             </div>
           </div>
         )}
 
         {step===1 && (
-          <div className={`card p-6 space-y-5 ${(!isVerified || !phoneVerified) ? "opacity-50 pointer-events-none" : ""}`}>
+          <div className={`card p-6 space-y-5 ${!isVerified ? "opacity-50 pointer-events-none" : ""}`}>
             {/* Patient picker */}
             <div>
               <label className="form-label">Quem vai receber o atendimento? *</label>
