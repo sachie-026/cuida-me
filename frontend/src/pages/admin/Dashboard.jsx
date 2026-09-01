@@ -1100,6 +1100,19 @@ const AlicePanel = () => {
   const { headers } = useAdmin();
   const [updating, setUpdating] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [docs, setDocs] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+  const [addMode, setAddMode] = useState(false);
+  const [editKey, setEditKey] = useState(null);
+  const [form, setForm] = useState({ title: "", content: "" });
+
+  const loadDocs = () => {
+    axios.get(`${API}/api/alice/documents`, { headers })
+      .then(r => setDocs(r.data))
+      .catch(() => {})
+      .finally(() => setLoadingDocs(false));
+  };
+  useEffect(() => { loadDocs(); }, []);
 
   const handleUpdate = async () => {
     setUpdating(true);
@@ -1111,40 +1124,133 @@ const AlicePanel = () => {
     finally { setUpdating(false); }
   };
 
+  const handleAdd = async () => {
+    if (!form.title || !form.content) { toast.error("Título e conteúdo são obrigatórios."); return; }
+    try {
+      const { data } = await axios.post(`${API}/api/alice/documents/upload`, form, { headers });
+      toast.success(data.message);
+      setAddMode(false); setForm({ title: "", content: "" });
+      loadDocs();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro ao adicionar."); }
+  };
+
+  const handleEdit = async () => {
+    if (!form.title || !form.content) { toast.error("Título e conteúdo são obrigatórios."); return; }
+    try {
+      const { data } = await axios.put(`${API}/api/alice/documents/${editKey}`, form, { headers });
+      toast.success(data.message);
+      setEditKey(null); setForm({ title: "", content: "" });
+      loadDocs();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro ao atualizar."); }
+  };
+
+  const handleDelete = async (key, title) => {
+    if (!window.confirm(`Tem certeza que deseja remover "${title}"?`)) return;
+    try {
+      const { data } = await axios.delete(`${API}/api/alice/documents/${key}`, { headers });
+      toast.success(data.message);
+      loadDocs();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro ao remover."); }
+  };
+
+  const startEdit = (doc) => {
+    setEditKey(doc.key);
+    setForm({ title: doc.title, content: doc.content || "" });
+    setAddMode(false);
+  };
+
   return (
     <div>
       <h2 className="font-bold text-navy text-lg">Alice — Assistente IA</h2>
-      <p className="text-xs text-slate-500 mt-0.5 mb-6">Gerencie a base de conhecimento da Alice (FAQ inteligente)</p>
+      <p className="text-xs text-slate-500 mt-0.5 mb-6">Gerencie os documentos da base de conhecimento da Alice</p>
 
-      <div className="card p-6 mb-4">
-        <div className="flex items-center gap-3 mb-4">
-          <Bot size={24} className="text-blue-500" />
-          <div>
-            <p className="font-semibold text-navy">Base de conhecimento</p>
-            <p className="text-xs text-slate-500">Termos de Uso, Política de Privacidade, LGPD, Pagamentos</p>
+      {/* Update Alice button */}
+      <div className="card p-5 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Bot size={24} className="text-blue-500" />
+            <div>
+              <p className="font-semibold text-navy">Re-indexar base de conhecimento</p>
+              <p className="text-xs text-slate-500">Clique após adicionar ou alterar documentos</p>
+            </div>
           </div>
+          <button onClick={handleUpdate} disabled={updating}
+            className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50">
+            <Bot size={14} /> {updating ? "..." : "Atualizar Alice"}
+          </button>
         </div>
-        <p className="text-sm text-slate-600 mb-4">
-          Clique em "Atualizar Alice" após alterar qualquer documento legal para que a assistente passe a responder com as informações atualizadas.
-        </p>
-        <button onClick={handleUpdate} disabled={updating}
-          className="btn-primary flex items-center gap-2 disabled:opacity-50">
-          <Bot size={16} /> {updating ? "Atualizando..." : "Atualizar Alice"}
-        </button>
         {lastUpdate && <p className="text-xs text-slate-400 mt-2">Última atualização: {lastUpdate}</p>}
       </div>
 
-      <div className="card p-6">
-        <p className="font-semibold text-navy mb-3">Documentos indexados</p>
-        <div className="space-y-2">
-          {["Termos de Uso", "Política de Privacidade", "LGPD", "Pagamentos e Reembolsos"].map(doc => (
-            <div key={doc} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
-              <span className="text-sm text-slate-600">{doc}</span>
-              <span className="text-xs text-green-600 font-semibold">✓ Indexado</span>
-            </div>
-          ))}
+      {/* Document list */}
+      <div className="card p-5 mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <p className="font-semibold text-navy">Documentos da base ({docs.length})</p>
+          <button onClick={() => { setAddMode(true); setEditKey(null); setForm({ title: "", content: "" }); }}
+            className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600">
+            + Adicionar documento
+          </button>
         </div>
+
+        {loadingDocs ? (
+          <p className="text-sm text-slate-400 text-center py-4">Carregando...</p>
+        ) : docs.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-4">Nenhum documento na base.</p>
+        ) : (
+          <div className="space-y-2">
+            {docs.map(doc => (
+              <div key={doc.key} className="flex items-start justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-sm font-semibold text-navy">{doc.title}</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                      doc.type === "builtin" ? "bg-blue-100 text-blue-600" : "bg-green-100 text-green-600"}`}>
+                      {doc.type === "builtin" ? "Padrão" : "Personalizado"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 truncate">{doc.content_preview}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{doc.char_count} caracteres{doc.uploaded_at ? ` · ${new Date(doc.uploaded_at).toLocaleDateString("pt-BR")}` : ""}</p>
+                </div>
+                <div className="flex gap-1 flex-shrink-0 ml-2">
+                  <button onClick={() => startEdit(doc)}
+                    className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100">Editar</button>
+                  {doc.deletable && (
+                    <button onClick={() => handleDelete(doc.key, doc.title)}
+                      className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 font-semibold hover:bg-red-100">Remover</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Add/Edit form */}
+      {(addMode || editKey) && (
+        <div className="card p-5">
+          <p className="font-semibold text-navy mb-3">{editKey ? `Editar: ${form.title}` : "Novo documento"}</p>
+          <div className="space-y-3">
+            <div>
+              <label className="form-label">Título do documento</label>
+              <input className="form-input" placeholder="Ex: FAQ Atendimento, Protocolo de Segurança..."
+                value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Conteúdo</label>
+              <textarea className="form-input min-h-[200px] text-sm" placeholder="Cole ou digite o conteúdo completo do documento aqui..."
+                value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
+              <p className="text-[10px] text-slate-400 mt-1">{form.content.length} caracteres</p>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => { setAddMode(false); setEditKey(null); setForm({ title: "", content: "" }); }}
+              className="btn-outline flex-1 text-sm">Cancelar</button>
+            <button onClick={editKey ? handleEdit : handleAdd}
+              className="btn-primary flex-1 text-sm">{editKey ? "Salvar alterações" : "Adicionar documento"}</button>
+          </div>
+          <p className="text-[10px] text-slate-400 text-center mt-2">Após salvar, clique em "Atualizar Alice" para que ela passe a usar este documento.</p>
+        </div>
+      )}
     </div>
   );
 };
