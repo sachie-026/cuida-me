@@ -154,12 +154,15 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Conta desativada. Entre em contato com o suporte.")
     token = create_access_token({"sub": user.id, "role": user.role})
+    user_role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    user_roles = user.roles if user.roles and len(user.roles) > 0 else [user_role]
+    has_pro = getattr(user, 'has_professional_profile', False) or user_role in PRO_ROLES
     return TokenResponse(
-        access_token=token, role=user.role.value,
+        access_token=token, role=user_role,
         user_id=user.id, full_name=user.full_name, email=user.email,
-        roles=user.roles or [user.role.value],
-        has_client_profile=user.has_client_profile or user.role.value == "client",
-        has_professional_profile=user.has_professional_profile or user.role.value in PRO_ROLES,
+        roles=user_roles,
+        has_client_profile=getattr(user, 'has_client_profile', False) or user_role == "client",
+        has_professional_profile=has_pro,
     )
 
 @router.post("/forgot-password")
