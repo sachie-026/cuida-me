@@ -7,6 +7,7 @@ Privacy Policy, LGPD, and platform rules. Grounded in legal documents only.
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from app.core.database import get_db
 from app.core.auth_deps import get_current_user, Optional as OptUser
 from app.models.models import User
 
@@ -81,8 +82,9 @@ class AdminUpdateRequest(BaseModel):
 # ── Chat Endpoint ──────────────────────────────────────────────────────────────
 
 @router.post("/chat")
-def alice_chat(body: ChatMessage):
+def alice_chat(body: ChatMessage, db = Depends(get_db)):
     """Public endpoint — Alice answers FAQ questions grounded in legal docs."""
+    _sync_legal_docs(db)
     question = body.message.strip().lower()
 
     if not question or len(question) < 3:
@@ -153,16 +155,141 @@ def _find_best_paragraph(question: str, context: str) -> str:
 
 # ── Admin: Update Alice ────────────────────────────────────────────────────────
 
+# Custom uploaded documents — stored in DB via platform_settings table
+def _load_custom_docs(db):
+    """Load custom docs from DB."""
+    from app.models.models import PlatformSettings
+    row = db.query(PlatformSettings).filter(PlatformSettings.id == "alice_docs").first()
+    if row and row.data:
+        return dict(row.data)
+    return {}
+
+def _save_custom_docs(db, docs, admin_id=None):
+    """Save custom docs to DB."""
+    from app.models.models import PlatformSettings
+    row = db.query(PlatformSettings).filter(PlatformSettings.id == "alice_docs").first()
+    if not row:
+        row = PlatformSettings(id="alice_docs", data={})
+        db.add(row)
+    row.data = docs
+    row.updated_by = admin_id
+    db.commit()
+
+def _sync_legal_docs(db):
+    """Sync custom docs into LEGAL_DOCS so Alice search finds them."""
+    custom = _load_custom_docs(db)
+    for key, doc in custom.items():
+        LEGAL_DOCS[key] = {"title": doc["title"], "content": doc.get("content", "")}
+
 @router.post("/update")
 def update_alice(body: AdminUpdateRequest = AdminUpdateRequest(), current: User = Depends(get_current_user)):
-    """Admin endpoint — re-index legal documents (placeholder for real RAG pipeline)."""
+    """Admin endpoint — re-index legal documents."""
+    if current.role.value != "admin":
+        raise HTTPException(403, "Admin only")
+    if body.document_key and body.document_key in LEGAL_DOCS:
+        return {"status": "updated", "document": body.document_key, "message": f"Documento '{LEGAL_DOCS[body.document_key]['title']}' re-indexado com sucesso."}
+    return {"status": "updated", "documents": list(LEGAL_DOCS.keys()) + list(_custom_docs.keys()), "message": "Todos os documentos foram re-indexados com sucesso."}
+
+# ── Admin: Document Management ────────────────────────────────────────────────
+
+@router.get("/documents")
+def list_alice_documents(current: User = Depends(get_current_user), db = Depends(get_db)):
+    """List all Alice knowledge base documents — built-in + custom uploaded."""
     if current.role.value != "admin":
         raise HTTPException(403, "Admin only")
 
-    if body.document_key and body.document_key in LEGAL_DOCS:
-        return {"status": "updated", "document": body.document_key, "message": f"Documento '{LEGAL_DOCS[body.document_key]['title']}' re-indexado com sucesso."}
+    _sync_legal_docs(db)
+    custom = _load_custom_docs(db)
 
-    return {"status": "updated", "documents": list(LEGAL_DOCS.keys()), "message": "Todos os documentos foram re-indexados com sucesso."}
+    docs = []
+    for key, doc in LEGAL_DOCS.items():
+        is_custom = key in custom
+        docs.append({
+            "key": key, "title": doc["title"],
+            "type": "custom" if is_custom else "builtin",
+            "content": doc["content"].strip(),
+            "content_preview": doc["content"].strip()[:150] + "...",
+            "char_count": len(doc["content"]),
+            "filename": custom[key].get("filename") if is_custom else None,
+            "uploaded_at": custom[key].get("uploaded_at") if is_custom else None,
+            "editable": True, "deletable": is_custom,
+        })
+    return docs
+
+class AliceDocUpload(BaseModel):
+    title: str
+    content: str
+    key: Optional[str] = None
+
+@router.post("/documents/upload")
+def upload_alice_document(body: AliceDocUpload, current: User = Depends(get_current_user), db = Depends(get_db)):
+    """Upload or create a new knowledge base document for Alice."""
+    if current.role.value != "admin":
+        raise HTTPException(403, "Admin only")
+    if not body.title or not body.content:
+        raise HTTPException(400, "Título e conteúdo são obrigatórios.")
+
+    from datetime import datetime, timezone
+    import re
+    key = body.key or re.sub(r'[^a-z0-9]', '_', body.title.lower().strip())[:30]
+
+    custom = _load_custom_docs(db)
+    custom[key] = {
+        "title": body.title,
+        "content": body.content,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "filename": f"{key}.txt",
+        "size": len(body.content),
+    }
+    _save_custom_docs(db, custom, current.id)
+    LEGAL_DOCS[key] = {"title": body.title, "content": body.content}
+
+    return {"key": key, "title": body.title, "char_count": len(body.content),
+            "message": f"Documento '{body.title}' adicionado à base de conhecimento da Alice."}
+
+@router.put("/documents/{doc_key}")
+def update_alice_document(doc_key: str, body: AliceDocUpload, current: User = Depends(get_current_user), db = Depends(get_db)):
+    """Update an existing document (built-in or custom)."""
+    if current.role.value != "admin":
+        raise HTTPException(403, "Admin only")
+
+    from datetime import datetime, timezone
+
+    if doc_key in LEGAL_DOCS:
+        LEGAL_DOCS[doc_key]["title"] = body.title
+        LEGAL_DOCS[doc_key]["content"] = body.content
+
+    custom = _load_custom_docs(db)
+    if doc_key in custom:
+        custom[doc_key]["title"] = body.title
+        custom[doc_key]["content"] = body.content
+        custom[doc_key]["uploaded_at"] = datetime.now(timezone.utc).isoformat()
+        custom[doc_key]["size"] = len(body.content)
+        _save_custom_docs(db, custom, current.id)
+    elif doc_key not in LEGAL_DOCS:
+        raise HTTPException(404, f"Documento '{doc_key}' não encontrado.")
+
+    return {"key": doc_key, "title": body.title, "message": f"Documento '{body.title}' atualizado."}
+
+@router.delete("/documents/{doc_key}")
+def delete_alice_document(doc_key: str, current: User = Depends(get_current_user), db = Depends(get_db)):
+    """Delete a custom document. Built-in documents cannot be deleted."""
+    if current.role.value != "admin":
+        raise HTTPException(403, "Admin only")
+
+    if doc_key in ("terms", "privacy", "lgpd", "payments"):
+        raise HTTPException(400, "Documentos padrão não podem ser excluídos. Use a opção de editar.")
+
+    custom = _load_custom_docs(db)
+    if doc_key in custom:
+        title = custom[doc_key]["title"]
+        del custom[doc_key]
+        _save_custom_docs(db, custom, current.id)
+        if doc_key in LEGAL_DOCS:
+            del LEGAL_DOCS[doc_key]
+        return {"key": doc_key, "deleted": True, "message": f"Documento '{title}' removido."}
+
+    raise HTTPException(404, f"Documento '{doc_key}' não encontrado.")
 
 # ── Public: Get available topics ───────────────────────────────────────────────
 
