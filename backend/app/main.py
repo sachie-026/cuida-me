@@ -41,6 +41,13 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_professional_profile BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR DEFAULT 'active'",
+        # Backfill: populate roles JSON from existing role field for old accounts
+        """UPDATE users SET roles = json_build_array(role::text)
+           WHERE roles IS NULL OR roles::text = '[]' OR roles::text = 'null'""",
+        """UPDATE users SET has_client_profile = TRUE WHERE role = 'client' AND (has_client_profile IS NULL OR has_client_profile = FALSE)""",
+        """UPDATE users SET has_professional_profile = TRUE
+           WHERE role IN ('nurse','technician','nursing_assistant','caregiver')
+           AND (has_professional_profile IS NULL OR has_professional_profile = FALSE)""",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_snapshot JSON",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS activity_state VARCHAR",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS service_states JSON DEFAULT '[]'",

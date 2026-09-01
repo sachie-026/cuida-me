@@ -29,6 +29,7 @@ import EarningsPage          from "./pages/professional/Earnings";
 import PaymentMethodsPage    from "./pages/client/PaymentMethods";
 import MyActivity            from "./pages/client/MyActivity";
 import AdminSettings         from "./pages/admin/Settings";
+import BecomeProfessional    from "./pages/auth/BecomeProfessional";
 import AdminDashboard        from "./pages/admin/Dashboard";
 import Messages              from "./pages/messages/Messages";
 
@@ -74,6 +75,7 @@ function App() {
           <Route path="/payment-methods"       element={<ProtectedRoute><PaymentMethodsPage /></ProtectedRoute>} />
           <Route path="/earnings"              element={<ProtectedRoute allowedRoles={PRO_ROLES}><EarningsPage /></ProtectedRoute>} />
           <Route path="/admin/settings"        element={<ProtectedRoute allowedRoles={["admin"]}><AdminSettings /></ProtectedRoute>} />
+          <Route path="/register/professional"  element={<ProtectedRoute><BecomeProfessional /></ProtectedRoute>} />
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminDashboard /></ProtectedRoute>} />
