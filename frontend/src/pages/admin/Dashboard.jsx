@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot } from "lucide-react";
+import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -165,6 +165,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "reports",       label: "Denúncias",     icon: <FileText size={18} /> },
     { key: "alice",          label: "Alice IA",       icon: <Bot size={18} /> },
     { key: "validation",     label: "Validação COREN", icon: <ShieldCheck size={18} /> },
+    { key: "settings",       label: "Configurações",   icon: <Settings size={18} /> },
   ];
 
   const content = (
@@ -175,7 +176,10 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
       </div>
       <nav className="flex-1 p-4 space-y-1">
         {links.map(l => (
-          <button key={l.key} onClick={() => { onNav(l.key); setMobileOpen(false); }}
+          <button key={l.key} onClick={() => {
+            if (l.key === "settings") { window.location.href = "/admin/settings"; return; }
+            onNav(l.key); setMobileOpen(false);
+          }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
               ${active === l.key ? "bg-blue-500 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
             {l.icon} {l.label}
