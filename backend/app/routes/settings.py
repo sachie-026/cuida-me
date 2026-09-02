@@ -239,6 +239,7 @@ def get_all_settings(db: Session) -> dict:
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+@router.get("")
 @router.get("/")
 def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
     """Get all platform settings with current values."""
@@ -287,6 +288,7 @@ def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
 class SettingsUpdate(BaseModel):
     updates: dict  # { field: value, ... }
 
+@router.patch("")
 @router.patch("/")
 def update_settings(body: SettingsUpdate, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     """Update one or more settings. Validates each field before saving."""

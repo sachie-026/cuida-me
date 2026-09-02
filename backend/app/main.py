@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, settings
+from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -55,22 +55,6 @@ def run_migrations():
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS verification_reason VARCHAR",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS reverification_due TIMESTAMPTZ",
-        """CREATE TABLE IF NOT EXISTS platform_settings (
-            id VARCHAR PRIMARY KEY DEFAULT 'global',
-            data JSON DEFAULT '{}',
-            updated_by VARCHAR,
-            updated_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        )""",
-        """CREATE TABLE IF NOT EXISTS settings_audit_log (
-            id VARCHAR PRIMARY KEY,
-            admin_id VARCHAR NOT NULL,
-            admin_name VARCHAR NOT NULL,
-            field VARCHAR NOT NULL,
-            old_value VARCHAR,
-            new_value VARCHAR NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        )""",
         """CREATE TABLE IF NOT EXISTS platform_settings (
             id VARCHAR PRIMARY KEY DEFAULT 'global',
             data JSON DEFAULT '{}',
@@ -261,7 +245,6 @@ app.include_router(reports.router,      prefix="/api")
 app.include_router(alerts.router,       prefix="/api")
 app.include_router(alice.router,        prefix="/api")
 app.include_router(notifications.router, prefix="/api")
-app.include_router(settings.router,      prefix="/api")
 app.include_router(settings.router,      prefix="/api")
 
 @app.get("/")
