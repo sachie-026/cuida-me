@@ -157,6 +157,16 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     user_role = user.role.value if hasattr(user.role, 'value') else str(user.role)
     user_roles = user.roles if user.roles and len(user.roles) > 0 else [user_role]
     has_pro = getattr(user, 'has_professional_profile', False) or user_role in PRO_ROLES
+    # P3-1: Also check if Professional record exists (catches stuck records)
+    if not has_pro:
+        existing_pro = db.query(Professional).filter(Professional.user_id == user.id).first()
+        if existing_pro:
+            has_pro = True
+            user.has_professional_profile = True
+            if user_role not in PRO_ROLES and "professional_pending" not in user_roles:
+                user_roles.append("professional_pending")
+                user.roles = user_roles
+            db.commit()
     return TokenResponse(
         access_token=token, role=user_role,
         user_id=user.id, full_name=user.full_name, email=user.email,
@@ -359,12 +369,33 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
     if body.professional_role not in PRO_ROLES:
         raise HTTPException(400, f"Categoria inválida. Use: {PRO_ROLES}")
 
-    # Check if already has a professional profile
+    # P3-3: Check if already has a professional profile — activate it instead of blocking
     existing = db.query(Professional).filter(Professional.user_id == current.id).first()
     if existing:
-        raise HTTPException(400, "Você já possui um perfil profissional.")
+        # Update existing record with new info if provided
+        if body.council_number:
+            existing.council_number = body.council_number
+        if body.council_state:
+            existing.council_state = body.council_state
+        if body.professional_role != "caregiver":
+            existing.council_type = "COREN"
 
-    # Create professional record
+        # Ensure user roles are updated
+        roles = list(current.roles or [current.role.value if hasattr(current.role, 'value') else str(current.role)])
+        if body.professional_role not in roles:
+            roles.append(body.professional_role)
+        current.roles = roles
+        current.has_professional_profile = True
+        db.commit()
+
+        return {
+            "message": f"Perfil profissional atualizado. Categoria: {body.professional_role}. Envie seus documentos para verificação.",
+            "professional_id": existing.id,
+            "roles": current.roles,
+            "existing": True,
+        }
+
+    # Create new professional record
     prof = Professional(
         user_id=current.id,
         council_number=body.council_number,

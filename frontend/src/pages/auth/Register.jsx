@@ -316,7 +316,7 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
 
   return (
     <div>
-      <StepDots total={4} current={step} />
+      <StepDots total={3} current={step} />
 
       {step === 1 && (
         <div>
@@ -414,29 +414,12 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
         </div>
       )}
 
+      {/* P2-1: Step 3 = Terms + Submit (doc upload removed from registration) */}
       {step === 3 && (
         <div>
-          {/* TODO: Wire upload zones to Cloudinary */}
-          {/* TODO: Validate COREN number against COFEN/COREN API */}
           <div className="bg-blue-50 rounded-xl p-3 mb-4 text-xs text-blue-700">
-            📋 Upload e validação do COREN serão implementados em breve. Pode prosseguir por agora.
+            📋 Após o cadastro, envie seus documentos profissionais na área "Meu Perfil" para verificação.
           </div>
-          <UploadZone label={`${f.doc_photo} *`} note="Frente e verso · JPG, PNG ou PDF" />
-          <UploadZone label={`${f.diploma} *`} note="Diploma de enfermagem ou certificado" />
-          <UploadZone label={f.vaccination} note="Hepatite B, tétano, etc." />
-          <InlineError message={error} />
-          <div className="flex gap-3 mt-2">
-            <button onClick={() => { setError(""); setStep(2); }} className="btn-outline flex-1">← {t("register.back")}</button>
-            <button onClick={() => { setError(""); setStep(4); }} className="btn-primary flex-1">{t("register.continue")} →</button>
-          </div>
-        </div>
-      )}
-
-      {step === 4 && (
-        <div>
-          {/* TODO: Wire selfie and criminal record upload to Cloudinary */}
-          <UploadZone label={`${f.selfie} *`} note="Selfie com RG/CNH visível no momento da foto" />
-          <UploadZone label={`${f.criminal} *`} note={f.criminal_note} />
           <div className="space-y-3 mb-4">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" className="mt-0.5 accent-blue-500" />
@@ -449,7 +432,7 @@ const ProfForm = ({ googleData, onClearGoogle }) => {
           </div>
           <InlineError message={error} />
           <div className="flex gap-3 mt-4">
-            <button onClick={() => { setError(""); setStep(3); }} className="btn-outline flex-1">← {t("register.back")}</button>
+            <button onClick={() => { setError(""); setStep(2); }} className="btn-outline flex-1">← {t("register.back")}</button>
             <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1 disabled:opacity-60">
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
