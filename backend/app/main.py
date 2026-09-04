@@ -48,6 +48,13 @@ def run_migrations():
         """UPDATE users SET has_professional_profile = TRUE
            WHERE role IN ('nurse','technician','nursing_assistant','caregiver')
            AND (has_professional_profile IS NULL OR has_professional_profile = FALSE)""",
+        """UPDATE users SET has_professional_profile = TRUE
+           WHERE id IN (SELECT user_id FROM professionals)
+           AND (has_professional_profile IS NULL OR has_professional_profile = FALSE)""",
+        """UPDATE users SET roles = json_build_array(role::text, 'professional_pending')
+           WHERE id IN (SELECT user_id FROM professionals)
+           AND role = 'client'
+           AND (roles IS NULL OR roles::text = '[]' OR roles::text = 'null')""",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_snapshot JSON",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS activity_state VARCHAR",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS service_states JSON DEFAULT '[]'",

@@ -15,7 +15,7 @@ const ProfileMenu = () => {
   const fullName = localStorage.getItem("full_name") || "Usuário";
   const role     = localStorage.getItem("role") || "";
   const roles    = JSON.parse(localStorage.getItem("roles") || "[]");
-  const hasPro   = localStorage.getItem("has_pro") === "true" || roles.some(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r));
+  const hasPro   = localStorage.getItem("has_pro") === "true" || roles.some(r => ["nurse","technician","nursing_assistant","caregiver","professional_pending"].includes(r));
   const initials = fullName.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
   const isPro    = ["nurse","technician","nursing_assistant","caregiver"].includes(role);
   const isAdmin  = role === "admin";
