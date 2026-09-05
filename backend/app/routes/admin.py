@@ -9,6 +9,16 @@ from pydantic import BaseModel
 from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole
 from app.utils.pricing import MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE
 
+def _fresh_doc_url(file_url):
+    """Generate fresh signed Cloudinary URL. Returns original if generation fails."""
+    if not file_url:
+        return None
+    try:
+        from app.utils.cloudinary_helper import generate_signed_url
+        return generate_signed_url(file_url)
+    except:
+        return file_url
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 def _ser_user(u: User) -> dict:
@@ -58,7 +68,7 @@ def _ser_prof(prof: Professional, user: User, docs: list) -> dict:
             {
                 "id":       d.id,
                 "doc_type": d.doc_type,
-                "file_url": d.file_url,
+                "file_url": _fresh_doc_url(d.file_url),
                 "status":   d.status.value if hasattr(d.status, 'value') else str(d.status),
                 "rejection_reason": d.rejection_reason,
             }
@@ -744,25 +754,16 @@ def list_admin_users(db: Session = Depends(get_db), _=Depends(is_super_admin)):
 
 @router.get("/documents/{doc_id}/download")
 def download_document(doc_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
-    """10.1-11: Admin downloads original uploaded document file."""
+    """10.1-11: Admin downloads document with fresh signed URL."""
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")
     if not doc.file_url:
         raise HTTPException(404, "No file URL for this document.")
 
-    # 10.1-13: Generate secure short-lived URL (Cloudinary signed URL)
-    file_url = doc.file_url
-    try:
-        import cloudinary.utils
-        if "cloudinary" in file_url:
-            # Generate a fresh signed URL valid for 1 hour
-            parts = file_url.split("/upload/")
-            if len(parts) == 2:
-                public_id = parts[1].rsplit(".", 1)[0]
-                file_url = cloudinary.utils.cloudinary_url(public_id, sign_url=True, type="authenticated")[0]
-    except:
-        pass  # fallback to original URL
+    # Generate fresh signed URL — handles both /upload/ and /authenticated/ URLs
+    from app.utils.cloudinary_helper import generate_signed_url
+    file_url = generate_signed_url(doc.file_url)
 
     # 10.1-19: Audit log
     try:
@@ -771,7 +772,7 @@ def download_document(doc_id: str, db: Session = Depends(get_db), current: User 
     except:
         pass
 
-    return {"doc_id": doc_id, "file_url": file_url, "doc_type": doc.doc_type, "original_url": doc.file_url}
+    return {"doc_id": doc_id, "file_url": file_url, "doc_type": doc.doc_type}
 
 # ── 10.1-14,15: Extended document statuses + admin actions ─────────────────────
 
@@ -1065,7 +1066,7 @@ def get_docs_by_category(prof_id: str, db: Session = Depends(get_db), _=Depends(
 
     result = {"identity": [], "categories": {}}
     for d in docs:
-        doc_info = {"id": d.id, "doc_type": d.doc_type, "status": d.status.value if hasattr(d.status, 'value') else str(d.status), "file_url": d.file_url}
+        doc_info = {"id": d.id, "doc_type": d.doc_type, "status": d.status.value if hasattr(d.status, 'value') else str(d.status), "file_url": _fresh_doc_url(d.file_url)}
         if d.doc_type in ("rg_cpf", "selfie", "proof_of_address"):
             result["identity"].append(doc_info)
         else:
