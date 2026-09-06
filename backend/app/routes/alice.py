@@ -81,6 +81,20 @@ class AdminUpdateRequest(BaseModel):
 
 # ── Chat Endpoint ──────────────────────────────────────────────────────────────
 
+@router.get("/consent-docs")
+def get_consent_docs(db = Depends(get_db)):
+    """2-4: Public endpoint — returns Terms/Privacy/LGPD text for registration checkboxes."""
+    _sync_legal_docs(db)
+    consent_keys = ["terms", "privacy", "lgpd"]
+    result = {}
+    for key in consent_keys:
+        if key in LEGAL_DOCS:
+            result[key] = {
+                "title": LEGAL_DOCS[key]["title"],
+                "content": LEGAL_DOCS[key]["content"].strip(),
+            }
+    return result
+
 @router.post("/chat")
 def alice_chat(body: ChatMessage, db = Depends(get_db)):
     """Public endpoint — Alice answers FAQ questions grounded in legal docs."""
@@ -249,25 +263,27 @@ def upload_alice_document(body: AliceDocUpload, current: User = Depends(get_curr
 
 @router.put("/documents/{doc_key}")
 def update_alice_document(doc_key: str, body: AliceDocUpload, current: User = Depends(get_current_user), db = Depends(get_db)):
-    """Update an existing document (built-in or custom)."""
+    """Update an existing document (built-in or custom). All edits persist to DB."""
     if current.role.value != "admin":
         raise HTTPException(403, "Admin only")
 
     from datetime import datetime, timezone
 
+    # Update in-memory for immediate effect
     if doc_key in LEGAL_DOCS:
         LEGAL_DOCS[doc_key]["title"] = body.title
         LEGAL_DOCS[doc_key]["content"] = body.content
 
+    # 2-3: Always persist to DB — both built-in and custom edits survive restarts
     custom = _load_custom_docs(db)
-    if doc_key in custom:
-        custom[doc_key]["title"] = body.title
-        custom[doc_key]["content"] = body.content
-        custom[doc_key]["uploaded_at"] = datetime.now(timezone.utc).isoformat()
-        custom[doc_key]["size"] = len(body.content)
-        _save_custom_docs(db, custom, current.id)
-    elif doc_key not in LEGAL_DOCS:
-        raise HTTPException(404, f"Documento '{doc_key}' não encontrado.")
+    custom[doc_key] = {
+        "title": body.title,
+        "content": body.content,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "size": len(body.content),
+        "is_builtin_override": doc_key in ("terms", "privacy", "lgpd", "payments"),
+    }
+    _save_custom_docs(db, custom, current.id)
 
     return {"key": doc_key, "title": body.title, "message": f"Documento '{body.title}' atualizado."}
 

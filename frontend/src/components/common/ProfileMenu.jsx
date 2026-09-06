@@ -5,6 +5,9 @@ import {
   Calendar, MessageSquare, Star, Shield, Share2, HelpCircle, FileText, RefreshCw, Wallet, History
 } from "lucide-react";
 import toast from "react-hot-toast";
+import axios from "axios";
+
+const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const ProfileMenu = () => {
   const [open, setOpen] = useState(false);
@@ -188,6 +191,33 @@ const ProfileMenu = () => {
               </button>
             )}
           </div>
+
+          {/* 1-5: Default profile preference */}
+          {roles.length > 1 && (
+            <div className="border-t border-slate-100 mt-1 pt-1 px-4 py-2">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Perfil padrão no login</p>
+              <select value={localStorage.getItem("default_profile") || role}
+                onChange={async (e) => {
+                  const profile = e.target.value;
+                  try {
+                    const token = localStorage.getItem("token");
+                    await axios.patch(`${API}/api/auth/default-profile?profile=${profile}`, {}, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                    localStorage.setItem("default_profile", profile);
+                    toast.success(`Perfil padrão: ${profile}`);
+                  } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+                }}
+                className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700">
+                <option value="client">Cliente</option>
+                {roles.filter(r => r !== "client" && r !== "professional_pending").map(r => (
+                  <option key={r} value={r}>{
+                    {nurse:"Enfermeiro(a)",technician:"Técnico(a)",nursing_assistant:"Auxiliar",caregiver:"Cuidador(a)"}[r] || r
+                  }</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Logout */}
           <div className="border-t border-slate-100 mt-1 pt-1">

@@ -85,7 +85,13 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
   const [showPhoneVerify, setShowPhoneVerify] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
+  const [consentDocs, setConsentDocs] = useState({});
+  const [showDoc, setShowDoc] = useState(null);
   const f = t("register.fields", { returnObjects: true });
+
+  useEffect(() => {
+    axios.get(`${API}/api/alice/consent-docs`).then(r => setConsentDocs(r.data)).catch(() => {});
+  }, []);
 
   const [form, setForm] = useState({
     full_name: "", email: "", cpf: "", phone: "", password: "",
@@ -207,13 +213,31 @@ const ClientForm = ({ googleData, onClearGoogle }) => {
           <div className="space-y-3 mb-4">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" className="mt-0.5 accent-blue-500" />
-              <span className="text-xs text-slate-500">{t("register.terms")}</span>
+              <span className="text-xs text-slate-500">
+                Li e aceito os{" "}
+                <button type="button" onClick={() => setShowDoc("terms")} className="text-blue-500 underline">Termos de Uso</button>
+                {" "}e a{" "}
+                <button type="button" onClick={() => setShowDoc("privacy")} className="text-blue-500 underline">Política de Privacidade</button>
+              </span>
             </label>
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" className="mt-0.5 accent-blue-500" />
-              <span className="text-xs text-slate-500">{t("register.lgpd_consent")}</span>
+              <span className="text-xs text-slate-500">
+                Autorizo o tratamento dos meus dados conforme a{" "}
+                <button type="button" onClick={() => setShowDoc("lgpd")} className="text-blue-500 underline">LGPD</button>
+              </span>
             </label>
           </div>
+          {showDoc && consentDocs[showDoc] && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/40" onClick={() => setShowDoc(null)} />
+              <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 max-h-[80vh] overflow-y-auto">
+                <h3 className="font-bold text-navy mb-3">{consentDocs[showDoc].title}</h3>
+                <div className="text-xs text-slate-600 whitespace-pre-wrap mb-4">{consentDocs[showDoc].content}</div>
+                <button onClick={() => setShowDoc(null)} className="btn-primary w-full text-sm">Fechar</button>
+              </div>
+            </div>
+          )}
           <InlineError message={error} />
           <div className="flex gap-3 mt-4">
             <button onClick={() => { setError(""); setStep(1); }} className="btn-outline flex-1">← {t("register.back")}</button>

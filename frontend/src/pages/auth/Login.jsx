@@ -54,13 +54,18 @@ const Login = () => {
 
   const saveAndRedirect = (data) => {
     localStorage.setItem("token",     data.access_token);
-    localStorage.setItem("role",      data.role);
     localStorage.setItem("user_id",   data.user_id);
     localStorage.setItem("full_name", data.full_name);
     localStorage.setItem("email",     data.email || "");
     localStorage.setItem("roles",     JSON.stringify(data.roles || [data.role]));
     localStorage.setItem("has_pro",   String(data.has_professional_profile || false));
-    const destination = ROLE_HOME[data.role] || "/dashboard/client";
+
+    // 1-6: Use default_profile preference if set, otherwise use server role
+    const activeRole = data.default_profile || data.role;
+    localStorage.setItem("role", activeRole);
+    localStorage.setItem("default_profile", data.default_profile || "");
+
+    const destination = ROLE_HOME[activeRole] || "/dashboard/client";
     navigate(destination);
     setTimeout(() => toast.success(`Bem-vindo, ${data.full_name}!`), 100);
   };

@@ -41,6 +41,7 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_professional_profile BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR DEFAULT 'active'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS default_profile VARCHAR",
         # Backfill: populate roles JSON from existing role field for old accounts
         """UPDATE users SET roles = json_build_array(role::text)
            WHERE roles IS NULL OR roles::text = '[]' OR roles::text = 'null'""",

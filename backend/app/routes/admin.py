@@ -762,17 +762,33 @@ def download_document(doc_id: str, db: Session = Depends(get_db), current: User 
         raise HTTPException(404, "No file URL for this document.")
 
     # Generate fresh signed URL — handles both /upload/ and /authenticated/ URLs
-    from app.utils.cloudinary_helper import generate_signed_url
+    from app.utils.cloudinary_helper import generate_signed_url, extract_public_id
     file_url = generate_signed_url(doc.file_url)
+    public_id = extract_public_id(doc.file_url)
+
+    # 3-5: Check if file actually exists in Cloudinary
+    file_exists = True
+    try:
+        import cloudinary.api
+        cloudinary.api.resource(public_id, type="authenticated")
+    except Exception:
+        try:
+            cloudinary.api.resource(public_id)
+        except Exception:
+            file_exists = False
 
     # 10.1-19: Audit log
     try:
         from app.utils.observability import log_event
-        log_event("10.1", "document_downloaded", {"doc_id": doc_id, "admin_id": current.id, "doc_type": doc.doc_type})
+        log_event("10.1", "document_downloaded", {"doc_id": doc_id, "admin_id": current.id, "doc_type": doc.doc_type, "file_exists": file_exists})
     except:
         pass
 
-    return {"doc_id": doc_id, "file_url": file_url, "doc_type": doc.doc_type}
+    return {
+        "doc_id": doc_id, "file_url": file_url, "doc_type": doc.doc_type,
+        "file_exists": file_exists, "public_id": public_id,
+        "error": None if file_exists else "Arquivo não encontrado no Cloudinary. O upload pode ter falhado. Solicite reenvio ao profissional.",
+    }
 
 # ── 10.1-14,15: Extended document statuses + admin actions ─────────────────────
 
