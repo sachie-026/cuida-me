@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Upload, CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, Upload, CheckCircle, Clock, XCircle, AlertTriangle, Trash2 } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -33,8 +33,9 @@ const DocStatusBadge = ({status}) => {
   return <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${s.color}`}>{s.icon}{s.label}</span>;
 };
 
-const UploadZone = ({docType,label,note,existingDoc,onUploaded}) => {
+const UploadZone = ({docType,label,note,existingDoc,onUploaded,onDeleted}) => {
   const [uploading,setUploading] = useState(false);
+  const [deleting,setDeleting] = useState(false);
   const token   = localStorage.getItem("token");
   const headers = {Authorization:`Bearer ${token}`};
 
@@ -62,6 +63,21 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded}) => {
     } finally { setUploading(false); }
   };
 
+  const handleDelete = async () => {
+    if (!existingDoc?.id) return;
+    if (!window.confirm(`Tem certeza que deseja excluir "${label}"? Esta ação não pode ser desfeita.`)) return;
+    setDeleting(true);
+    try {
+      const {data} = await axios.delete(`${API}/api/documents/${existingDoc.id}`, {headers});
+      toast.success(data.message || "Documento excluído.");
+      onDeleted?.(existingDoc.id);
+    } catch(err) {
+      toast.error(err.response?.data?.detail || "Erro ao excluir documento.");
+    } finally { setDeleting(false); }
+  };
+
+  const canDelete = existingDoc && existingDoc.status !== "approved";
+
   return (
     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -77,12 +93,25 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded}) => {
           <p className="text-xs text-red-600"><span className="font-semibold">Motivo da rejeição:</span> {existingDoc.rejection_reason}</p>
         </div>
       )}
-      <label className={`flex items-center gap-2 cursor-pointer w-fit px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-        uploading?"bg-slate-200 text-slate-400 cursor-not-allowed":"bg-blue-100 text-blue-700 hover:bg-blue-200"}`}>
-        <Upload size={13}/>
-        <input type="file" className="hidden" onChange={handleChange} accept=".jpg,.jpeg,.png,.pdf" disabled={uploading}/>
-        {uploading?"Enviando...":existingDoc?"Reenviar":"Enviar documento"}
-      </label>
+      <div className="flex items-center gap-2">
+        <label className={`flex items-center gap-2 cursor-pointer w-fit px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+          uploading?"bg-slate-200 text-slate-400 cursor-not-allowed":"bg-blue-100 text-blue-700 hover:bg-blue-200"}`}>
+          <Upload size={13}/>
+          <input type="file" className="hidden" onChange={(e) => {
+            if (existingDoc && !window.confirm("Deseja substituir o documento atual? O documento antigo será sobrescrito.")) {
+              e.target.value = ""; return;
+            }
+            handleChange(e);
+          }} accept=".jpg,.jpeg,.png,.pdf" disabled={uploading}/>
+          {uploading?"Enviando...":existingDoc?"⟳ Substituir":"Enviar documento"}
+        </label>
+        {canDelete && (
+          <button onClick={handleDelete} disabled={deleting}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 disabled:opacity-50 transition-colors">
+            <Trash2 size={12}/> {deleting?"...":"Excluir"}
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -589,7 +618,8 @@ const ProfessionalProfile = () => {
               <div className="space-y-3">
                 {filteredDocTypes.map(({key,label,note})=>(
                   <UploadZone key={key} docType={key} label={label} note={note}
-                    existingDoc={getDoc(key)} onUploaded={handleDocUploaded}/>
+                    existingDoc={getDoc(key)} onUploaded={handleDocUploaded}
+                    onDeleted={() => { setDocs(prev => prev.filter(d => d.doc_type !== key)); }}/>
                 ))}
               </div>
             </div>

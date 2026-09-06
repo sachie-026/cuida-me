@@ -165,6 +165,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "reports",       label: "Denúncias",     icon: <FileText size={18} /> },
     { key: "alice",          label: "Alice IA",       icon: <Bot size={18} /> },
     { key: "validation",     label: "Validação COREN", icon: <ShieldCheck size={18} /> },
+    { key: "legal_docs",     label: "Docs Legais",     icon: <FileText size={18} /> },
     { key: "settings",       label: "Configurações",   icon: <Settings size={18} /> },
   ];
 
@@ -372,8 +373,12 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                       <button onClick={async()=>{
                         try{
                           const{data}=await axios.get(`${API}/api/admin/documents/${doc.id}/download`,{headers});
-                          window.open(data.file_url,"_blank");
-                        }catch{window.open(doc.file_url,"_blank");}
+                          if(data.file_exists===false){
+                            toast.error(data.error||"Arquivo não encontrado no Cloudinary. Solicite reenvio.");
+                          } else {
+                            window.open(data.file_url,"_blank");
+                          }
+                        }catch{toast.error("Erro ao baixar documento.");}
                       }}
                         className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors">
                         <ExternalLink size={11} /> Abrir/Baixar
@@ -946,6 +951,86 @@ const ReportsPanel = () => {
   );
 };
 
+/* ── Legal Documents Panel ── */
+const LegalDocsPanel = () => {
+  const { headers } = useAdmin();
+  const [docs, setDocs] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [editKey, setEditKey] = useState(null);
+  const [form, setForm] = useState({ title: "", content: "" });
+  const [saving, setSaving] = useState(false);
+
+  const loadDocs = () => {
+    axios.get(`${API}/api/alice/consent-docs`, { headers })
+      .then(r => setDocs(r.data))
+      .catch(() => toast.error("Erro ao carregar documentos legais."))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { loadDocs(); }, []);
+
+  const startEdit = (key) => {
+    setEditKey(key);
+    setForm({ title: docs[key]?.title || key, content: docs[key]?.content || "" });
+  };
+
+  const handleSave = async () => {
+    if (!form.content.trim()) { toast.error("Conteúdo não pode ser vazio."); return; }
+    setSaving(true);
+    try {
+      await axios.put(`${API}/api/alice/documents/${editKey}`, form, { headers });
+      toast.success("Documento atualizado! As alterações já estão ativas.");
+      setEditKey(null);
+      loadDocs();
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro ao salvar."); }
+    finally { setSaving(false); }
+  };
+
+  const DOC_LABELS = { terms: "Termos de Uso", privacy: "Política de Privacidade", lgpd: "LGPD — Proteção de Dados" };
+
+  return (
+    <div>
+      <h2 className="font-bold text-navy text-lg">Documentos Legais</h2>
+      <p className="text-xs text-slate-500 mt-0.5 mb-6">Termos de Uso, Política de Privacidade e LGPD exibidos no cadastro e no app</p>
+      {loading ? <p className="text-sm text-slate-400 text-center py-8">Carregando...</p> : (
+        <div className="space-y-3">
+          {["terms", "privacy", "lgpd"].map(key => (
+            <div key={key} className="card p-5">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="font-semibold text-navy">{DOC_LABELS[key] || key}</p>
+                  <p className="text-xs text-slate-400">{docs[key]?.content?.length || 0} caracteres</p>
+                </div>
+                <button onClick={() => startEdit(key)} className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg font-semibold hover:bg-blue-200">Editar</button>
+              </div>
+              <p className="text-xs text-slate-500 line-clamp-3">{docs[key]?.content?.substring(0, 200) || "Nenhum conteúdo definido."}...</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {editKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setEditKey(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 z-10 max-h-[85vh] overflow-y-auto">
+            <h3 className="font-bold text-navy mb-3">Editar: {DOC_LABELS[editKey]}</h3>
+            <div className="space-y-3 mb-4">
+              <div><label className="form-label">Título</label>
+                <input className="form-input" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></div>
+              <div><label className="form-label">Conteúdo completo</label>
+                <textarea className="form-input min-h-[300px] text-sm" value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
+                <p className="text-[10px] text-slate-400 mt-1">{form.content.length} caracteres</p></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setEditKey(null)} className="btn-outline flex-1 text-sm">Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 text-sm disabled:opacity-50">{saving ? "Salvando..." : "Salvar alterações"}</button>
+            </div>
+            <p className="text-[10px] text-slate-400 text-center mt-2">Alterações salvas no banco — sobrevivem reinicializações.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── 49b-g: COREN Validation Panel ── */
 const ValidationPanel = () => {
   const { headers } = useAdmin();
@@ -1273,6 +1358,7 @@ const AdminDashboard = () => {
     reports:       <ReportsPanel />,
     alice:         <AlicePanel />,
     validation:    <ValidationPanel />,
+    legal_docs:    <LegalDocsPanel />,
   };
 
   const sectionLabel = {
@@ -1280,6 +1366,7 @@ const AdminDashboard = () => {
     users: "Usuários", bookings: "Agendamentos", commission: "Comissão",
     holidays: "Feriados", reports: "Denúncias", alice: "Alice IA",
     validation: "Validação COREN",
+    legal_docs: "Documentos Legais",
   };
 
   return (

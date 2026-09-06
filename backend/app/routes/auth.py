@@ -44,6 +44,7 @@ class TokenResponse(BaseModel):
     roles:           list = []
     has_client_profile:     bool = False
     has_professional_profile: bool = False
+    default_profile: Optional[str] = None
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -173,6 +174,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         roles=user_roles,
         has_client_profile=getattr(user, 'has_client_profile', False) or user_role == "client",
         has_professional_profile=has_pro,
+        default_profile=getattr(user, 'default_profile', None),
     )
 
 @router.post("/forgot-password")
@@ -334,6 +336,25 @@ def phone_status(current: User = Depends(get_current_user)):
     return {"phone": current.phone, "phone_verified": current.phone_verified,
             "phone_status": getattr(current, 'phone_status', 'not_verified') or "not_verified",
             "is_verified": current.is_verified}
+
+# ── 1-4: Default profile preference ───────────────────────────────────────────
+
+@router.get("/default-profile")
+def get_default_profile(current: User = Depends(get_current_user)):
+    return {"default_profile": getattr(current, 'default_profile', None),
+            "roles": current.roles or [current.role.value if hasattr(current.role, 'value') else str(current.role)]}
+
+@router.patch("/default-profile")
+def set_default_profile(profile: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    valid = ["client", "nurse", "technician", "nursing_assistant", "caregiver"]
+    if profile not in valid:
+        raise HTTPException(400, f"Perfil inválido. Use: {valid}")
+    user_roles = current.roles or [current.role.value if hasattr(current.role, 'value') else str(current.role)]
+    if profile != "client" and profile not in user_roles:
+        raise HTTPException(400, f"Você não possui o perfil '{profile}'. Solicite primeiro.")
+    current.default_profile = profile
+    db.commit()
+    return {"default_profile": profile, "message": f"Perfil padrão alterado para '{profile}'."}
 
 @router.get("/sms/health")
 def sms_health():

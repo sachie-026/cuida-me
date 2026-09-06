@@ -57,6 +57,7 @@ class User(Base):
     role          = Column(Enum(UserRole), nullable=False)
     is_active     = Column(Boolean, default=True)
     account_status = Column(String, default="active")  # active, suspended, banned, deleted
+    default_profile = Column(String, nullable=True)    # client, nurse, technician, etc. — which dashboard loads on login
     is_verified    = Column(Boolean, default=False)
     phone_verified = Column(Boolean, default=False)
     phone_status   = Column(String, default="not_verified")  # not_verified, in_progress, verified, failed, expired
