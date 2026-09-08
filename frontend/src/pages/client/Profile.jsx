@@ -165,7 +165,7 @@ const ClientProfile = () => {
                             try{
                               const fd=new FormData(); fd.append("file",file); fd.append("doc_type",d.key);
                               const{data}=await axios.post(`${API}/api/documents/upload`,fd,{headers:{...headers,"Content-Type":"multipart/form-data"}});
-                              if(!data||!data.id){toast.error("Upload falhou: resposta inválida do servidor. Tente novamente.");setDocUploading(false);return;}
+                              if(!data||(!data.id&&!data.url)){toast.error("Upload falhou: resposta inválida do servidor. Tente novamente.");setDocUploading(false);return;}
                               toast.success("Documento enviado!");
                               setClientDocs(prev=>{const idx=prev.findIndex(x=>x.doc_type===d.key);if(idx>=0){const u=[...prev];u[idx]={...u[idx],...data};return u;}return[...prev,data];});
                             }catch(err){
@@ -187,6 +187,52 @@ const ClientProfile = () => {
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60">
               <Save size={16} /> {saving ? "Salvando..." : "Salvar alterações"}
             </button>
+
+            {/* 2-2: Professional profile section */}
+            {(() => {
+              const roles = JSON.parse(localStorage.getItem("roles") || "[]");
+              const hasPro = localStorage.getItem("has_pro") === "true" || roles.some(r => ["nurse","technician","nursing_assistant","caregiver","professional_pending"].includes(r));
+              const proRole = roles.find(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r));
+              const ROLE_LABELS = {nurse:"Enfermeiro(a)",technician:"Técnico(a) de Enfermagem",nursing_assistant:"Auxiliar de Enfermagem",caregiver:"Cuidador(a)"};
+
+              return (
+                <div className="card p-6 mt-4">
+                  <h3 className="font-semibold text-navy mb-2">Perfil Profissional</h3>
+                  {hasPro ? (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+                          ✓ {ROLE_LABELS[proRole] || proRole || "Profissional"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mb-3">Você possui um perfil profissional vinculado a esta conta.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => {
+                          if (proRole) localStorage.setItem("role", proRole);
+                          navigate("/profile/professional");
+                        }} className="btn-primary text-sm">
+                          Abrir perfil profissional →
+                        </button>
+                        <button onClick={() => {
+                          if (proRole) localStorage.setItem("role", proRole);
+                          navigate("/dashboard/professional");
+                        }} className="btn-outline text-sm">
+                          Painel profissional
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-xs text-slate-500 mb-3">Você ainda não possui um perfil profissional. Solicite um para oferecer atendimentos na plataforma.</p>
+                      <button onClick={() => navigate("/register/professional")} className="btn-outline text-sm">
+                        Solicitar perfil profissional →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
           </div>
         )}
       </div>
