@@ -43,12 +43,15 @@ async def upload_doc(
     if existing:
         existing.file_url = url
         existing.status   = DocStatus.pending
+        db.commit()
+        db.refresh(existing)
+        return {"id": existing.id, "url": url, "doc_type": doc_type, "status": "pending"}
     else:
         doc = Document(user_id=current.id, doc_type=doc_type, file_url=url, status=DocStatus.pending)
         db.add(doc)
-
-    db.commit()
-    return {"url": url, "doc_type": doc_type, "status": "pending"}
+        db.commit()
+        db.refresh(doc)
+        return {"id": doc.id, "url": url, "doc_type": doc_type, "status": "pending"}
 
 @router.get("/my-documents")
 def get_my_documents(db: Session = Depends(get_db), current: User = Depends(get_current_user)):

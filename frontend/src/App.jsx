@@ -66,9 +66,9 @@ function App() {
           <Route path="/booking/new"      element={<ProtectedRoute allowedRoles={CLIENT_ROLES}><NewBooking /></ProtectedRoute>} />
 
           {/* Professional */}
-          <Route path="/dashboard/professional" element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalDashboard /></ProtectedRoute>} />
-          <Route path="/profile/professional"   element={<ProtectedRoute allowedRoles={PRO_ROLES}><ProfessionalProfile /></ProtectedRoute>} />
-          <Route path="/availability"           element={<ProtectedRoute allowedRoles={PRO_ROLES}><Availability /></ProtectedRoute>} />
+          <Route path="/dashboard/professional" element={<ProtectedRoute allowedRoles={[...PRO_ROLES, ...CLIENT_ROLES]}><ProfessionalDashboard /></ProtectedRoute>} />
+          <Route path="/profile/professional"   element={<ProtectedRoute allowedRoles={[...PRO_ROLES, ...CLIENT_ROLES]}><ProfessionalProfile /></ProtectedRoute>} />
+          <Route path="/availability"           element={<ProtectedRoute allowedRoles={[...PRO_ROLES, ...CLIENT_ROLES]}><Availability /></ProtectedRoute>} />
           <Route path="/alerts"                element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
           <Route path="/invite"                element={<ProtectedRoute><InvitePage /></ProtectedRoute>} />
           <Route path="/activity"              element={<ProtectedRoute><MyActivity /></ProtectedRoute>} />

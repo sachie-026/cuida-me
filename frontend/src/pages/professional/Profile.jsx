@@ -53,7 +53,7 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded,onDeleted}) => {
       const {data} = await axios.post(`${API}/api/documents/upload`, formData, {
         headers:{...headers,"Content-Type":"multipart/form-data"},
       });
-      if (!data || !data.id) { toast.error("Upload falhou: resposta inválida. Tente novamente."); setUploading(false); return; }
+      if (!data || (!data.id && !data.url)) { toast.error("Upload falhou: resposta inválida. Tente novamente."); setUploading(false); return; }
       toast.success(`${label} enviado!`);
       onUploaded(data);
     } catch(err) {

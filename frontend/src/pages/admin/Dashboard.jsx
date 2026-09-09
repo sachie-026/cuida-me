@@ -160,7 +160,6 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "professionals", label: "Profissionais", icon: <ShieldCheck size={18} /> },
     { key: "users",         label: "Usuários",      icon: <Users size={18} /> },
     { key: "bookings",      label: "Agendamentos",  icon: <CalendarDays size={18} /> },
-    { key: "commission",    label: "Comissão",      icon: <DollarSign size={18} /> },
     { key: "holidays",      label: "Feriados",      icon: <CalendarRange size={18} /> },
     { key: "reports",       label: "Denúncias",     icon: <FileText size={18} /> },
     { key: "alice",          label: "Alice IA",       icon: <Bot size={18} /> },
@@ -1016,8 +1015,8 @@ const LegalDocsPanel = () => {
               <div><label className="form-label">Título</label>
                 <input className="form-input" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></div>
               <div><label className="form-label">Conteúdo completo</label>
-                <textarea className="form-input min-h-[300px] text-sm" value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
-                <p className="text-[10px] text-slate-400 mt-1">{form.content.length} caracteres</p></div>
+                <textarea className="form-input min-h-[500px] text-sm" value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
+                <p className="text-[10px] text-slate-400 mt-1">{form.content.length} caracteres · sem limite de tamanho</p></div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => setEditKey(null)} className="btn-outline flex-1 text-sm">Cancelar</button>
@@ -1326,9 +1325,9 @@ const AlicePanel = () => {
             </div>
             <div>
               <label className="form-label">Conteúdo</label>
-              <textarea className="form-input min-h-[200px] text-sm" placeholder="Cole ou digite o conteúdo completo do documento aqui..."
+              <textarea className="form-input min-h-[400px] text-sm" placeholder="Cole ou digite o conteúdo completo do documento aqui..."
                 value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
-              <p className="text-[10px] text-slate-400 mt-1">{form.content.length} caracteres</p>
+              <p className="text-[10px] text-slate-400 mt-1">{form.content.length} caracteres · sem limite de tamanho</p>
             </div>
           </div>
           <div className="flex gap-2 mt-4">
