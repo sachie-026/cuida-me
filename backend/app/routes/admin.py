@@ -512,7 +512,9 @@ def validate_document(doc_id: str, db: Session = Depends(get_db), _=Depends(requ
     if doc.file_url:
         try:
             from app.utils.document_ocr import extract_text_from_pdf_url, extract_coren_data
-            raw_text = extract_text_from_pdf_url(doc.file_url)
+            from app.utils.cloudinary_helper import generate_signed_url
+            fresh_url = generate_signed_url(doc.file_url)
+            raw_text = extract_text_from_pdf_url(fresh_url)
             if raw_text:
                 extracted = extract_coren_data(raw_text)
         except Exception as e:
