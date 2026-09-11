@@ -113,7 +113,7 @@ const ProfileMenu = () => {
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 max-h-[80vh] overflow-y-auto">
-          {/* User info header — 45f: Active side + category indicator */}
+          {/* User info header — active profile clearly displayed */}
           <div className="px-4 py-3 border-b border-slate-100">
             <p className="text-sm font-bold text-navy">{fullName}</p>
             <div className="flex items-center gap-2 mt-1">
@@ -122,12 +122,23 @@ const ProfileMenu = () => {
               }`}>{isPro ? "Profissional" : isAdmin ? "Admin" : "Cliente"}</span>
               <span className="text-xs text-slate-500">{roleLabel}</span>
             </div>
+            {roles.filter(r => ["client","nurse","technician","nursing_assistant","caregiver"].includes(r)).length > 1 && (
+              <p className="text-[10px] text-slate-400 mt-1">
+                Usando como: <strong>{roleLabel}</strong>
+              </p>
+            )}
           </div>
 
           {/* Dashboard link */}
           <button onClick={() => go(dashPath)}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
             <LayoutDashboard size={15} className="text-slate-400" /> Dashboard
+          </button>
+
+          {/* Manage Profiles link */}
+          <button onClick={() => go("/manage-profiles")}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+            <Settings size={15} className="text-slate-400" /> Gerenciar Perfis
           </button>
 
           {/* Sections */}

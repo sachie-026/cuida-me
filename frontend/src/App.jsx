@@ -32,6 +32,8 @@ import AdminSettings         from "./pages/admin/Settings";
 import BecomeProfessional    from "./pages/auth/BecomeProfessional";
 import AdminDashboard        from "./pages/admin/Dashboard";
 import Messages              from "./pages/messages/Messages";
+import ProfilePicker         from "./pages/auth/ProfilePicker";
+import ManageProfiles        from "./pages/ManageProfiles";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
@@ -76,6 +78,8 @@ function App() {
           <Route path="/earnings"              element={<ProtectedRoute allowedRoles={PRO_ROLES}><EarningsPage /></ProtectedRoute>} />
           <Route path="/admin/settings"        element={<ProtectedRoute allowedRoles={["admin"]}><AdminSettings /></ProtectedRoute>} />
           <Route path="/register/professional"  element={<ProtectedRoute><BecomeProfessional /></ProtectedRoute>} />
+          <Route path="/select-profile"          element={<ProtectedRoute><ProfilePicker /></ProtectedRoute>} />
+          <Route path="/manage-profiles"         element={<ProtectedRoute><ManageProfiles /></ProtectedRoute>} />
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminDashboard /></ProtectedRoute>} />
