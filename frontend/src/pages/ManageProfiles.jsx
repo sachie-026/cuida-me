@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft, User, Stethoscope, CheckCircle, Clock, XCircle, Plus, RefreshCw } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import Logo from "../../components/common/Logo";
-import ProfileMenu from "../../components/common/ProfileMenu";
+import Logo from "../components/common/Logo";
+import ProfileMenu from "../components/common/ProfileMenu";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
