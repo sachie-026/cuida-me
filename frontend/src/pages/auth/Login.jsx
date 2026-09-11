@@ -61,12 +61,19 @@ const Login = () => {
     localStorage.setItem("has_pro",   String(data.has_professional_profile || false));
 
     // 1-6: Use default_profile preference if set, otherwise use server role
+    const realRoles = (data.roles || [data.role]).filter(r =>
+      ["client","nurse","technician","nursing_assistant","caregiver","admin"].includes(r));
     const activeRole = data.default_profile || data.role;
     localStorage.setItem("role", activeRole);
     localStorage.setItem("default_profile", data.default_profile || "");
 
-    const destination = ROLE_HOME[activeRole] || "/dashboard/client";
-    navigate(destination);
+    // If 2+ real profiles and no default set → show profile picker
+    if (realRoles.length > 1 && !data.default_profile) {
+      navigate("/select-profile");
+    } else {
+      const destination = ROLE_HOME[activeRole] || "/dashboard/client";
+      navigate(destination);
+    }
     setTimeout(() => toast.success(`Bem-vindo, ${data.full_name}!`), 100);
   };
 

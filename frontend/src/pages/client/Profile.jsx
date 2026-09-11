@@ -195,6 +195,13 @@ const ClientProfile = () => {
               const proRole = roles.find(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r));
               const ROLE_LABELS = {nurse:"Enfermeiro(a)",technician:"Técnico(a) de Enfermagem",nursing_assistant:"Auxiliar de Enfermagem",caregiver:"Cuidador(a)"};
 
+              const goToPro = (path) => {
+                // Set role to actual pro role so Pro Profile works correctly
+                if (proRole) localStorage.setItem("role", proRole);
+                else localStorage.setItem("role", "nurse"); // fallback for stuck records
+                navigate(path);
+              };
+
               return (
                 <div className="card p-6 mt-4">
                   <h3 className="font-semibold text-navy mb-2">Perfil Profissional</h3>
@@ -202,21 +209,15 @@ const ClientProfile = () => {
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-                          ✓ {ROLE_LABELS[proRole] || proRole || "Profissional"}
+                          ✓ {ROLE_LABELS[proRole] || "Profissional (verificação pendente)"}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mb-3">Você possui um perfil profissional vinculado a esta conta.</p>
                       <div className="flex gap-2">
-                        <button onClick={() => {
-                          if (proRole) localStorage.setItem("role", proRole);
-                          navigate("/profile/professional");
-                        }} className="btn-primary text-sm">
+                        <button onClick={() => goToPro("/profile/professional")} className="btn-primary text-sm">
                           Abrir perfil profissional →
                         </button>
-                        <button onClick={() => {
-                          if (proRole) localStorage.setItem("role", proRole);
-                          navigate("/dashboard/professional");
-                        }} className="btn-outline text-sm">
+                        <button onClick={() => goToPro("/dashboard/professional")} className="btn-outline text-sm">
                           Painel profissional
                         </button>
                       </div>

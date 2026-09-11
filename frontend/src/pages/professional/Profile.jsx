@@ -356,9 +356,12 @@ const CategorySwitch = ({ userId, currentRole }) => {
 const ProfessionalProfile = () => {
   const navigate  = useNavigate();
   const userId    = localStorage.getItem("user_id");
-  const role      = localStorage.getItem("role");
   const token     = localStorage.getItem("token");
   const headers   = {Authorization:`Bearer ${token}`};
+
+  // 2-B: Read role from localStorage but override from backend if needed
+  const [activeRole, setActiveRole] = useState(localStorage.getItem("role") || "nurse");
+  const role = activeRole;
 
   const [loading,        setLoading]        = useState(true);
   const [saving,         setSaving]         = useState(false);
@@ -380,10 +383,39 @@ const ProfessionalProfile = () => {
     ]).then(([svcRes,uRes,pRes,dRes]) => {
       setServicesMap(svcRes.data);
       setUser(uRes.data);
-      // Fetch pricing table for this role
-      if (uRes.data.role && uRes.data.role !== "client" && uRes.data.role !== "admin") {
-        axios.get(`${API}/api/professionals/pricing-table/${uRes.data.role}`).then(r => setPricingTable(r.data)).catch(()=>{});
-        axios.get(`${API}/api/professionals/specialties/${uRes.data.role}`).then(r => setSpecialtiesOptions(r.data.specialties||[])).catch(()=>{});
+
+      // 2-B: Detect actual pro role from multiple sources
+      let detectedRole = localStorage.getItem("role");
+      const proRoles = ["nurse","technician","nursing_assistant","caregiver"];
+
+      // Source 1: Professional record's professional_category
+      if (pRes.data?.professional_category && proRoles.includes(pRes.data.professional_category)) {
+        detectedRole = pRes.data.professional_category;
+      }
+      // Source 2: User's role if it's a pro role
+      else if (uRes.data.role && proRoles.includes(uRes.data.role)) {
+        detectedRole = uRes.data.role;
+      }
+      // Source 3: Roles list from localStorage
+      else {
+        const roles = JSON.parse(localStorage.getItem("roles") || "[]");
+        const foundRole = roles.find(r => proRoles.includes(r));
+        if (foundRole) detectedRole = foundRole;
+      }
+      // Source 4: council_type=COREN → default nurse
+      if (!proRoles.includes(detectedRole) && pRes.data?.council_type === "COREN") {
+        detectedRole = "nurse";
+      }
+      // Final fallback
+      if (!proRoles.includes(detectedRole)) detectedRole = "nurse";
+
+      setActiveRole(detectedRole);
+      localStorage.setItem("role", detectedRole);
+
+      // Fetch pricing table for detected role
+      if (detectedRole !== "client" && detectedRole !== "admin") {
+        axios.get(`${API}/api/professionals/pricing-table/${detectedRole}`).then(r => setPricingTable(r.data)).catch(()=>{});
+        axios.get(`${API}/api/professionals/specialties/${detectedRole}`).then(r => setSpecialtiesOptions(r.data.specialties||[])).catch(()=>{});
       }
       if (pRes.data?.id) {
         setProf({

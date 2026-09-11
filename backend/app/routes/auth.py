@@ -164,9 +164,34 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         if existing_pro:
             has_pro = True
             user.has_professional_profile = True
-            if user_role not in PRO_ROLES and "professional_pending" not in user_roles:
+
+            # 2-A: Detect actual pro category from Professional record
+            detected_role = None
+            # Check professional_category field
+            if getattr(existing_pro, 'professional_category', None):
+                detected_role = existing_pro.professional_category
+            # Check category_records
+            elif existing_pro.category_records:
+                for cat in existing_pro.category_records:
+                    if cat.get("role") in PRO_ROLES:
+                        detected_role = cat["role"]
+                        break
+            # Check active_category
+            elif getattr(existing_pro, 'active_category', None) and existing_pro.active_category in PRO_ROLES:
+                detected_role = existing_pro.active_category
+            # Fallback: council_type=COREN → default nurse
+            elif getattr(existing_pro, 'council_type', None) == "COREN":
+                detected_role = "nurse"
+            # Last resort: default nurse if has COREN number
+            elif getattr(existing_pro, 'council_number', None):
+                detected_role = "nurse"
+
+            if detected_role and detected_role not in user_roles:
+                user_roles.append(detected_role)
+            elif not detected_role and "professional_pending" not in user_roles:
                 user_roles.append("professional_pending")
-                user.roles = user_roles
+
+            user.roles = user_roles
             db.commit()
     return TokenResponse(
         access_token=token, role=user_role,
@@ -400,6 +425,7 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
             existing.council_state = body.council_state
         if body.professional_role != "caregiver":
             existing.council_type = "COREN"
+        existing.professional_category = body.professional_role
 
         # Ensure user roles are updated
         roles = list(current.roles or [current.role.value if hasattr(current.role, 'value') else str(current.role)])
@@ -422,6 +448,7 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
         council_number=body.council_number,
         council_state=body.council_state,
         council_type="COREN" if body.professional_role != "caregiver" else None,
+        professional_category=body.professional_role,
         approval_status=DocStatus.pending,
     )
     db.add(prof)
