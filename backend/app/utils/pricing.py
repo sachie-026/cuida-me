@@ -260,11 +260,12 @@ def calculate_price(
     surcharge_amount = round(subtotal * surcharge_pct, 2)
     dist_fee = round(distance_fee(distance_km), 2)
 
-    # Client pays: base + markup + surcharges + distance
-    total        = round(subtotal + surcharge_amount + dist_fee, 2)
-    # Platform commission deducted from total — pro gets the remainder
-    platform_fee = round(total * commission_pct / 100, 2)
-    pro_payout   = round(total - platform_fee, 2)
+    # Pro payout = base + markup + surcharges + distance (what the professional earns)
+    pro_payout   = round(subtotal + surcharge_amount + dist_fee, 2)
+    # Platform fee added ON TOP — client pays more than pro receives
+    platform_fee = round(pro_payout * commission_pct / 100, 2)
+    # Client total = pro payout + platform fee
+    total        = round(pro_payout + platform_fee, 2)
 
     duration_hours = round(total_minutes / 60, 2)
 
