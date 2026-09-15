@@ -49,12 +49,18 @@ def extract_coren_data(text: str) -> dict:
 
     upper = text.upper()
 
-    # Extract COREN number: "COREN-SP 123456" or "Nº 123456" or "Registro: 123456"
+    # Extract COREN registration number — must distinguish from certificate document number
+    # Real format: "inscrição n.º 528594 - ENF" or "COREN-SP 123456"
+    # NOT: "Número da Certidão: 18082.02611..." (that's the certificate ID)
     coren_patterns = [
+        # "inscrição n.º 528594 - ENF" (most reliable — from COREN certificates)
+        r'INSCRI[CÇ][AÃ]O\s+N\.?\s*[ºo°]?\s*(\d{4,})',
+        # "COREN-SP 123456" or "COREN-SP: 123456"
         r'COREN[- ]?([A-Z]{2})\s*[:\-]?\s*(\d{4,})',
-        r'N[ºo°]\s*(\d{4,})',
-        r'REGISTRO\s*[:\-]?\s*(\d{4,})',
-        r'INSCRI[CÇ][AÃ]O\s*[:\-]?\s*(\d{4,})',
+        # "Registro: 123456" or "Registro nº 123456"
+        r'REGISTRO\s*N?\.?\s*[ºo°]?\s*[:\-]?\s*(\d{4,})',
+        # Bare "Nº 123456" (less reliable, use last)
+        r'(?<!CERTID[AÃ]O[:\s])N[ºo°]\s*(\d{4,})',
     ]
     for pattern in coren_patterns:
         m = re.search(pattern, upper)
@@ -67,7 +73,14 @@ def extract_coren_data(text: str) -> dict:
                 result["coren_number"] = groups[0]
             break
 
-    # Extract state if not found yet: "COREN-SP" or "Estado: SP"
+    # Extract category from "528594 - ENF" or "Enfermeiro" near the registration
+    if result["coren_number"]:
+        cat_after = re.search(result["coren_number"] + r'\s*[-–]\s*(ENF|TEC|AUX)', upper)
+        if cat_after:
+            cat_map_short = {"ENF": "nurse", "TEC": "technician", "AUX": "nursing_assistant"}
+            result["category"] = cat_map_short.get(cat_after.group(1), None)
+
+    # Extract state from "COREN-PR" header
     if not result["state"]:
         state_m = re.search(r'COREN[- ]?([A-Z]{2})', upper)
         if state_m:
@@ -76,6 +89,12 @@ def extract_coren_data(text: str) -> dict:
             state_m2 = re.search(r'ESTADO\s*[:\-]?\s*([A-Z]{2})', upper)
             if state_m2:
                 result["state"] = state_m2.group(1)
+
+    # Extract validity: "Ativa" or "Ativo"
+    if "ATIVA" in upper or "ATIVO" in upper:
+        result["status"] = "active"
+    elif "INATIVA" in upper or "INATIVO" in upper or "SUSPENSO" in upper or "CANCELADO" in upper:
+        result["status"] = "inactive"
 
     # Extract CPF: "123.456.789-00"
     cpf_m = re.search(r'(\d{3}\.?\d{3}\.?\d{3}[-.]?\d{2})', text)
