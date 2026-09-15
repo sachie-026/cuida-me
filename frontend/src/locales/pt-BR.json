@@ -76,16 +76,40 @@
     "tab_client": "Para clientes",
     "tab_pro": "Para profissionais",
     "client_steps": {
-      "1": { "title": "Crie seu perfil", "desc": "Cadastre-se em minutos. Adicione informações do paciente, histórico e necessidades de cuidado." },
-      "2": { "title": "Encontre profissionais", "desc": "Veja enfermeiros e cuidadores disponíveis na sua região com avaliações e especialidades." },
-      "3": { "title": "Agende o atendimento", "desc": "Escolha horário, duração e tipo de serviço. De 1h até plantões de 24h ou recorrência semanal." },
-      "4": { "title": "Acompanhe tudo", "desc": "Receba relatórios pós-atendimento, avalie o profissional e faça o pagamento com segurança." }
+      "1": {
+        "title": "Crie seu perfil",
+        "desc": "Cadastre-se em minutos. Adicione informações do paciente, histórico e necessidades de cuidado."
+      },
+      "2": {
+        "title": "Encontre profissionais",
+        "desc": "Veja enfermeiros e cuidadores disponíveis na sua região com avaliações e especialidades."
+      },
+      "3": {
+        "title": "Agende o atendimento",
+        "desc": "Escolha horário, duração e tipo de serviço. De 1h até plantões de 24h ou recorrência semanal."
+      },
+      "4": {
+        "title": "Acompanhe tudo",
+        "desc": "Receba relatórios pós-atendimento, avalie o profissional e faça o pagamento com segurança."
+      }
     },
     "pro_steps": {
-      "1": { "title": "Envie seus documentos", "desc": "COREN ativo, diploma, antecedentes criminais e selfie com prova de vida. Aprovação em até 48h." },
-      "2": { "title": "Configure sua agenda", "desc": "Defina seus dias, horários disponíveis e raio de atendimento. Você controla quando trabalha." },
-      "3": { "title": "Aceite chamados", "desc": "Receba notificações de solicitações próximas. Aceite ou recuse com um toque. Sem pressão." },
-      "4": { "title": "Receba seu pagamento", "desc": "Pagamento automático após cada atendimento. Direto na sua conta via PIX, sem demora." }
+      "1": {
+        "title": "Envie seus documentos",
+        "desc": "COREN ativo, diploma, antecedentes criminais e selfie com prova de vida. Aprovação em até 48h."
+      },
+      "2": {
+        "title": "Configure sua agenda",
+        "desc": "Defina seus dias, horários disponíveis e raio de atendimento. Você controla quando trabalha."
+      },
+      "3": {
+        "title": "Aceite chamados",
+        "desc": "Receba notificações de solicitações próximas. Aceite ou recuse com um toque. Sem pressão."
+      },
+      "4": {
+        "title": "Receba seu pagamento",
+        "desc": "Pagamento automático após cada atendimento. Direto na sua conta via PIX, sem demora."
+      }
     }
   },
   "professionals": {
@@ -95,35 +119,80 @@
     "nurse": {
       "title": "Enfermeiro(a)",
       "badge": "COREN ativo obrigatório",
-      "services": ["Consulta e avaliação de enfermagem", "Curativos simples e complexos", "Administração de medicamentos", "Cuidados com sondas e traqueostomia", "Relatórios e evolução de prontuário"]
+      "services": [
+        "Consulta e avaliação de enfermagem",
+        "Curativos simples e complexos",
+        "Administração de medicamentos",
+        "Cuidados com sondas e traqueostomia",
+        "Relatórios e evolução de prontuário"
+      ]
     },
     "technician": {
       "title": "Técnico de Enfermagem",
       "badge": "COREN técnico ativo",
-      "services": ["Administração de medicamentos IM/IV", "Curativos complexos", "Cuidados com sondas", "Aspiração de vias aéreas", "Cuidados paliativos"]
+      "services": [
+        "Administração de medicamentos IM/IV",
+        "Curativos complexos",
+        "Cuidados com sondas",
+        "Aspiração de vias aéreas",
+        "Cuidados paliativos"
+      ]
     },
     "nursing_assistant": {
       "title": "Auxiliar de Enfermagem",
       "badge": "COREN auxiliar ativo",
-      "services": ["Monitoramento de sinais vitais", "Glicemia capilar", "Curativo simples", "Cuidados básicos com ostomia", "Administração de medicamentos orais"]
+      "services": [
+        "Monitoramento de sinais vitais",
+        "Glicemia capilar",
+        "Curativo simples",
+        "Cuidados básicos com ostomia",
+        "Administração de medicamentos orais"
+      ]
     },
     "caregiver": {
       "title": "Cuidador(a)",
       "badge": "Certificado + antecedentes",
-      "services": ["Auxílio nas atividades diárias", "Acompanhamento em consultas", "Companhia e alimentação assistida", "Monitoramento não clínico", "Organização de rotinas"]
+      "services": [
+        "Auxílio nas atividades diárias",
+        "Acompanhamento em consultas",
+        "Companhia e alimentação assistida",
+        "Monitoramento não clínico",
+        "Organização de rotinas"
+      ]
     }
   },
   "safety": {
     "label": "Segurança",
     "title": "Construído com segurança em cada detalhe",
     "items": {
-      "identity": { "title": "Verificação de identidade", "desc": "Selfie com prova de vida + comparação com documento oficial. Detectamos duplicatas e fraudes automaticamente." },
-      "coren": { "title": "Validação COREN/COFEN", "desc": "Cruzamento automático do número de registro com o status ativo no conselho profissional." },
-      "gps": { "title": "GPS com audit trail", "desc": "Check-in e check-out com hora e localização registrados. Histórico completo de cada atendimento." },
-      "lgpd": { "title": "Dados criptografados (LGPD)", "desc": "Todos os dados sensíveis criptografados em trânsito e em repouso. Conformidade total com a LGPD." }
+      "identity": {
+        "title": "Verificação de identidade",
+        "desc": "Selfie com prova de vida + comparação com documento oficial. Detectamos duplicatas e fraudes automaticamente."
+      },
+      "coren": {
+        "title": "Validação COREN/COFEN",
+        "desc": "Cruzamento automático do número de registro com o status ativo no conselho profissional."
+      },
+      "gps": {
+        "title": "GPS com audit trail",
+        "desc": "Check-in e check-out com hora e localização registrados. Histórico completo de cada atendimento."
+      },
+      "lgpd": {
+        "title": "Dados criptografados (LGPD)",
+        "desc": "Todos os dados sensíveis criptografados em trânsito e em repouso. Conformidade total com a LGPD."
+      }
     },
     "checklist_title": "✓ Checklist de aprovação profissional",
-    "checklist": ["Documento oficial com foto", "Selfie com prova de vida", "Registro COREN ativo", "Diploma ou certificado", "Antecedentes criminais", "Comprovante de residência", "Declaração de veracidade", "Termos de uso aceitos"],
+    "checklist": [
+      "Documento oficial com foto",
+      "Selfie com prova de vida",
+      "Registro COREN ativo",
+      "Diploma ou certificado",
+      "Antecedentes criminais",
+      "Comprovante de residência",
+      "Declaração de veracidade",
+      "Termos de uso aceitos"
+    ],
     "review_note": "Revisão e aprovação pela equipe Cuida.me em até 48 horas após envio completo."
   },
   "register": {
@@ -173,10 +242,22 @@
       "criminal_note": "Emitido há menos de 90 dias"
     },
     "roles": {
-      "nurse": { "title": "Enfermeiro(a)", "subtitle": "COREN graduado" },
-      "technician": { "title": "Técnico de Enf.", "subtitle": "COREN técnico" },
-      "nursing_assistant": { "title": "Auxiliar de Enf.", "subtitle": "COREN auxiliar" },
-      "caregiver": { "title": "Cuidador(a)", "subtitle": "Certificado" }
+      "nurse": {
+        "title": "Enfermeiro(a)",
+        "subtitle": "COREN graduado"
+      },
+      "technician": {
+        "title": "Técnico de Enf.",
+        "subtitle": "COREN técnico"
+      },
+      "nursing_assistant": {
+        "title": "Auxiliar de Enf.",
+        "subtitle": "COREN auxiliar"
+      },
+      "caregiver": {
+        "title": "Cuidador(a)",
+        "subtitle": "Certificado"
+      }
     },
     "terms": "Li e aceito os Termos de Uso e a Política de Privacidade da Cuida.me",
     "lgpd_consent": "Autorizo o tratamento dos meus dados conforme a LGPD",
@@ -186,12 +267,36 @@
     "label": "Depoimentos",
     "title": "O que dizem sobre a CuidaNow",
     "items": [
-      { "text": "Minha mãe precisou de cuidados após a cirurgia. Em menos de 2 horas encontrei uma enfermeira verificada, com COREN ativo e ótimas avaliações. Tranquilidade que não tem preço.", "name": "Ana Carolina M.", "location": "São Paulo, SP · Familiar" },
-      { "text": "Como técnica de enfermagem, nunca imaginei ter tanta autonomia para escolher meus horários e receber direto na minha conta. A plataforma é limpa e fácil de usar.", "name": "Juliana F.", "location": "Rio de Janeiro, RJ · Técnica de Enfermagem" },
-      { "text": "O prontuário digital foi o que me convenceu. Cada visita fica registrada, com relatório enviado para a família. Profissionalismo de verdade no cuidado domiciliar.", "name": "Roberto P.", "location": "Belo Horizonte, MG · Familiar" },
-      { "text": "Depois de anos trabalhando por indicação, finalmente tenho uma agenda organizada e recebo pagamentos na hora. A CuidaNow me deu mais segurança como profissional.", "name": "Fernanda L.", "location": "Curitiba, PR · Enfermeira" },
-      { "text": "Meu pai tem Alzheimer e precisamos de cuidado especializado. A plataforma filtrou cuidadores com experiência exata nessa área. O atendimento foi perfeito.", "name": "Marcos S.", "location": "Campinas, SP · Familiar" },
-      { "text": "Como auxiliar de enfermagem, a CuidaNow me abriu portas para atender pacientes domiciliares com segurança. O GPS de check-in dá confiança para a família e para mim.", "name": "Patrícia R.", "location": "Salvador, BA · Auxiliar de Enfermagem" }
+      {
+        "text": "Minha mãe precisou de cuidados após a cirurgia. Em menos de 2 horas encontrei uma enfermeira verificada, com COREN ativo e ótimas avaliações. Tranquilidade que não tem preço.",
+        "name": "Ana Carolina M.",
+        "location": "São Paulo, SP · Familiar"
+      },
+      {
+        "text": "Como técnica de enfermagem, nunca imaginei ter tanta autonomia para escolher meus horários e receber direto na minha conta. A plataforma é limpa e fácil de usar.",
+        "name": "Juliana F.",
+        "location": "Rio de Janeiro, RJ · Técnica de Enfermagem"
+      },
+      {
+        "text": "O prontuário digital foi o que me convenceu. Cada visita fica registrada, com relatório enviado para a família. Profissionalismo de verdade no cuidado domiciliar.",
+        "name": "Roberto P.",
+        "location": "Belo Horizonte, MG · Familiar"
+      },
+      {
+        "text": "Depois de anos trabalhando por indicação, finalmente tenho uma agenda organizada e recebo pagamentos na hora. A CuidaNow me deu mais segurança como profissional.",
+        "name": "Fernanda L.",
+        "location": "Curitiba, PR · Enfermeira"
+      },
+      {
+        "text": "Meu pai tem Alzheimer e precisamos de cuidado especializado. A plataforma filtrou cuidadores com experiência exata nessa área. O atendimento foi perfeito.",
+        "name": "Marcos S.",
+        "location": "Campinas, SP · Familiar"
+      },
+      {
+        "text": "Como auxiliar de enfermagem, a CuidaNow me abriu portas para atender pacientes domiciliares com segurança. O GPS de check-in dá confiança para a família e para mim.",
+        "name": "Patrícia R.",
+        "location": "Salvador, BA · Auxiliar de Enfermagem"
+      }
     ]
   },
   "cta": {
@@ -222,5 +327,86 @@
     "cookies": "Cookies",
     "rights": "Todos os direitos reservados",
     "lgpd_badge": "Conforme LGPD"
+  },
+  "profile_picker": {
+    "greeting": "Olá, {{name}}!",
+    "subtitle": "Como deseja usar o CuidaU hoje?",
+    "client_desc": "Buscar e agendar profissionais",
+    "pro_desc": "Receber e gerenciar atendimentos",
+    "pending_title": "Perfil profissional em verificação",
+    "pending_desc": "Você receberá acesso assim que a verificação for concluída.",
+    "switch_note": "Você pode trocar de perfil a qualquer momento no menu do app."
+  },
+  "manage_profiles": {
+    "title": "Gerenciar Perfis",
+    "subtitle": "Alterne entre seus perfis ou adicione novos",
+    "active_profile": "Perfil ativo",
+    "your_profiles": "Seus perfis",
+    "active": "Ativo",
+    "use": "Usar",
+    "add_profile": "Adicionar perfil",
+    "add_pro": "Adicionar perfil profissional",
+    "add_pro_desc": "Ofereça atendimentos como profissional de saúde",
+    "verification_pending": "Verificação pendente",
+    "verified": "Verificado",
+    "rejected": "Rejeitado",
+    "pro_verification": "Verificação profissional",
+    "category": "Categoria",
+    "view_full_profile": "Ver perfil profissional completo"
+  },
+  "become_pro": {
+    "title": "Adicionar perfil profissional",
+    "subtitle": "Seus dados existentes serão reaproveitados",
+    "reused_data": "Dados da sua conta (reutilizados)",
+    "select_category": "Selecione sua categoria profissional",
+    "requires_coren": "Requer registro COREN",
+    "coren_registration": "Registro COREN",
+    "coren_number": "Número COREN",
+    "coren_state": "Estado (UF)",
+    "creating": "Criando perfil...",
+    "create": "Criar perfil profissional",
+    "after_note": "Após criar o perfil, você precisará enviar documentos para verificação antes de receber atendimentos.",
+    "profile_created": "Perfil profissional criado!",
+    "send_docs": "Agora envie seus documentos profissionais para verificação e ativação.",
+    "go_to_pro": "Ir para meu perfil profissional",
+    "back_to_client": "Voltar ao painel de cliente"
+  },
+  "phone_verify": {
+    "title": "Verificar telefone",
+    "enter_phone": "Informe seu número de celular. Enviaremos um código de 6 dígitos.",
+    "phone": "Telefone",
+    "send_via": "Enviar código via",
+    "send_code": "Enviar código",
+    "skip": "Pular por enquanto →",
+    "code_sent_via": "Código enviado via {{channel}} para {{phone}}",
+    "enter_digits": "Digite os 6 dígitos recebidos.",
+    "verify": "Verificar código",
+    "verifying": "Verificando...",
+    "resend_sms": "Reenviar via SMS",
+    "resend_whatsapp": "Receber via WhatsApp",
+    "change_number": "Alterar número",
+    "skip_verify": "Pular verificação →",
+    "resend_in": "Reenviar em {{seconds}}s",
+    "verified_title": "Telefone verificado!",
+    "sending": "Enviando..."
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "manage_profiles": "Gerenciar Perfis",
+    "active_as": "Usando como: {{role}}",
+    "default_profile": "Perfil padrão no login",
+    "switch_to_pro": "Mudar para modo Profissional",
+    "switch_to_client": "Mudar para modo Cliente",
+    "request_pro": "Solicitar perfil Profissional",
+    "manage_categories": "Gerenciar categorias",
+    "logout": "Sair"
+  },
+  "roles": {
+    "client": "Cliente",
+    "nurse": "Enfermeiro(a)",
+    "technician": "Técnico(a) de Enfermagem",
+    "nursing_assistant": "Auxiliar de Enfermagem",
+    "caregiver": "Cuidador(a)",
+    "professional_pending": "Profissional (pendente)"
   }
 }

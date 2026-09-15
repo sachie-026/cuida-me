@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { User, Stethoscope, ChevronRight } from "lucide-react";
 import Logo from "../../components/common/Logo";
+import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 
 const ROLE_HOME = {
   client: "/dashboard/client",
@@ -85,6 +86,9 @@ const ProfilePicker = () => {
         <p className="text-[10px] text-slate-400 text-center mt-6">
           Você pode trocar de perfil a qualquer momento no menu do app.
         </p>
+        <div className="flex justify-center mt-4">
+          <LanguageSwitcher />
+        </div>
       </div>
     </div>
   );

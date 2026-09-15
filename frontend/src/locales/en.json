@@ -76,16 +76,40 @@
     "tab_client": "For clients",
     "tab_pro": "For professionals",
     "client_steps": {
-      "1": { "title": "Create your profile", "desc": "Sign up in minutes. Add patient information, history and care needs." },
-      "2": { "title": "Find professionals", "desc": "See nurses and caregivers available in your area with ratings and specialties." },
-      "3": { "title": "Book the service", "desc": "Choose time, duration and type of service. From 1h to 24h shifts or weekly recurring." },
-      "4": { "title": "Track everything", "desc": "Receive post-service reports, rate the professional and pay securely." }
+      "1": {
+        "title": "Create your profile",
+        "desc": "Sign up in minutes. Add patient information, history and care needs."
+      },
+      "2": {
+        "title": "Find professionals",
+        "desc": "See nurses and caregivers available in your area with ratings and specialties."
+      },
+      "3": {
+        "title": "Book the service",
+        "desc": "Choose time, duration and type of service. From 1h to 24h shifts or weekly recurring."
+      },
+      "4": {
+        "title": "Track everything",
+        "desc": "Receive post-service reports, rate the professional and pay securely."
+      }
     },
     "pro_steps": {
-      "1": { "title": "Submit your documents", "desc": "Active COREN, diploma, criminal record check and live selfie. Approval within 48h." },
-      "2": { "title": "Set your schedule", "desc": "Define your available days, hours and service radius. You control when you work." },
-      "3": { "title": "Accept requests", "desc": "Get notifications for nearby requests. Accept or decline with one tap. No pressure." },
-      "4": { "title": "Get paid", "desc": "Automatic payment after each service. Straight to your account via PIX, no delays." }
+      "1": {
+        "title": "Submit your documents",
+        "desc": "Active COREN, diploma, criminal record check and live selfie. Approval within 48h."
+      },
+      "2": {
+        "title": "Set your schedule",
+        "desc": "Define your available days, hours and service radius. You control when you work."
+      },
+      "3": {
+        "title": "Accept requests",
+        "desc": "Get notifications for nearby requests. Accept or decline with one tap. No pressure."
+      },
+      "4": {
+        "title": "Get paid",
+        "desc": "Automatic payment after each service. Straight to your account via PIX, no delays."
+      }
     }
   },
   "professionals": {
@@ -95,35 +119,80 @@
     "nurse": {
       "title": "Nurse (RN)",
       "badge": "Active COREN required",
-      "services": ["Nursing consultation and assessment", "Simple and complex wound care", "Medication administration", "Catheter and tracheostomy care", "Reports and medical record updates"]
+      "services": [
+        "Nursing consultation and assessment",
+        "Simple and complex wound care",
+        "Medication administration",
+        "Catheter and tracheostomy care",
+        "Reports and medical record updates"
+      ]
     },
     "technician": {
       "title": "Nursing Technician",
       "badge": "Technical COREN active",
-      "services": ["IM/IV medication administration", "Complex wound care", "Catheter care", "Airway suctioning", "Palliative care"]
+      "services": [
+        "IM/IV medication administration",
+        "Complex wound care",
+        "Catheter care",
+        "Airway suctioning",
+        "Palliative care"
+      ]
     },
     "nursing_assistant": {
       "title": "Nursing Assistant",
       "badge": "Assistant COREN active",
-      "services": ["Vital signs monitoring", "Blood glucose monitoring", "Simple wound care", "Basic ostomy care", "Oral medication administration"]
+      "services": [
+        "Vital signs monitoring",
+        "Blood glucose monitoring",
+        "Simple wound care",
+        "Basic ostomy care",
+        "Oral medication administration"
+      ]
     },
     "caregiver": {
       "title": "Caregiver",
       "badge": "Certificate + background check",
-      "services": ["Daily living activities", "Accompaniment to appointments", "Companionship and assisted feeding", "Non-clinical monitoring", "Routine organisation"]
+      "services": [
+        "Daily living activities",
+        "Accompaniment to appointments",
+        "Companionship and assisted feeding",
+        "Non-clinical monitoring",
+        "Routine organisation"
+      ]
     }
   },
   "safety": {
     "label": "Safety",
     "title": "Built with safety in every detail",
     "items": {
-      "identity": { "title": "Identity verification", "desc": "Live selfie + comparison with official document. We detect duplicates and fraud automatically." },
-      "coren": { "title": "COREN/COFEN validation", "desc": "Automatic cross-check of registration number with active status in the professional council." },
-      "gps": { "title": "GPS with audit trail", "desc": "Check-in and check-out with time and location recorded. Complete history of every service." },
-      "lgpd": { "title": "Encrypted data (LGPD)", "desc": "All sensitive data encrypted in transit and at rest. Full compliance with LGPD." }
+      "identity": {
+        "title": "Identity verification",
+        "desc": "Live selfie + comparison with official document. We detect duplicates and fraud automatically."
+      },
+      "coren": {
+        "title": "COREN/COFEN validation",
+        "desc": "Automatic cross-check of registration number with active status in the professional council."
+      },
+      "gps": {
+        "title": "GPS with audit trail",
+        "desc": "Check-in and check-out with time and location recorded. Complete history of every service."
+      },
+      "lgpd": {
+        "title": "Encrypted data (LGPD)",
+        "desc": "All sensitive data encrypted in transit and at rest. Full compliance with LGPD."
+      }
     },
     "checklist_title": "✓ Professional approval checklist",
-    "checklist": ["Official photo ID", "Live selfie verification", "Active COREN registration", "Diploma or certificate", "Criminal background check", "Proof of residence", "Declaration of accuracy", "Terms of use accepted"],
+    "checklist": [
+      "Official photo ID",
+      "Live selfie verification",
+      "Active COREN registration",
+      "Diploma or certificate",
+      "Criminal background check",
+      "Proof of residence",
+      "Declaration of accuracy",
+      "Terms of use accepted"
+    ],
     "review_note": "Review and approval by Cuida.me team within 48 hours of complete submission."
   },
   "register": {
@@ -173,10 +242,22 @@
       "criminal_note": "Issued less than 90 days ago"
     },
     "roles": {
-      "nurse": { "title": "Nurse (RN)", "subtitle": "Graduate COREN" },
-      "technician": { "title": "Nursing Tech.", "subtitle": "Technical COREN" },
-      "nursing_assistant": { "title": "Nursing Asst.", "subtitle": "Assistant COREN" },
-      "caregiver": { "title": "Caregiver", "subtitle": "Certified" }
+      "nurse": {
+        "title": "Nurse (RN)",
+        "subtitle": "Graduate COREN"
+      },
+      "technician": {
+        "title": "Nursing Tech.",
+        "subtitle": "Technical COREN"
+      },
+      "nursing_assistant": {
+        "title": "Nursing Asst.",
+        "subtitle": "Assistant COREN"
+      },
+      "caregiver": {
+        "title": "Caregiver",
+        "subtitle": "Certified"
+      }
     },
     "terms": "I have read and accept the Terms of Use and Privacy Policy of Cuida.me",
     "lgpd_consent": "I authorise the processing of my data in accordance with LGPD",
@@ -186,12 +267,36 @@
     "label": "Testimonials",
     "title": "What people say about CuidaNow",
     "items": [
-      { "text": "My mother needed care after surgery. In less than 2 hours I found a verified nurse with an active COREN and great reviews. Peace of mind that is priceless.", "name": "Ana Carolina M.", "location": "São Paulo, SP · Family" },
-      { "text": "As a nursing technician, I never imagined having so much autonomy to choose my hours and get paid directly to my account. The platform is clean and easy to use.", "name": "Juliana F.", "location": "Rio de Janeiro, RJ · Nursing Technician" },
-      { "text": "The digital medical record is what convinced me. Every visit is recorded, with a report sent to the family. True professionalism in home care.", "name": "Roberto P.", "location": "Belo Horizonte, MG · Family" },
-      { "text": "After years of working by referral only, I finally have an organized schedule and receive payments instantly. CuidaNow gave me more confidence as a professional.", "name": "Fernanda L.", "location": "Curitiba, PR · Nurse" },
-      { "text": "My father has Alzheimer's and we needed specialized care. The platform filtered caregivers with exact experience in this area. The care was perfect.", "name": "Marcos S.", "location": "Campinas, SP · Family" },
-      { "text": "As a nursing assistant, CuidaNow opened doors for me to serve home patients safely. The GPS check-in gives confidence to the family and to me.", "name": "Patrícia R.", "location": "Salvador, BA · Nursing Assistant" }
+      {
+        "text": "My mother needed care after surgery. In less than 2 hours I found a verified nurse with an active COREN and great reviews. Peace of mind that is priceless.",
+        "name": "Ana Carolina M.",
+        "location": "São Paulo, SP · Family"
+      },
+      {
+        "text": "As a nursing technician, I never imagined having so much autonomy to choose my hours and get paid directly to my account. The platform is clean and easy to use.",
+        "name": "Juliana F.",
+        "location": "Rio de Janeiro, RJ · Nursing Technician"
+      },
+      {
+        "text": "The digital medical record is what convinced me. Every visit is recorded, with a report sent to the family. True professionalism in home care.",
+        "name": "Roberto P.",
+        "location": "Belo Horizonte, MG · Family"
+      },
+      {
+        "text": "After years of working by referral only, I finally have an organized schedule and receive payments instantly. CuidaNow gave me more confidence as a professional.",
+        "name": "Fernanda L.",
+        "location": "Curitiba, PR · Nurse"
+      },
+      {
+        "text": "My father has Alzheimer's and we needed specialized care. The platform filtered caregivers with exact experience in this area. The care was perfect.",
+        "name": "Marcos S.",
+        "location": "Campinas, SP · Family"
+      },
+      {
+        "text": "As a nursing assistant, CuidaNow opened doors for me to serve home patients safely. The GPS check-in gives confidence to the family and to me.",
+        "name": "Patrícia R.",
+        "location": "Salvador, BA · Nursing Assistant"
+      }
     ]
   },
   "cta": {
@@ -221,5 +326,86 @@
     "cookies": "Cookies",
     "rights": "All rights reserved",
     "lgpd_badge": "LGPD Compliant"
+  },
+  "profile_picker": {
+    "greeting": "Hello, {{name}}!",
+    "subtitle": "How would you like to use CuidaU today?",
+    "client_desc": "Find and book professionals",
+    "pro_desc": "Receive and manage appointments",
+    "pending_title": "Professional profile under verification",
+    "pending_desc": "You will get access once verification is complete.",
+    "switch_note": "You can switch profiles anytime from the app menu."
+  },
+  "manage_profiles": {
+    "title": "Manage Profiles",
+    "subtitle": "Switch between your profiles or add new ones",
+    "active_profile": "Active profile",
+    "your_profiles": "Your profiles",
+    "active": "Active",
+    "use": "Use",
+    "add_profile": "Add profile",
+    "add_pro": "Add professional profile",
+    "add_pro_desc": "Offer care as a healthcare professional",
+    "verification_pending": "Verification pending",
+    "verified": "Verified",
+    "rejected": "Rejected",
+    "pro_verification": "Professional verification",
+    "category": "Category",
+    "view_full_profile": "View full professional profile"
+  },
+  "become_pro": {
+    "title": "Add professional profile",
+    "subtitle": "Your existing data will be reused",
+    "reused_data": "Your account data (reused)",
+    "select_category": "Select your professional category",
+    "requires_coren": "Requires COREN registration",
+    "coren_registration": "COREN Registration",
+    "coren_number": "COREN Number",
+    "coren_state": "State (UF)",
+    "creating": "Creating profile...",
+    "create": "Create professional profile",
+    "after_note": "After creating the profile, you will need to submit documents for verification before receiving appointments.",
+    "profile_created": "Professional profile created!",
+    "send_docs": "Now submit your professional documents for verification and activation.",
+    "go_to_pro": "Go to my professional profile",
+    "back_to_client": "Back to client panel"
+  },
+  "phone_verify": {
+    "title": "Verify phone",
+    "enter_phone": "Enter your mobile number. We will send a 6-digit code.",
+    "phone": "Phone",
+    "send_via": "Send code via",
+    "send_code": "Send code",
+    "skip": "Skip for now →",
+    "code_sent_via": "Code sent via {{channel}} to {{phone}}",
+    "enter_digits": "Enter the 6 digits received.",
+    "verify": "Verify code",
+    "verifying": "Verifying...",
+    "resend_sms": "Resend via SMS",
+    "resend_whatsapp": "Receive via WhatsApp",
+    "change_number": "Change number",
+    "skip_verify": "Skip verification →",
+    "resend_in": "Resend in {{seconds}}s",
+    "verified_title": "Phone verified!",
+    "sending": "Sending..."
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "manage_profiles": "Manage Profiles",
+    "active_as": "Using as: {{role}}",
+    "default_profile": "Default profile on login",
+    "switch_to_pro": "Switch to Professional mode",
+    "switch_to_client": "Switch to Client mode",
+    "request_pro": "Request Professional profile",
+    "manage_categories": "Manage categories",
+    "logout": "Logout"
+  },
+  "roles": {
+    "client": "Client",
+    "nurse": "Nurse",
+    "technician": "Nursing Technician",
+    "nursing_assistant": "Nursing Assistant",
+    "caregiver": "Caregiver",
+    "professional_pending": "Professional (pending)"
   }
 }
