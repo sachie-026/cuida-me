@@ -278,66 +278,112 @@ def _check_auto_approve(user_id: str, db: Session):
 # ── #4: COREN QR Code Verification ────────────────────────────────────────────
 
 class CorenVerifyRequest(BaseModel):
-    qr_data: str  # Raw text from QR scan
+    qr_data: str  # Raw text from QR scan or certificate URL
 
 @router.post("/coren-verify")
 def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin)):
     """Parse COREN QR code data and auto-verify against professional records."""
+    import re
     raw = body.qr_data.strip()
 
-    # Common COREN QR formats:
-    # "COREN-SP 123456 - NOME COMPLETO - TECNICO DE ENFERMAGEM - ATIVO"
-    # URL format: "https://portal.coren-sp.gov.br/verificar/123456"
     extracted = {
-        "coren_number": None,
-        "name": None,
-        "category": None,
-        "state": None,
-        "status": None,
-        "raw": raw,
+        "coren_number": None, "name": None, "cpf": None,
+        "category": None, "state": None, "status": None,
+        "certificate_number": None, "raw": raw, "method": "unknown",
     }
 
-    # Try to parse structured format
-    parts = raw.replace(" - ", "|").replace(" – ", "|").split("|")
-    for part in parts:
-        part = part.strip()
-        p_upper = part.upper()
-        if "COREN" in p_upper:
-            # Extract state and number
-            import re
-            state_match = re.search(r'COREN[- ]?([A-Z]{2})', p_upper)
-            num_match = re.search(r'(\d{4,})', part)
-            if state_match:
-                extracted["state"] = state_match.group(1)
-            if num_match:
-                extracted["coren_number"] = num_match.group(1)
-        elif p_upper in ("ATIVO", "ACTIVE", "REGULAR"):
-            extracted["status"] = "active"
-        elif p_upper in ("INATIVO", "INACTIVE", "SUSPENSO", "SUSPENDED", "CANCELADO"):
-            extracted["status"] = "inactive"
-        elif any(cat in p_upper for cat in ["ENFERMEIRO", "TÉCNICO", "AUXILIAR", "NURSE", "TECHNICIAN"]):
-            extracted["category"] = part.strip()
-        elif len(part) > 5 and not part.isdigit():
-            if not extracted["name"]:
-                extracted["name"] = part.strip()
+    # ── Step 1: If input is a COREN certificate URL, fetch the page and parse HTML ──
+    if "corenpr.gov.br" in raw or "coren" in raw.lower() and "ExibirCertidao" in raw:
+        extracted["method"] = "certificate_url"
 
-    # Try URL format
+        # Extract certificate number (NOT the COREN registration number)
+        cert_match = re.search(r'pNumeroCertidao=([0-9.]+)', raw)
+        if cert_match:
+            extracted["certificate_number"] = cert_match.group(1)
+
+        # Extract state from URL domain (e.g. corenpr → PR)
+        state_match = re.search(r'coren([a-z]{2})\.gov\.br', raw.lower())
+        if state_match:
+            extracted["state"] = state_match.group(1).upper()
+
+        # Fetch the actual certificate page to get the real registration number
+        try:
+            import httpx
+            resp = httpx.get(raw, timeout=15, follow_redirects=True, headers={
+                "User-Agent": "CuidaU-Verification/1.0"
+            })
+            if resp.status_code == 200:
+                html = resp.text
+
+                # Extract "inscrição n.º 528594 - ENF"
+                reg_match = re.search(r'inscri[çc][aã]o\s+n\.?\s*[ºo°]?\s*(\d{4,})\s*[-–]\s*(\w+)', html, re.IGNORECASE)
+                if reg_match:
+                    extracted["coren_number"] = reg_match.group(1)
+                    cat_code = reg_match.group(2).upper()
+                    cat_map = {"ENF": "nurse", "TEC": "technician", "AUX": "nursing_assistant"}
+                    extracted["category"] = cat_map.get(cat_code, cat_code)
+
+                # Extract name: "ARIANE SABINA STIEVEN"
+                name_match = re.search(r'que\s+([A-ZÀ-Ú\s]{5,50}),\s*CPF', html)
+                if name_match:
+                    extracted["name"] = name_match.group(1).strip().title()
+
+                # Extract CPF
+                cpf_match = re.search(r'CPF\s*(\d{3}\.?\d{3}\.?\d{3}[-.]?\d{2})', html)
+                if cpf_match:
+                    extracted["cpf"] = cpf_match.group(1)
+
+                # Extract status: "Ativa" or "Ativo"
+                if re.search(r'\(Ativa?\)', html, re.IGNORECASE):
+                    extracted["status"] = "active"
+                elif re.search(r'Inativ|Suspen|Cancel', html, re.IGNORECASE):
+                    extracted["status"] = "inactive"
+
+        except Exception as e:
+            print(f"[COREN] Failed to fetch certificate page: {e}")
+            # Fall through to text parsing below
+
+    # ── Step 2: If not URL or URL fetch failed, parse as text ──
     if not extracted["coren_number"]:
-        import re
-        url_match = re.search(r'coren[- ]?([a-z]{2}).*?(\d{4,})', raw.lower())
-        if url_match:
-            extracted["state"] = url_match.group(1).upper()
-            extracted["coren_number"] = url_match.group(2)
+        extracted["method"] = "text_parse"
+        parts = raw.replace(" - ", "|").replace(" – ", "|").split("|")
+        for part in parts:
+            part = part.strip()
+            p_upper = part.upper()
+            if "COREN" in p_upper and "CERTIDAO" not in p_upper and "CERTIDÃO" not in p_upper:
+                state_match = re.search(r'COREN[- ]?([A-Z]{2})', p_upper)
+                # Only take numbers that are NOT preceded by certificate-like patterns
+                num_match = re.search(r'(?<!CERTID[AÃ]O\s)(\d{4,7})(?!\.\d)', part)
+                if state_match:
+                    extracted["state"] = state_match.group(1)
+                if num_match:
+                    extracted["coren_number"] = num_match.group(1)
+            elif p_upper in ("ATIVO", "ACTIVE", "REGULAR"):
+                extracted["status"] = "active"
+            elif p_upper in ("INATIVO", "INACTIVE", "SUSPENSO", "SUSPENDED", "CANCELADO"):
+                extracted["status"] = "inactive"
+            elif any(cat in p_upper for cat in ["ENFERMEIRO", "TÉCNICO", "AUXILIAR", "NURSE", "TECHNICIAN"]):
+                extracted["category"] = part.strip()
+            elif len(part) > 5 and not part.isdigit():
+                if not extracted["name"]:
+                    extracted["name"] = part.strip()
+
+        # Try "inscrição n.º NNNNNN" in raw text
+        if not extracted["coren_number"]:
+            reg_match = re.search(r'INSCRI[CÇ][AÃ]O\s+N\.?\s*[ºO°]?\s*(\d{4,})', raw.upper())
+            if reg_match:
+                extracted["coren_number"] = reg_match.group(1)
 
     if not extracted["coren_number"]:
-        return {"success": False, "message": "Não foi possível extrair o número COREN do QR code.", "extracted": extracted,
-                "requires_manual_review": True, "notification": "Admin: verificação automática falhou — revisão manual necessária."}
+        return {"success": False, "message": "Não foi possível extrair o número de registro COREN. O número da certidão não é o número de registro.",
+                "extracted": extracted, "requires_manual_review": True,
+                "hint": "Cole a URL do QR code da certidão (o sistema buscará o número de inscrição automaticamente) ou digite o número de inscrição COREN diretamente."}
 
-    # Try to match with a professional in our system
+    # ── Step 3: Match against professionals in our system ──
     match = None
     pros = db.query(Professional).filter(Professional.council_number != None).all()
     for p in pros:
-        if p.council_number and str(p.council_number) == str(extracted["coren_number"]):
+        if p.council_number and str(p.council_number).strip() == str(extracted["coren_number"]).strip():
             match = p
             break
 
