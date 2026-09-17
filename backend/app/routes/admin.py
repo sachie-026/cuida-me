@@ -290,10 +290,16 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
         "coren_number": None, "name": None, "cpf": None,
         "category": None, "state": None, "status": None,
         "certificate_number": None, "raw": raw, "method": "unknown",
+        "fetch_error": None,
     }
 
+    # ── Step 0: If input is a bare number (4-7 digits), treat as COREN number directly ──
+    if re.match(r'^\d{4,7}$', raw):
+        extracted["coren_number"] = raw
+        extracted["method"] = "direct_number"
+
     # ── Step 1: If input is a COREN certificate URL, fetch the page and parse HTML ──
-    if "corenpr.gov.br" in raw or "coren" in raw.lower() and "ExibirCertidao" in raw:
+    elif "coren" in raw.lower() and ("gov.br" in raw.lower() or "http" in raw.lower()):
         extracted["method"] = "certificate_url"
 
         # Extract certificate number (NOT the COREN registration number)
@@ -310,21 +316,30 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
         try:
             import httpx
             resp = httpx.get(raw, timeout=15, follow_redirects=True, headers={
-                "User-Agent": "CuidaU-Verification/1.0"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             })
+            extracted["fetch_status"] = resp.status_code
+
             if resp.status_code == 200:
                 html = resp.text
 
-                # Extract "inscrição n.º 528594 - ENF"
-                reg_match = re.search(r'inscri[çc][aã]o\s+n\.?\s*[ºo°]?\s*(\d{4,})\s*[-–]\s*(\w+)', html, re.IGNORECASE)
-                if reg_match:
-                    extracted["coren_number"] = reg_match.group(1)
-                    cat_code = reg_match.group(2).upper()
-                    cat_map = {"ENF": "nurse", "TEC": "technician", "AUX": "nursing_assistant"}
-                    extracted["category"] = cat_map.get(cat_code, cat_code)
+                # Extract "inscrição n.º 528594 - ENF" (multiple patterns)
+                for pattern in [
+                    r'inscri[çc][aã]o\s+n\.?\s*[ºo°]?\s*(\d{4,})\s*[-–]\s*(\w+)',
+                    r'inscri[çc][aã]o\s+n\.?\s*[ºo°]?\s*(\d{4,})',
+                    r'n[ºo°]\s*(\d{4,})\s*[-–]\s*(ENF|TEC|AUX)',
+                ]:
+                    reg_match = re.search(pattern, html, re.IGNORECASE)
+                    if reg_match:
+                        extracted["coren_number"] = reg_match.group(1)
+                        if len(reg_match.groups()) >= 2:
+                            cat_code = reg_match.group(2).upper()
+                            cat_map = {"ENF": "nurse", "TEC": "technician", "AUX": "nursing_assistant"}
+                            extracted["category"] = cat_map.get(cat_code, cat_code)
+                        break
 
-                # Extract name: "ARIANE SABINA STIEVEN"
-                name_match = re.search(r'que\s+([A-ZÀ-Ú\s]{5,50}),\s*CPF', html)
+                # Extract name
+                name_match = re.search(r'que\s+([A-ZÀ-Ú][A-ZÀ-Ú\s]{4,50}),\s*CPF', html)
                 if name_match:
                     extracted["name"] = name_match.group(1).strip().title()
 
@@ -333,18 +348,25 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
                 if cpf_match:
                     extracted["cpf"] = cpf_match.group(1)
 
-                # Extract status: "Ativa" or "Ativo"
+                # Extract status
                 if re.search(r'\(Ativa?\)', html, re.IGNORECASE):
                     extracted["status"] = "active"
                 elif re.search(r'Inativ|Suspen|Cancel', html, re.IGNORECASE):
                     extracted["status"] = "inactive"
 
+                # If still no COREN number, save a snippet of HTML for debugging
+                if not extracted["coren_number"]:
+                    extracted["fetch_error"] = f"Page fetched (HTTP 200, {len(html)} chars) but could not find registration number in HTML."
+                    extracted["html_snippet"] = html[:500]
+            else:
+                extracted["fetch_error"] = f"COREN website returned HTTP {resp.status_code}"
+
         except Exception as e:
+            extracted["fetch_error"] = f"Could not reach COREN website: {str(e)}"
             print(f"[COREN] Failed to fetch certificate page: {e}")
-            # Fall through to text parsing below
 
     # ── Step 2: If not URL or URL fetch failed, parse as text ──
-    if not extracted["coren_number"]:
+    if not extracted["coren_number"] and not re.match(r'^\d{4,7}$', raw):
         extracted["method"] = "text_parse"
         parts = raw.replace(" - ", "|").replace(" – ", "|").split("|")
         for part in parts:
