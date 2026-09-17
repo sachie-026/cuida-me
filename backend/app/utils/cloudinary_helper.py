@@ -36,12 +36,17 @@ def generate_signed_url(file_url_or_public_id: str) -> str:
     if not public_id:
         return file_url_or_public_id  # can't extract, return as-is
 
+    # Detect resource_type from URL or extension
+    is_pdf = ".pdf" in file_url_or_public_id.lower()
+    resource_type = "raw" if is_pdf else "image"
+
+    # Use type="upload" — matches our upload function's default
+    # Signed URL ensures only our app can generate valid links
     try:
-        resource_type = "raw" if ".pdf" in file_url_or_public_id.lower() else "image"
         url, _ = cloudinary.utils.cloudinary_url(
             public_id,
             sign_url=True,
-            type="authenticated",
+            type="upload",
             resource_type=resource_type,
             secure=True,
         )
