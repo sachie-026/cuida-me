@@ -155,6 +155,38 @@ Full API docs available at `http://localhost:8000/docs` (Swagger UI, auto-genera
 
 ---
 
+## Admin Commands
+
+### Seed Database (creates sample professionals, bookings, availability)
+```bash
+curl -X POST "https://cuida-me.onrender.com/api/seed-dev?dev_key=cuida-dev-2026"
+```
+Run after creating a new database. Auto-creates test professionals, bookings, and availability data.
+
+### Reset User Verification (by email)
+```bash
+curl -X POST "https://cuida-me.onrender.com/api/admin/reset-verification-by-email?email=USER_EMAIL" \
+  -H "Authorization: Bearer ADMIN_TOKEN"
+```
+Deletes all uploaded documents and sets `is_verified = false`. User will need to re-upload docs.
+
+### Reset User Verification (by user ID)
+```bash
+curl -X POST "https://cuida-me.onrender.com/api/admin/reset-verification/USER_ID" \
+  -H "Authorization: Bearer ADMIN_TOKEN"
+```
+
+### COREN Verification (by registration number)
+```bash
+curl -X POST "https://cuida-me.onrender.com/api/admin/coren-verify" \
+  -H "Authorization: Bearer ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"qr_data": "528594"}'
+```
+Accepts bare COREN number or certificate URL.
+
+---
+
 ## Scalability Notes
 
 Built for Brazil Beta but ready to expand:
