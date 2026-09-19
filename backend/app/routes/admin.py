@@ -1204,17 +1204,27 @@ def delete_user_by_email(email: str, dev_key: str = None, db: Session = Depends(
         raise HTTPException(404, f"User with email '{email}' not found")
     uid = user.id
     counts = {}
-    # Delete related records
-    for model, name, fk in [
-        (Document, "documents", "user_id"),
-        (Booking, "bookings_as_client", "client_id"),
-        (Booking, "bookings_as_pro", "professional_id"),
-        (Professional, "professional", "user_id"),
-    ]:
-        rows = db.query(model).filter(getattr(model, fk) == uid).all()
-        counts[name] = len(rows)
-        for r in rows:
-            db.delete(r)
+    # Delete documents
+    docs = db.query(Document).filter(Document.user_id == uid).all()
+    counts["documents"] = len(docs)
+    for r in docs:
+        db.delete(r)
+    # Delete professional record
+    pros = db.query(Professional).filter(Professional.user_id == uid).all()
+    counts["professional"] = len(pros)
+    for r in pros:
+        db.delete(r)
+    # Delete bookings (uses patient_id via patients table, or professional_id)
+    try:
+        from sqlalchemy import text
+        result = db.execute(text("DELETE FROM bookings WHERE patient_id IN (SELECT id FROM patients WHERE user_id = :uid)"), {"uid": uid})
+        counts["bookings_as_client"] = result.rowcount
+        result = db.execute(text("DELETE FROM bookings WHERE professional_id IN (SELECT id FROM professionals WHERE user_id = :uid)"), {"uid": uid})
+        counts["bookings_as_pro"] = result.rowcount
+        result = db.execute(text("DELETE FROM patients WHERE user_id = :uid"), {"uid": uid})
+        counts["patients"] = result.rowcount
+    except Exception as e:
+        counts["bookings_error"] = str(e)
     # Delete user
     db.delete(user)
     db.commit()
