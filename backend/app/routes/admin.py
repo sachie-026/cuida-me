@@ -1194,3 +1194,29 @@ def reset_verification_by_email(email: str, dev_key: str = None, db: Session = D
     user.is_verified = False
     db.commit()
     return {"user_id": user.id, "email": email, "documents_deleted": count, "is_verified": False, "message": f"Verificação resetada. {count} documento(s) removido(s)."}
+@router.post("/delete-user-by-email")
+def delete_user_by_email(email: str, dev_key: str = None, db: Session = Depends(get_db)):
+    """Completely delete a user and all related data. Requires dev_key."""
+    if dev_key != "cuida-dev-2026":
+        raise HTTPException(403, "Invalid dev_key. Use ?dev_key=cuida-dev-2026")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(404, f"User with email '{email}' not found")
+    uid = user.id
+    counts = {}
+    # Delete related records
+    for model, name, fk in [
+        (Document, "documents", "user_id"),
+        (Booking, "bookings_as_client", "client_id"),
+        (Booking, "bookings_as_pro", "professional_id"),
+        (Professional, "professional", "user_id"),
+    ]:
+        rows = db.query(model).filter(getattr(model, fk) == uid).all()
+        counts[name] = len(rows)
+        for r in rows:
+            db.delete(r)
+    # Delete user
+    db.delete(user)
+    db.commit()
+    return {"deleted_user": email, "user_id": uid, "related_deleted": counts,
+            "message": f"Usuário '{email}' e todos os dados relacionados foram removidos."}
