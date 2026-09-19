@@ -185,6 +185,12 @@ curl -X POST "https://cuida-me.onrender.com/api/admin/coren-verify" \
 ```
 Accepts bare COREN number or certificate URL.
 
+### Delete User Completely (by email)
+```bash
+curl -X POST "https://cuida-me.onrender.com/api/admin/delete-user-by-email?email=USER_EMAIL&dev_key=cuida-dev-2026"
+```
+Permanently deletes user and ALL related data (documents, bookings, professional records). Cannot be undone.
+
 ---
 
 ## Scalability Notes
