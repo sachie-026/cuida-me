@@ -28,31 +28,52 @@ def upload_document(file_bytes: bytes, filename: str, user_id: str, doc_type: st
 
 def generate_signed_url(file_url_or_public_id: str) -> str:
     """Generate a fresh signed Cloudinary URL from a stored URL or public_id.
-    Handles both /upload/ and /authenticated/ URL formats."""
+    Handles both /upload/ and /authenticated/ URL formats.
+    Uses Cloudinary API to detect correct resource_type."""
     if not file_url_or_public_id:
         return ""
 
     public_id = extract_public_id(file_url_or_public_id)
     if not public_id:
-        return file_url_or_public_id  # can't extract, return as-is
+        return file_url_or_public_id
 
-    # Detect resource_type from URL or extension
-    is_pdf = ".pdf" in file_url_or_public_id.lower()
-    resource_type = "raw" if is_pdf else "image"
+    # Extract type and resource_type from the stored URL if possible
+    import re
+    delivery_type = "upload"
+    stored_resource_type = None
 
-    # Use type="upload" — matches our upload function's default
-    # Signed URL ensures only our app can generate valid links
+    if file_url_or_public_id.startswith("http"):
+        rt_match = re.search(r'cloudinary\.com/[^/]+/(image|raw|video)/(upload|authenticated|private)/', file_url_or_public_id)
+        if rt_match:
+            stored_resource_type = rt_match.group(1)
+            delivery_type = rt_match.group(2)
+
+    # Try to find the file using Cloudinary API — checks which resource_type it's actually stored as
+    for try_resource in ([stored_resource_type, "image", "raw"] if stored_resource_type else ["image", "raw"]):
+        try:
+            cloudinary.api.resource(public_id, resource_type=try_resource, type=delivery_type)
+            # File found — generate signed URL with correct type
+            url, _ = cloudinary.utils.cloudinary_url(
+                public_id,
+                sign_url=True,
+                type=delivery_type,
+                resource_type=try_resource,
+                secure=True,
+            )
+            return url
+        except Exception:
+            continue
+
+    # API check failed for all types — generate best-guess URL
+    resource_type = stored_resource_type or "image"
     try:
         url, _ = cloudinary.utils.cloudinary_url(
-            public_id,
-            sign_url=True,
-            type="upload",
-            resource_type=resource_type,
-            secure=True,
+            public_id, sign_url=True, type=delivery_type,
+            resource_type=resource_type, secure=True,
         )
         return url
     except Exception as e:
-        print(f"[CLOUDINARY] Signed URL failed for {public_id}: {e}")
+        print(f"[CLOUDINARY] All attempts failed for {public_id}: {e}")
         return file_url_or_public_id
 
 
