@@ -1,6 +1,8 @@
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 import cloudinary.utils
+import re
 from app.core.config import settings
 
 cloudinary.config(
@@ -27,9 +29,14 @@ def upload_document(file_bytes: bytes, filename: str, user_id: str, doc_type: st
 
 
 def generate_signed_url(file_url_or_public_id: str) -> str:
-    """Generate a fresh signed Cloudinary URL from a stored URL or public_id.
-    Handles both /upload/ and /authenticated/ URL formats.
-    Uses Cloudinary API to detect correct resource_type."""
+    """Get a working URL for a Cloudinary file.
+    
+    Strategy: Ask Cloudinary's API for the file directly. The API returns
+    the canonical secure_url that always works — no guessing resource_type,
+    delivery type, or format needed.
+    
+    Tries: image/upload → raw/upload → image/authenticated → raw/authenticated
+    """
     if not file_url_or_public_id:
         return ""
 
@@ -37,44 +44,42 @@ def generate_signed_url(file_url_or_public_id: str) -> str:
     if not public_id:
         return file_url_or_public_id
 
-    # Extract type and resource_type from the stored URL if possible
-    import re
+    # Detect delivery type from stored URL
     delivery_type = "upload"
-    stored_resource_type = None
+    if "/authenticated/" in file_url_or_public_id:
+        delivery_type = "authenticated"
 
+    # Detect stored resource_type from URL
+    stored_rt = None
     if file_url_or_public_id.startswith("http"):
-        rt_match = re.search(r'cloudinary\.com/[^/]+/(image|raw|video)/(upload|authenticated|private)/', file_url_or_public_id)
+        rt_match = re.search(r'cloudinary\.com/[^/]+/(image|raw|video)/', file_url_or_public_id)
         if rt_match:
-            stored_resource_type = rt_match.group(1)
-            delivery_type = rt_match.group(2)
+            stored_rt = rt_match.group(1)
 
-    # Try to find the file using Cloudinary API — checks which resource_type it's actually stored as
-    for try_resource in ([stored_resource_type, "image", "raw"] if stored_resource_type else ["image", "raw"]):
+    # Build list of (resource_type, type) combos to try — stored first, then alternatives
+    combos = []
+    if stored_rt:
+        combos.append((stored_rt, delivery_type))
+    for rt in ["image", "raw"]:
+        for dt in [delivery_type, "upload", "authenticated"]:
+            if (rt, dt) not in combos:
+                combos.append((rt, dt))
+
+    # Try each combo — ask Cloudinary API if file exists there
+    for try_rt, try_dt in combos:
         try:
-            cloudinary.api.resource(public_id, resource_type=try_resource, type=delivery_type)
-            # File found — generate signed URL with correct type
-            url, _ = cloudinary.utils.cloudinary_url(
-                public_id,
-                sign_url=True,
-                type=delivery_type,
-                resource_type=try_resource,
-                secure=True,
-            )
-            return url
+            info = cloudinary.api.resource(public_id, resource_type=try_rt, type=try_dt)
+            # File found! Return its secure_url directly from Cloudinary
+            url = info.get("secure_url", "")
+            if url:
+                return url
         except Exception:
             continue
 
-    # API check failed for all types — generate best-guess URL
-    resource_type = stored_resource_type or "image"
-    try:
-        url, _ = cloudinary.utils.cloudinary_url(
-            public_id, sign_url=True, type=delivery_type,
-            resource_type=resource_type, secure=True,
-        )
-        return url
-    except Exception as e:
-        print(f"[CLOUDINARY] All attempts failed for {public_id}: {e}")
-        return file_url_or_public_id
+    # All API lookups failed — file may not exist in Cloudinary
+    # Return original URL as last resort
+    print(f"[CLOUDINARY] File not found in any resource_type/type combo: {public_id}")
+    return file_url_or_public_id
 
 
 def extract_public_id(url_or_id: str) -> str:
@@ -83,7 +88,7 @@ def extract_public_id(url_or_id: str) -> str:
     if not url_or_id:
         return ""
     if not url_or_id.startswith("http"):
-        return url_or_id  # already a public_id
+        return url_or_id
 
     try:
         for marker in ["/upload/", "/authenticated/"]:
