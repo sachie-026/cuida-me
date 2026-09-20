@@ -1034,10 +1034,13 @@ const LegalDocsPanel = () => {
 const ValidationPanel = () => {
   const { headers } = useAdmin();
   const [docId, setDocId] = useState("");
+  const [corenInput, setCorenInput] = useState("");
   const [result, setResult] = useState(null);
+  const [corenResult, setCorenResult] = useState(null);
   const [calibration, setCalibration] = useState(null);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [corenLoading, setCorenLoading] = useState(false);
 
   const handleValidate = async () => {
     if (!docId.trim()) { toast.error("Informe o ID do documento."); return; }
@@ -1047,6 +1050,18 @@ const ValidationPanel = () => {
       setResult(data);
     } catch (err) { toast.error(err.response?.data?.detail || "Erro na validação."); }
     finally { setLoading(false); }
+  };
+
+  const handleCorenVerify = async () => {
+    if (!corenInput.trim()) { toast.error("Informe o número COREN ou URL do certificado."); return; }
+    setCorenLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/api/admin/coren-verify`, { qr_data: corenInput }, { headers });
+      setCorenResult(data);
+      if (data.success) toast.success(data.message || "COREN verificado!");
+      else toast.error(data.message || "Verificação falhou.");
+    } catch (err) { toast.error(err.response?.data?.detail || "Erro na verificação COREN."); }
+    finally { setCorenLoading(false); }
   };
 
   const handleCalibrate = async (verdict) => {
@@ -1077,9 +1092,50 @@ const ValidationPanel = () => {
       <h2 className="font-bold text-navy text-lg">Validação Automática COREN</h2>
       <p className="text-xs text-slate-500 mt-0.5 mb-6">OCR + verificação cruzada de documentos profissionais</p>
 
-      {/* Validate a document */}
+      {/* COREN number / URL verification */}
       <div className="card p-5 mb-4">
-        <p className="font-semibold text-navy mb-3">Validar documento</p>
+        <p className="font-semibold text-navy mb-1">Verificar registro COREN</p>
+        <p className="text-xs text-slate-500 mb-3">Digite o número de inscrição COREN ou cole a URL do certificado</p>
+        <div className="flex gap-2 mb-3">
+          <input type="text" className="form-input flex-1 text-sm" placeholder="Ex: 528594 ou URL do certificado"
+            value={corenInput} onChange={e => setCorenInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleCorenVerify()} />
+          <button onClick={handleCorenVerify} disabled={corenLoading} className="btn-primary text-sm px-4 disabled:opacity-50">
+            {corenLoading ? "..." : "Verificar"}
+          </button>
+        </div>
+
+        {corenResult && (
+          <div className={`p-4 rounded-xl border ${corenResult.success ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+            <p className={`text-sm font-semibold ${corenResult.success ? "text-green-700" : "text-amber-700"}`}>
+              {corenResult.success ? "✅ " : "⚠️ "}{corenResult.message}
+            </p>
+            {corenResult.extracted && (
+              <div className="mt-2 text-xs text-slate-600 space-y-0.5">
+                {corenResult.extracted.coren_number && <p>Nº COREN: <strong>{corenResult.extracted.coren_number}</strong></p>}
+                {corenResult.extracted.name && <p>Nome: {corenResult.extracted.name}</p>}
+                {corenResult.extracted.cpf && <p>CPF: {corenResult.extracted.cpf}</p>}
+                {corenResult.extracted.state && <p>Estado: {corenResult.extracted.state}</p>}
+                {corenResult.extracted.category && <p>Categoria: {corenResult.extracted.category}</p>}
+                {corenResult.extracted.status && <p>Status: {corenResult.extracted.status}</p>}
+                {corenResult.extracted.method && <p className="text-slate-400">Método: {corenResult.extracted.method}</p>}
+                {corenResult.extracted.fetch_error && <p className="text-red-500">Erro: {corenResult.extracted.fetch_error}</p>}
+              </div>
+            )}
+            {corenResult.hint && <p className="text-xs text-slate-500 mt-2 italic">{corenResult.hint}</p>}
+            {corenResult.professional && (
+              <div className="mt-2 p-2 bg-white rounded-lg border border-green-200">
+                <p className="text-xs font-semibold text-green-700">Profissional encontrado:</p>
+                <p className="text-xs text-slate-600">{corenResult.professional.full_name} — {corenResult.professional.council_number}-{corenResult.professional.council_state}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Validate a specific document by ID */}
+      <div className="card p-5 mb-4">
+        <p className="font-semibold text-navy mb-3">Validar documento por ID</p>
         <div className="flex gap-2 mb-3">
           <input type="text" className="form-input flex-1 text-sm" placeholder="ID do documento" value={docId} onChange={e => setDocId(e.target.value)} />
           <button onClick={handleValidate} disabled={loading} className="btn-primary text-sm px-4 disabled:opacity-50">
