@@ -172,6 +172,7 @@ class Document(Base):
     reviewed_by = Column(String, nullable=True)
     notes       = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
+    admin_feedback  = Column(Text, nullable=True)  # Custom message from admin on reject/resend
     expires_at  = Column(DateTime(timezone=True), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -379,6 +380,20 @@ class AvailabilityAlert(Base):
     expires_at      = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+class DocumentAuditLog(Base):
+    """Tracks every admin action on a document — reject, approve, resend, feedback."""
+    __tablename__ = "document_audit_log"
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    doc_id      = Column(String, nullable=False)
+    user_id     = Column(String, nullable=False)   # document owner
+    admin_id    = Column(String, nullable=False)
+    admin_name  = Column(String, nullable=False)
+    action      = Column(String, nullable=False)    # approved, rejected, replacement_requested, feedback
+    reason      = Column(Text, nullable=True)
+    feedback    = Column(Text, nullable=True)
+    doc_type    = Column(String, nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
 class PlatformSettings(Base):
     """Stores editable platform operating parameters. Single row, key-value."""
     __tablename__ = "platform_settings"

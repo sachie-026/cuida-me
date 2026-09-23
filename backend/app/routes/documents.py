@@ -62,6 +62,7 @@ def get_my_documents(db: Session = Depends(get_db), current: User = Depends(get_
         "file_url": generate_signed_url(d.file_url) if d.file_url else None,
         "status": d.status.value if hasattr(d.status, 'value') else str(d.status),
         "rejection_reason": d.rejection_reason,
+        "admin_feedback": getattr(d, "admin_feedback", None),
     } for d in docs]
 
 @router.delete("/{doc_id}")
@@ -105,6 +106,7 @@ def get_document_status(user_id: str, db: Session = Depends(get_db), current: Us
         "file_url": generate_signed_url(d.file_url) if d.file_url else None,
         "status": d.status.value if hasattr(d.status, 'value') else str(d.status),
         "rejection_reason": d.rejection_reason,
+        "admin_feedback": getattr(d, "admin_feedback", None),
     } for d in docs]
     return {
         "documents":    docs_out,
