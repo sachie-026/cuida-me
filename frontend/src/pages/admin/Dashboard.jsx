@@ -282,11 +282,24 @@ const DocImagePreview = ({ url }) => {
 const DocModal = ({ prof, onClose, onDocUpdate }) => {
   const { headers } = useAdmin();
   const [rejectingId, setRejectingId] = useState(null);
+  const [resendingId, setResendingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [adminFeedback, setAdminFeedback] = useState("");
+  const [resendFeedback, setResendFeedback] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
   const [qrInput, setQrInput] = useState("");
   const [qrResult, setQrResult] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [auditHistory, setAuditHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadAuditHistory = async (userId) => {
+    try {
+      const { data } = await axios.get(`${API}/api/admin/users/${userId}/document-audit-history`, { headers });
+      setAuditHistory(data);
+      setShowHistory(true);
+    } catch { toast.error("Erro ao carregar histórico."); }
+  };
 
   const handleQrVerify = async () => {
     if (!qrInput.trim()) return;
@@ -319,10 +332,10 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
     if (!rejectReason.trim()) { toast.error("Informe o motivo da rejeição."); return; }
     setActionLoading(docId);
     try {
-      await axios.patch(`${API}/api/admin/documents/${docId}/reject?reason=${encodeURIComponent(rejectReason)}`, {}, { headers });
+      const fb = adminFeedback.trim() || rejectReason;
+      await axios.patch(`${API}/api/admin/documents/${docId}/reject?reason=${encodeURIComponent(rejectReason)}&feedback=${encodeURIComponent(fb)}`, {}, { headers });
       toast.success("Documento rejeitado.");
-      setRejectingId(null);
-      setRejectReason("");
+      setRejectingId(null); setRejectReason(""); setAdminFeedback("");
       onDocUpdate();
     } catch { toast.error("Erro ao rejeitar."); }
     finally { setActionLoading(null); }
@@ -401,12 +414,36 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                             <option key={r} value={r}>{r}</option>
                           ))}
                         </select>
+                        {/* 2-1: Free-text feedback for the user */}
+                        <textarea className="form-input text-xs w-full min-h-[60px]" placeholder="Mensagem para o profissional (ex: 'Envie foto mais legível do COREN')"
+                          value={adminFeedback} onChange={e => setAdminFeedback(e.target.value)} />
                         <div className="flex gap-2">
                           <button onClick={() => handleReject(doc.id)} disabled={actionLoading === doc.id}
                             className="text-xs px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold disabled:opacity-50">
                             {actionLoading === doc.id ? "..." : "Confirmar rejeição"}
                           </button>
-                          <button onClick={() => { setRejectingId(null); setRejectReason(""); }}
+                          <button onClick={() => { setRejectingId(null); setRejectReason(""); setAdminFeedback(""); }}
+                            className="text-xs px-3 py-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 font-semibold">Cancelar</button>
+                        </div>
+                      </div>
+                    ) : resendingId === doc.id ? (
+                      /* 2-2: Request resend with custom feedback */
+                      <div className="space-y-2">
+                        <textarea className="form-input text-xs w-full min-h-[60px]" placeholder="Mensagem para o profissional (ex: 'O certificado enviado pertence a outra pessoa')"
+                          value={resendFeedback} onChange={e => setResendFeedback(e.target.value)} />
+                        <div className="flex gap-2">
+                          <button onClick={async () => {
+                            const fb = resendFeedback.trim() || "Documento precisa ser reenviado";
+                            try {
+                              await axios.patch(`${API}/api/admin/documents/${doc.id}/status?status=replacement_requested&reason=${encodeURIComponent(fb)}&feedback=${encodeURIComponent(fb)}`, {}, { headers });
+                              toast.success("Reenvio solicitado!");
+                              setResendingId(null); setResendFeedback("");
+                              onDocUpdate();
+                            } catch { toast.error("Erro."); }
+                          }} className="text-xs px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold">
+                            Confirmar pedido de reenvio
+                          </button>
+                          <button onClick={() => { setResendingId(null); setResendFeedback(""); }}
                             className="text-xs px-3 py-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 font-semibold">Cancelar</button>
                         </div>
                       </div>
@@ -420,11 +457,9 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                           className="flex items-center gap-1 text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-semibold">
                           <XCircle size={12} /> Rejeitar
                         </button>
-                        {/* 10.1-15: Request replacement */}
-                        <button onClick={async()=>{
-                          try{await axios.patch(`${API}/api/admin/documents/${doc.id}/status?status=replacement_requested&reason=Documento precisa ser reenviado`,{},{headers});toast.success("Reenvio solicitado!");onDocUpdate();}
-                          catch{toast.error("Erro.");}
-                        }} className="flex items-center gap-1 text-xs px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 font-semibold">
+                        {/* 10.1-15: Request replacement — opens feedback form */}
+                        <button onClick={() => { setResendingId(doc.id); setRejectingId(null); }}
+                          className="flex items-center gap-1 text-xs px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 font-semibold">
                           ⟳ Solicitar reenvio
                         </button>
                       </div>
@@ -468,8 +503,54 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
             {prof.documents?.filter(d => d.status === "approved").length || 0} de 4 documentos aprovados
             {prof.documents?.filter(d => d.status === "approved").length >= 4 && " ✓ Profissional auto-aprovado"}
           </span>
-          <button onClick={onClose} className="btn-outline text-xs px-4">Fechar</button>
+          <div className="flex gap-2">
+            <button onClick={() => loadAuditHistory(prof.user_id)} className="btn-outline text-xs px-3">📋 Histórico</button>
+            <button onClick={onClose} className="btn-outline text-xs px-4">Fechar</button>
+          </div>
         </div>
+
+        {/* 2-5: Verification complete button — shown when all docs approved */}
+        {prof.documents?.filter(d => d.status === "approved").length >= 4 && (
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+            <p className="text-sm font-semibold text-green-700 mb-2">✅ Todos os documentos aprovados</p>
+            <p className="text-xs text-green-600 mb-3">Clique abaixo para concluir a verificação. O profissional receberá uma notificação e poderá usar o app.</p>
+            <button onClick={async () => {
+              try {
+                const { data } = await axios.post(`${API}/api/admin/professionals/${prof.id}/complete-verification`, {}, { headers });
+                toast.success(data.message || "Verificação concluída!");
+                onDocUpdate();
+              } catch (err) { toast.error(err.response?.data?.detail || "Erro ao concluir verificação."); }
+            }} className="btn-primary w-full text-sm">
+              🎉 Concluir verificação e notificar profissional
+            </button>
+          </div>
+        )}
+
+        {/* Audit history */}
+        {showHistory && (
+          <div className="mt-3 max-h-[200px] overflow-y-auto border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Histórico de verificação</p>
+            {auditHistory.length === 0 ? (
+              <p className="text-xs text-slate-400">Nenhuma ação registrada.</p>
+            ) : (
+              <div className="space-y-1">
+                {auditHistory.map(h => (
+                  <div key={h.id} className="flex items-start gap-2 p-2 bg-slate-50 rounded-lg text-xs">
+                    <span className={`font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                      h.action === "approved" ? "bg-green-100 text-green-700" :
+                      h.action === "rejected" ? "bg-red-100 text-red-600" :
+                      "bg-amber-100 text-amber-700"}`}>{h.action}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-slate-600">{h.doc_type} — por {h.admin_name}</p>
+                      {h.feedback && <p className="text-slate-500 italic truncate">"{h.feedback}"</p>}
+                      <p className="text-slate-400 text-[10px]">{h.created_at ? new Date(h.created_at).toLocaleString("pt-BR") : ""}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1035,6 +1116,8 @@ const ValidationPanel = () => {
   const { headers } = useAdmin();
   const [docId, setDocId] = useState("");
   const [corenInput, setCorenInput] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [nameConfirmed, setNameConfirmed] = useState(false);
   const [result, setResult] = useState(null);
   const [corenResult, setCorenResult] = useState(null);
   const [calibration, setCalibration] = useState(null);
@@ -1056,8 +1139,12 @@ const ValidationPanel = () => {
     if (!corenInput.trim()) { toast.error("Informe o número COREN ou URL do certificado."); return; }
     setCorenLoading(true);
     try {
-      const { data } = await axios.post(`${API}/api/admin/coren-verify`, { qr_data: corenInput }, { headers });
+      const { data } = await axios.post(`${API}/api/admin/coren-verify`, {
+        qr_data: corenInput,
+        manual_name: manualName.trim() || null,
+      }, { headers });
       setCorenResult(data);
+      setNameConfirmed(false);
       if (data.success) toast.success(data.message || "COREN verificado!");
       else toast.error(data.message || "Verificação falhou.");
     } catch (err) { toast.error(err.response?.data?.detail || "Erro na verificação COREN."); }
@@ -1105,15 +1192,44 @@ const ValidationPanel = () => {
           </button>
         </div>
 
+        {/* 1-5: Manual name field for comparison when URL fetch can't get name */}
+        <div className="mb-3">
+          <label className="text-xs text-slate-500">Nome no certificado (opcional — para comparação com perfil)</label>
+          <input type="text" className="form-input text-sm mt-1" placeholder="Cole o nome exato do certificado COREN aqui"
+            value={manualName} onChange={e => setManualName(e.target.value)} />
+        </div>
+
         {corenResult && (
-          <div className={`p-4 rounded-xl border ${corenResult.success ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
-            <p className={`text-sm font-semibold ${corenResult.success ? "text-green-700" : "text-amber-700"}`}>
-              {corenResult.success ? "✅ " : "⚠️ "}{corenResult.message}
+          <div className={`p-4 rounded-xl border ${
+            corenResult.name_match === false ? "bg-red-50 border-red-300" :
+            corenResult.success ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+            <p className={`text-sm font-semibold ${
+              corenResult.name_match === false ? "text-red-700" :
+              corenResult.success ? "text-green-700" : "text-amber-700"}`}>
+              {corenResult.name_match === false ? "⚠️ " : corenResult.success ? "✅ " : "⚠️ "}{corenResult.message}
             </p>
+
+            {/* 1-3: Name mismatch warning */}
+            {corenResult.name_warning && (
+              <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded-lg">
+                <p className="text-sm font-bold text-red-700">⚠️ NOME DIVERGENTE</p>
+                <p className="text-xs text-red-600 mt-1">Nome no certificado: <strong>{corenResult.extracted_name || "Não extraído"}</strong></p>
+                <p className="text-xs text-red-600">Nome no perfil: <strong>{corenResult.profile_name || "N/A"}</strong></p>
+                <p className="text-xs text-red-500 mt-1 italic">{corenResult.name_warning}</p>
+              </div>
+            )}
+
+            {/* 1-6: Certificate warning */}
+            {corenResult.cert_warning && (
+              <div className="mt-2 p-2 bg-amber-100 border border-amber-300 rounded-lg">
+                <p className="text-xs text-amber-700 font-semibold">⚠️ {corenResult.cert_warning}</p>
+              </div>
+            )}
+
             {corenResult.extracted && (
               <div className="mt-2 text-xs text-slate-600 space-y-0.5">
                 {corenResult.extracted.coren_number && <p>Nº COREN: <strong>{corenResult.extracted.coren_number}</strong></p>}
-                {corenResult.extracted.name && <p>Nome: {corenResult.extracted.name}</p>}
+                {corenResult.extracted.name && <p>Nome extraído: {corenResult.extracted.name}</p>}
                 {corenResult.extracted.cpf && <p>CPF: {corenResult.extracted.cpf}</p>}
                 {corenResult.extracted.state && <p>Estado: {corenResult.extracted.state}</p>}
                 {corenResult.extracted.category && <p>Categoria: {corenResult.extracted.category}</p>}
@@ -1123,11 +1239,42 @@ const ValidationPanel = () => {
               </div>
             )}
             {corenResult.hint && <p className="text-xs text-slate-500 mt-2 italic">{corenResult.hint}</p>}
-            {corenResult.professional && (
-              <div className="mt-2 p-2 bg-white rounded-lg border border-green-200">
-                <p className="text-xs font-semibold text-green-700">Profissional encontrado:</p>
-                <p className="text-xs text-slate-600">{corenResult.professional.full_name} — {corenResult.professional.council_number}-{corenResult.professional.council_state}</p>
+
+            {/* Professional found section */}
+            {corenResult.matched && corenResult.professional_name && (
+              <div className={`mt-2 p-2 rounded-lg border ${corenResult.name_match === false ? "bg-red-50 border-red-200" : "bg-white border-green-200"}`}>
+                <p className="text-xs font-semibold text-slate-700">Profissional no sistema:</p>
+                <p className="text-xs text-slate-600">{corenResult.professional_name}</p>
               </div>
+            )}
+
+            {/* 1-4: Block approval on name mismatch — require manual confirmation */}
+            {corenResult.matched && corenResult.name_match === false && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5 accent-amber-500"
+                    checked={nameConfirmed} onChange={e => setNameConfirmed(e.target.checked)} />
+                  <span className="text-xs text-amber-700 font-medium">
+                    Confirmo que verifiquei manualmente o certificado e autorizo a aprovação mesmo com nome divergente.
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {/* Auto-verify button — blocked if name mismatch and not confirmed */}
+            {corenResult.matched && corenResult.auto_verify && (
+              <button
+                disabled={corenResult.name_match === false && !nameConfirmed}
+                onClick={async () => {
+                  try {
+                    await axios.patch(`${API}/api/admin/professionals/${corenResult.professional_id}/approve`, {}, { headers });
+                    toast.success("Profissional aprovado!");
+                    setCorenResult(null);
+                  } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+                }}
+                className="btn-primary w-full mt-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                {corenResult.name_match === false ? (nameConfirmed ? "Aprovar mesmo assim" : "Aprovação bloqueada — confirme acima") : "✓ Aprovar profissional"}
+              </button>
             )}
           </div>
         )}

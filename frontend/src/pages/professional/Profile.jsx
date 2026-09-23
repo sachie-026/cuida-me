@@ -28,6 +28,7 @@ const DocStatusBadge = ({status}) => {
     approved:{label:"Aprovado", color:"bg-green-100 text-green-700", icon:<CheckCircle size={12}/>},
     pending: {label:"Em análise",color:"bg-amber-100 text-amber-700",icon:<Clock size={12}/>},
     rejected:{label:"Rejeitado",color:"bg-red-100 text-red-600",    icon:<XCircle size={12}/>},
+    replacement_requested:{label:"Reenvio solicitado",color:"bg-orange-100 text-orange-700",icon:<AlertTriangle size={12}/>},
   };
   const s = map[status]||map.pending;
   return <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${s.color}`}>{s.icon}{s.label}</span>;
@@ -90,7 +91,23 @@ const UploadZone = ({docType,label,note,existingDoc,onUploaded,onDeleted}) => {
       {existingDoc?.status === "rejected" && existingDoc?.rejection_reason && (
         <div className="flex items-start gap-2 p-2 mb-2 bg-red-50 border border-red-200 rounded-lg">
           <XCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5"/>
-          <p className="text-xs text-red-600"><span className="font-semibold">Motivo da rejeição:</span> {existingDoc.rejection_reason}</p>
+          <div>
+            <p className="text-xs text-red-600"><span className="font-semibold">Motivo da rejeição:</span> {existingDoc.rejection_reason}</p>
+            {existingDoc.admin_feedback && existingDoc.admin_feedback !== existingDoc.rejection_reason && (
+              <p className="text-xs text-red-500 mt-0.5"><span className="font-semibold">Mensagem:</span> {existingDoc.admin_feedback}</p>
+            )}
+          </div>
+        </div>
+      )}
+      {existingDoc?.status === "replacement_requested" && (
+        <div className="flex items-start gap-2 p-2 mb-2 bg-orange-50 border border-orange-200 rounded-lg">
+          <AlertTriangle size={14} className="text-orange-500 flex-shrink-0 mt-0.5"/>
+          <div>
+            <p className="text-xs text-orange-600 font-semibold">Reenvio solicitado</p>
+            {(existingDoc.admin_feedback || existingDoc.rejection_reason) && (
+              <p className="text-xs text-orange-500 mt-0.5">{existingDoc.admin_feedback || existingDoc.rejection_reason}</p>
+            )}
+          </div>
         </div>
       )}
       <div className="flex items-center gap-2">

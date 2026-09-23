@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.auth_deps import require_admin
 from pydantic import BaseModel
-from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole
+from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole, DocumentAuditLog
 from app.utils.pricing import MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE
 
 def _fresh_doc_url(file_url):
@@ -18,6 +18,19 @@ def _fresh_doc_url(file_url):
         return generate_signed_url(file_url)
     except:
         return file_url
+
+def _log_doc_action(db, doc, admin, action, reason="", feedback=""):
+    """Log document verification action to audit trail."""
+    try:
+        log = DocumentAuditLog(
+            doc_id=doc.id, user_id=doc.user_id,
+            admin_id=admin.id, admin_name=admin.full_name,
+            action=action, reason=reason, feedback=feedback,
+            doc_type=doc.doc_type,
+        )
+        db.add(log)
+    except Exception as e:
+        print(f"[AUDIT] Failed to log doc action: {e}")
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -71,6 +84,7 @@ def _ser_prof(prof: Professional, user: User, docs: list) -> dict:
                 "file_url": _fresh_doc_url(d.file_url),
                 "status":   d.status.value if hasattr(d.status, 'value') else str(d.status),
                 "rejection_reason": d.rejection_reason,
+                "admin_feedback": d.admin_feedback,
             }
             for d in docs
         ],
@@ -129,8 +143,12 @@ def approve_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(
     if not prof:
         raise HTTPException(404, "Professional not found")
     prof.approval_status = DocStatus.approved
+    # 2-8: Also set user.is_verified
+    user = db.query(User).filter(User.id == prof.user_id).first()
+    if user:
+        user.is_verified = True
     db.commit()
-    return {"id": prof_id, "status": "approved"}
+    return {"id": prof_id, "status": "approved", "user_verified": True}
 
 @router.patch("/professionals/{prof_id}/reject")
 def reject_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
@@ -141,6 +159,59 @@ def reject_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(r
     prof.is_available    = False
     db.commit()
     return {"id": prof_id, "status": "rejected"}
+
+@router.post("/professionals/{prof_id}/complete-verification")
+def complete_verification(prof_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """2-5: Admin marks verification as complete — sets verified, notifies user."""
+    prof = db.query(Professional).filter(Professional.id == prof_id).first()
+    if not prof:
+        raise HTTPException(404, "Professional not found")
+
+    user = db.query(User).filter(User.id == prof.user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    # Check all docs are approved
+    docs = db.query(Document).filter(Document.user_id == user.id).all()
+    pending = [d for d in docs if hasattr(d.status, 'value') and d.status.value != "approved"]
+    if pending:
+        pending_types = [d.doc_type for d in pending]
+        raise HTTPException(400, f"Ainda há {len(pending)} documento(s) pendente(s): {', '.join(pending_types)}")
+
+    # Set verified status
+    prof.approval_status = DocStatus.approved
+    user.is_verified = True
+
+    # 2-6: In-app notification
+    try:
+        from app.models.models import Notification
+        notif = Notification(
+            user_id=user.id,
+            title="Verificação concluída! ✅",
+            message="Sua verificação foi concluída com sucesso. Você já pode usar o app para receber atendimentos.",
+            notification_type="verification_complete",
+        )
+        db.add(notif)
+    except Exception as e:
+        print(f"[NOTIF] Failed to create notification: {e}")
+
+    # 2-7: Email notification (stub — prints to log until email service configured)
+    print(f"[EMAIL STUB] To: {user.email} | Subject: Verificação concluída | Body: Olá {user.full_name}, sua verificação profissional foi concluída com sucesso. Você já pode usar o CuidaU para receber atendimentos.")
+    # TODO: Replace with real email when SendGrid/SES is configured:
+    # send_email(to=user.email, subject="Verificação concluída", body=f"Olá {user.full_name}, ...")
+
+    db.commit()
+
+    return {
+        "professional_id": prof_id,
+        "user_id": user.id,
+        "email": user.email,
+        "is_verified": True,
+        "approval_status": "approved",
+        "notification_sent": True,
+        "email_sent": False,  # Will be True when email service is configured
+        "message": f"Verificação de {user.full_name} concluída. Notificação enviada.",
+    }
 
 @router.get("/bookings")
 def get_bookings(status: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
@@ -216,12 +287,13 @@ def _get_required_docs(user_id: str, db: Session) -> set:
         return REQUIRED_DOCS_NURSING
 
 @router.patch("/documents/{doc_id}/approve")
-def approve_document(doc_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+def approve_document(doc_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")
     doc.status = DocStatus.approved
     doc.rejection_reason = None
+    _log_doc_action(db, doc, current, "approved")
     db.commit()
 
     # Auto-approve professional if all required docs are approved
@@ -230,12 +302,14 @@ def approve_document(doc_id: str, db: Session = Depends(get_db), _=Depends(requi
     return {"id": doc_id, "status": "approved"}
 
 @router.patch("/documents/{doc_id}/reject")
-def reject_document(doc_id: str, reason: str = "Documento inválido ou ilegível", db: Session = Depends(get_db), _=Depends(require_admin)):
+def reject_document(doc_id: str, reason: str = "Documento inválido ou ilegível", feedback: str = "", db: Session = Depends(get_db), current: User = Depends(require_admin)):
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")
     doc.status = DocStatus.rejected
     doc.rejection_reason = reason
+    doc.admin_feedback = feedback or reason
+    _log_doc_action(db, doc, current, "rejected", reason, feedback or reason)
     db.commit()
 
     # If any doc is rejected, professional stays/goes to pending / client loses verified
@@ -279,6 +353,7 @@ def _check_auto_approve(user_id: str, db: Session):
 
 class CorenVerifyRequest(BaseModel):
     qr_data: str  # Raw text from QR scan or certificate URL
+    manual_name: Optional[str] = None  # Admin can paste name from certificate for comparison
 
 @router.post("/coren-verify")
 def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin)):
@@ -411,14 +486,54 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
 
     if match:
         user = db.query(User).filter(User.id == match.user_id).first()
+        profile_name = user.full_name if user else ""
+
+        # 1-2: Name comparison — normalize and compare
+        import unicodedata
+        def normalize_name(n):
+            if not n: return ""
+            n = unicodedata.normalize("NFD", n)
+            n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+            return n.upper().strip()
+
+        extracted_name = extracted.get("name") or body.manual_name or ""
+        profile_norm = normalize_name(profile_name)
+        extracted_norm = normalize_name(extracted_name)
+
+        name_match = True
+        name_warning = None
+        if extracted_norm and profile_norm:
+            # Check if names match (at least first + last name overlap)
+            profile_parts = set(profile_norm.split())
+            extracted_parts = set(extracted_norm.split())
+            common = profile_parts & extracted_parts
+            # Need at least 2 name parts in common (first + last), or 1 if name is short
+            min_common = 2 if len(profile_parts) > 1 and len(extracted_parts) > 1 else 1
+            if len(common) < min_common:
+                name_match = False
+                name_warning = f"ATENÇÃO: Nome no certificado COREN ({extracted_name}) NÃO corresponde ao nome no perfil ({profile_name}). Verifique se o certificado pertence a este profissional."
+
+        # 1-6: Certificate number validation (if URL had pNumeroCertidao)
+        cert_warning = None
+        if extracted.get("certificate_number") and extracted_name:
+            # Check if certificate was fetched and name matches — if name doesn't match,
+            # certificate likely belongs to someone else
+            if not name_match:
+                cert_warning = "O certificado pode não pertencer a este profissional. Verifique a autenticidade."
+
         return {
             "success": True,
             "matched": True,
             "professional_id": match.id,
-            "professional_name": user.full_name if user else None,
+            "professional_name": profile_name,
             "extracted": extracted,
-            "auto_verify": extracted.get("status") == "active",
-            "message": f"Profissional encontrado: {user.full_name if user else 'N/A'}. COREN {'ativo' if extracted.get('status') == 'active' else 'verificação manual necessária'}.",
+            "auto_verify": extracted.get("status") == "active" and name_match,
+            "name_match": name_match,
+            "name_warning": name_warning,
+            "cert_warning": cert_warning,
+            "extracted_name": extracted_name or None,
+            "profile_name": profile_name,
+            "message": f"Profissional encontrado: {profile_name}. COREN {'ativo' if extracted.get('status') == 'active' else 'verificação manual necessária'}.{' ⚠️ NOME DIVERGENTE!' if not name_match else ''}",
         }
 
     return {
@@ -822,6 +937,26 @@ def list_admin_users(db: Session = Depends(get_db), _=Depends(is_super_admin)):
 
 # ── 10.1-11: Fix document download ────────────────────────────────────────────
 
+@router.get("/documents/{doc_id}/audit-history")
+def get_document_audit_history(doc_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Get verification action history for a specific document."""
+    logs = db.query(DocumentAuditLog).filter(DocumentAuditLog.doc_id == doc_id).order_by(DocumentAuditLog.created_at.desc()).all()
+    return [{
+        "id": l.id, "action": l.action, "reason": l.reason, "feedback": l.feedback,
+        "admin_name": l.admin_name, "doc_type": l.doc_type,
+        "created_at": l.created_at.isoformat() if l.created_at else None,
+    } for l in logs]
+
+@router.get("/users/{user_id}/document-audit-history")
+def get_user_document_audit_history(user_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Get all verification action history for a user's documents."""
+    logs = db.query(DocumentAuditLog).filter(DocumentAuditLog.user_id == user_id).order_by(DocumentAuditLog.created_at.desc()).all()
+    return [{
+        "id": l.id, "doc_id": l.doc_id, "action": l.action, "reason": l.reason,
+        "feedback": l.feedback, "admin_name": l.admin_name, "doc_type": l.doc_type,
+        "created_at": l.created_at.isoformat() if l.created_at else None,
+    } for l in logs]
+
 @router.get("/documents/{doc_id}/download")
 def download_document(doc_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     """10.1-11: Admin downloads document with fresh signed URL."""
@@ -865,8 +1000,8 @@ def download_document(doc_id: str, db: Session = Depends(get_db), current: User 
 VALID_DOC_STATUSES = ["not_submitted", "uploaded", "under_review", "approved", "rejected", "expired", "replacement_requested"]
 
 @router.patch("/documents/{doc_id}/status")
-def update_document_status(doc_id: str, status: str, reason: str = "", db: Session = Depends(get_db), current: User = Depends(require_admin)):
-    """10.1-14,15: Update per-document status with reason."""
+def update_document_status(doc_id: str, status: str, reason: str = "", feedback: str = "", db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """10.1-14,15: Update per-document status with reason and feedback."""
     if status not in VALID_DOC_STATUSES:
         raise HTTPException(400, f"Status inválido. Use: {VALID_DOC_STATUSES}")
     doc = db.query(Document).filter(Document.id == doc_id).first()
@@ -876,6 +1011,8 @@ def update_document_status(doc_id: str, status: str, reason: str = "", db: Sessi
     old_status = doc.status.value if hasattr(doc.status, 'value') else str(doc.status)
     doc.status = status
     doc.rejection_reason = reason if status in ("rejected", "replacement_requested") else doc.rejection_reason
+    doc.admin_feedback = feedback or reason or doc.admin_feedback
+    _log_doc_action(db, doc, current, status, reason, feedback or reason)
     db.commit()
 
     # 10.1-19: Audit
