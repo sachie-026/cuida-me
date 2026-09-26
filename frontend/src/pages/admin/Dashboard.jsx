@@ -287,6 +287,19 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
   const [adminFeedback, setAdminFeedback] = useState("");
   const [resendFeedback, setResendFeedback] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
+  const [rejectTemplates, setRejectTemplates] = useState([]);
+  const [resendTemplates, setResendTemplates] = useState([]);
+
+  useEffect(() => {
+    axios.get(`${API}/api/settings/verification-templates`, { headers })
+      .then(r => {
+        setRejectTemplates(r.data.reject_templates || []);
+        setResendTemplates(r.data.resend_templates || []);
+      }).catch(() => {
+        setRejectTemplates(["Documento ilegível","Documento expirado","Nome não corresponde","CPF não corresponde","Número COREN não corresponde","Documento obrigatório ausente","Informação adicional necessária"]);
+        setResendTemplates(["Envie uma foto mais legível","O documento enviado pertence a outra pessoa","Documento expirado, envie versão atualizada"]);
+      });
+  }, []);
   const [qrInput, setQrInput] = useState("");
   const [qrResult, setQrResult] = useState(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -329,7 +342,8 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
   };
 
   const handleReject = async (docId) => {
-    if (!rejectReason.trim()) { toast.error("Informe o motivo da rejeição."); return; }
+    if (!rejectReason.trim()) { toast.error("Selecione o motivo da rejeição."); return; }
+    if (!adminFeedback.trim()) { toast.error("A mensagem para o profissional é obrigatória."); return; }
     setActionLoading(docId);
     try {
       const fb = adminFeedback.trim() || rejectReason;
@@ -410,9 +424,10 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                         {/* 10.1-18: Rejection reasons dropdown */}
                         <select className="form-input text-sm w-full" value={rejectReason} onChange={e => setRejectReason(e.target.value)}>
                           <option value="">Selecione o motivo...</option>
-                          {["Nome não corresponde","CPF não corresponde","Número COREN não corresponde","Estado COREN não corresponde","Categoria não corresponde","Registro não está ativo","Documento ilegível","Documento expirado","Documento obrigatório ausente","Informação adicional necessária","Outro"].map(r=>(
+                          {rejectTemplates.map(r=>(
                             <option key={r} value={r}>{r}</option>
                           ))}
+                          <option value="Outro">Outro</option>
                         </select>
                         {/* 2-1: Free-text feedback for the user */}
                         <textarea className="form-input text-xs w-full min-h-[60px]" placeholder="Mensagem para o profissional (ex: 'Envie foto mais legível do COREN')"
@@ -429,11 +444,18 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                     ) : resendingId === doc.id ? (
                       /* 2-2: Request resend with custom feedback */
                       <div className="space-y-2">
-                        <textarea className="form-input text-xs w-full min-h-[60px]" placeholder="Mensagem para o profissional (ex: 'O certificado enviado pertence a outra pessoa')"
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {resendTemplates.map(t => (
+                            <button key={t} type="button" onClick={() => setResendFeedback(t)}
+                              className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full hover:bg-amber-100 border border-amber-200">{t}</button>
+                          ))}
+                        </div>
+                        <textarea className="form-input text-xs w-full min-h-[60px]" placeholder="Mensagem obrigatória para o profissional"
                           value={resendFeedback} onChange={e => setResendFeedback(e.target.value)} />
                         <div className="flex gap-2">
                           <button onClick={async () => {
-                            const fb = resendFeedback.trim() || "Documento precisa ser reenviado";
+                            if (!resendFeedback.trim()) { toast.error("A mensagem para o profissional é obrigatória."); return; }
+                            const fb = resendFeedback.trim();
                             try {
                               await axios.patch(`${API}/api/admin/documents/${doc.id}/status?status=replacement_requested&reason=${encodeURIComponent(fb)}&feedback=${encodeURIComponent(fb)}`, {}, { headers });
                               toast.success("Reenvio solicitado!");
@@ -561,6 +583,9 @@ const ProfessionalsPanel = () => {
   const { headers } = useAdmin();
   const [list,       setList]       = useState([]);
   const [filter,     setFilter]     = useState("pending");
+  const [viewMode,   setViewMode]   = useState("professionals"); // professionals | clients
+  const [clientList,  setClientList] = useState([]);
+  const [clientFilter, setClientFilter] = useState("pending");
   const [viewingDoc, setViewingDoc] = useState(null);
   const [checklist,  setChecklist]  = useState(null);
   const [unifiedProfile, setUnifiedProfile] = useState(null);
@@ -571,7 +596,13 @@ const ProfessionalsPanel = () => {
       .then(r => setList(r.data)).catch(() => {});
   };
 
+  const loadClients = () => {
+    axios.get(`${API}/api/admin/clients?status=${clientFilter}`, { headers })
+      .then(r => setClientList(r.data)).catch(() => {});
+  };
+
   useEffect(() => { loadProfessionals(); }, [filter]);
+  useEffect(() => { if (viewMode === "clients") loadClients(); }, [clientFilter, viewMode]);
 
   const approve = async (id) => {
     await axios.patch(`${API}/api/admin/professionals/${id}/approve`, {}, { headers });
@@ -720,6 +751,59 @@ const ProfessionalsPanel = () => {
         </div>
       )}
 
+      {/* 2.4: Professionals / Clients toggle */}
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setViewMode("professionals")}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold ${viewMode === "professionals" ? "bg-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+          👩‍⚕️ Profissionais
+        </button>
+        <button onClick={() => setViewMode("clients")}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold ${viewMode === "clients" ? "bg-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+          👤 Clientes
+        </button>
+      </div>
+
+      {viewMode === "clients" ? (
+        <div>
+          <h2 className="font-display text-xl font-bold text-navy mb-4">Clientes</h2>
+          <div className="flex gap-2 mb-5">
+            {["pending","verified"].map(s => (
+              <button key={s} onClick={() => setClientFilter(s)}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors
+                  ${clientFilter === s ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600 hover:border-blue-400"}`}>
+                {s === "pending" ? "Pendentes" : "Verificados"}
+              </button>
+            ))}
+          </div>
+          {clientList.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-10">Nenhum cliente nesta categoria.</p>
+          ) : (
+            <div className="space-y-3">
+              {clientList.map(c => (
+                <div key={c.id} className="card p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-navy text-sm">{c.full_name}</p>
+                      <p className="text-xs text-slate-500">{c.email} · {c.phone || "sem telefone"}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">CPF: {c.cpf || "N/A"} · Docs: {c.documents?.length || 0}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                      <button onClick={() => setViewingDoc({...c, council_number: null, council_state: null})}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50">
+                        <FileText size={13} /> Docs ({c.documents?.length || 0})
+                      </button>
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${c.is_verified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                        {c.is_verified ? "✓ Verificado" : "Pendente"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+      <div>
       <h2 className="font-display text-xl font-bold text-navy mb-4">Profissionais</h2>
       <div className="flex gap-2 mb-5">
         {["pending","approved","rejected"].map(s => (
@@ -803,6 +887,8 @@ const ProfessionalsPanel = () => {
             </div>
           ))}
         </div>
+      )}
+      </div>
       )}
     </div>
   );
@@ -1118,6 +1204,7 @@ const ValidationPanel = () => {
   const [corenInput, setCorenInput] = useState("");
   const [manualName, setManualName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
+  const [overrideJustification, setOverrideJustification] = useState("");
   const [result, setResult] = useState(null);
   const [corenResult, setCorenResult] = useState(null);
   const [calibration, setCalibration] = useState(null);
@@ -1250,12 +1337,16 @@ const ValidationPanel = () => {
 
             {/* 1-4: Block approval on name mismatch — require manual confirmation */}
             {corenResult.matched && corenResult.name_match === false && (
-              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                <textarea className="form-input text-xs w-full min-h-[60px]"
+                  placeholder="Justificativa obrigatória: explique por que está aprovando mesmo com nome divergente"
+                  value={overrideJustification} onChange={e => setOverrideJustification(e.target.value)} />
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input type="checkbox" className="mt-0.5 accent-amber-500"
-                    checked={nameConfirmed} onChange={e => setNameConfirmed(e.target.checked)} />
+                    checked={nameConfirmed} onChange={e => setNameConfirmed(e.target.checked)}
+                    disabled={!overrideJustification.trim()} />
                   <span className="text-xs text-amber-700 font-medium">
-                    Confirmo que verifiquei manualmente o certificado e autorizo a aprovação mesmo com nome divergente.
+                    Confirmo que verifiquei manualmente e autorizo a aprovação.
                   </span>
                 </label>
               </div>
@@ -1264,16 +1355,31 @@ const ValidationPanel = () => {
             {/* Auto-verify button — blocked if name mismatch and not confirmed */}
             {corenResult.matched && corenResult.auto_verify && (
               <button
-                disabled={corenResult.name_match === false && !nameConfirmed}
+                disabled={corenResult.name_match === false && (!nameConfirmed || !overrideJustification.trim())}
                 onClick={async () => {
                   try {
+                    const reason = corenResult.name_match === false
+                      ? `NOME DIVERGENTE — Justificativa: ${overrideJustification}`
+                      : "COREN verificado automaticamente";
                     await axios.patch(`${API}/api/admin/professionals/${corenResult.professional_id}/approve`, {}, { headers });
+                    // Log the override justification to audit
+                    if (corenResult.name_match === false) {
+                      await axios.post(`${API}/api/admin/coren-verify-log`, {
+                        professional_id: corenResult.professional_id,
+                        action: "name_mismatch_override",
+                        justification: overrideJustification,
+                        extracted_name: corenResult.extracted_name,
+                        profile_name: corenResult.profile_name,
+                      }, { headers }).catch(() => {});
+                    }
                     toast.success("Profissional aprovado!");
-                    setCorenResult(null);
+                    setCorenResult(null); setNameConfirmed(false); setOverrideJustification("");
                   } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
                 }}
                 className="btn-primary w-full mt-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed">
-                {corenResult.name_match === false ? (nameConfirmed ? "Aprovar mesmo assim" : "Aprovação bloqueada — confirme acima") : "✓ Aprovar profissional"}
+                {corenResult.name_match === false
+                  ? (nameConfirmed && overrideJustification.trim() ? "Aprovar mesmo assim" : "Preencha a justificativa acima")
+                  : "✓ Aprovar profissional"}
               </button>
             )}
           </div>

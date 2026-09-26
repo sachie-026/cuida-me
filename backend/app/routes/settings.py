@@ -143,6 +143,10 @@ DEFAULTS = {
     "pro_cancel_suspend_days_first":7,
     "pro_cancel_suspend_days_repeat":30,
     "pro_cancel_review_threshold":  5,
+    # 2.2c: Editable verification message templates
+    "reject_templates": "Documento ilegível|Documento expirado|Nome não corresponde|CPF não corresponde|Número COREN não corresponde|Documento obrigatório ausente|Informação adicional necessária",
+    "resend_templates": "Envie uma foto mais legível|O documento enviado pertence a outra pessoa|Documento expirado, envie versão atualizada|Envie frente e verso do documento",
+    "verification_complete_msg": "Olá {nome}! Sua verificação como {categoria} foi concluída com sucesso. Você já pode usar o CuidaU para receber atendimentos. Bem-vindo(a)!",
 }
 
 # Validation rules: { field: (min, max, type) }
@@ -391,3 +395,12 @@ def get_settings_audit(limit: int = 50, db: Session = Depends(get_db), _=Depends
         "field": l.field, "old_value": l.old_value, "new_value": l.new_value,
         "created_at": l.created_at.isoformat() if l.created_at else None,
     } for l in logs]
+@router.get("/verification-templates")
+def get_verification_templates(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """2.2c: Get editable rejection/resend/completion message templates."""
+    current = get_all_settings(db)
+    return {
+        "reject_templates": [t.strip() for t in current.get("reject_templates", "").split("|") if t.strip()],
+        "resend_templates": [t.strip() for t in current.get("resend_templates", "").split("|") if t.strip()],
+        "verification_complete_msg": current.get("verification_complete_msg", ""),
+    }

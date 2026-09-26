@@ -199,20 +199,34 @@ def calculate_price(
     if markup_pct not in VALID_MARKUPS:
         raise ValueError(f"Invalid markup {markup_pct}%. Valid: {VALID_MARKUPS}")
 
-    total_minutes = (end_time - start_time).total_seconds() / 60
+    # 1.11: Ensure we work in Brazil local time for day/night classification
+    from datetime import timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        BRT = ZoneInfo("America/Sao_Paulo")
+        if start_time.tzinfo is not None:
+            start_local = start_time.astimezone(BRT).replace(tzinfo=None)
+            end_local = end_time.astimezone(BRT).replace(tzinfo=None)
+        else:
+            start_local = start_time
+            end_local = end_time
+    except ImportError:
+        start_local = start_time
+        end_local = end_time
+
+    total_minutes = (end_local - start_local).total_seconds() / 60
     if total_minutes < MINIMUM_DURATION_MINUTES:
         raise ValueError(f"Duração mínima é {MINIMUM_DURATION_MINUTES // 60} horas ({MINIMUM_DURATION_MINUTES} minutos)")
 
     # Count ALL day/night minutes for the full booking (for display + shift detection)
-    full_split = _count_day_night_minutes(start_time, end_time)
+    full_split = _count_day_night_minutes(start_local, end_local)
 
     # Initial Service Fee covers the first 120 minutes
     INITIAL_FEE_MINUTES = 120
     remaining_minutes = max(0, total_minutes - INITIAL_FEE_MINUTES)
 
     # Count day/night minutes for REMAINING time only (after first 2h) — for cost calculation
-    from datetime import timedelta
-    remaining_start = start_time + timedelta(minutes=INITIAL_FEE_MINUTES)
+    remaining_start = start_local + timedelta(minutes=INITIAL_FEE_MINUTES)
     if remaining_minutes > 0:
         extra_split = _count_day_night_minutes(remaining_start, end_time)
     else:

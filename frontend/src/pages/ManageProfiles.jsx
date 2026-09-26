@@ -30,7 +30,14 @@ const ManageProfiles = () => {
     } else { setLoading(false); }
   }, []);
 
-  const switchTo = (role) => {
+  const switchTo = async (role) => {
+    try {
+      const { data } = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=${role}`, { headers });
+      if (!data.can_switch) {
+        toast.error(data.message || "Não é possível trocar de perfil com agendamentos ativos.");
+        return;
+      }
+    } catch { /* if check fails, allow switch */ }
     localStorage.setItem("role", role);
     toast.success(`${t("manage_profiles.active_profile")}: ${t(`roles.${role}`)}`);
     navigate(["nurse","technician","nursing_assistant","caregiver"].includes(role) ? "/dashboard/professional" : "/dashboard/client");

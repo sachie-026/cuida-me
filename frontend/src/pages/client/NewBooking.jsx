@@ -188,7 +188,7 @@ const NewBooking = () => {
         shift,
         scheduled_start: start.toISOString(), scheduled_end: end.toISOString(),
         is_urgent: isUrgent, distance_km: 0,
-        markup_pct: priceResult.markup_pct,
+        markup_pct: selectedPro.markup_pct || 0,
         notes,
       }, {headers});
       toast.success("Agendamento criado com sucesso!");

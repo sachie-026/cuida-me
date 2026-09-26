@@ -26,11 +26,17 @@ const ClientDashboard = () => {
 
   const [bookings,     setBookings]     = useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [isVerified,   setIsVerified]   = useState(true); // assume verified until checked
   const [ratingBooking,setRatingBooking] = useState(null);
   const [ratedIds,     setRatedIds]     = useState([]);
   const [cancellingBooking, setCancellingBooking] = useState(null);
 
   useEffect(() => {
+    // 2.5c: Check verification status
+    axios.get(`${API}/api/users/${userId}`, { headers })
+      .then(r => setIsVerified(r.data.is_verified !== false))
+      .catch(() => {});
+
     const t0 = performance.now();
 
     // 53b: First get patient (required for bookings), then parallelize the rest
@@ -96,6 +102,23 @@ const ClientDashboard = () => {
             </button>
           </div>
         </div>
+
+        {/* 2.5c: Pending verification banner */}
+        {!isVerified && (
+          <div className="card p-5 mb-6 border-2 border-amber-300 bg-amber-50">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">📋</span>
+              <div>
+                <p className="font-bold text-navy mb-1">Verificação pendente</p>
+                <p className="text-sm text-slate-600 mb-2">Para buscar e agendar profissionais, envie seus documentos de identidade.</p>
+                <p className="text-xs text-slate-500 mb-3">Documentos necessários: RG/CNH (frente e verso) + selfie com documento.</p>
+                <button onClick={() => navigate("/profile/client")} className="btn-primary text-sm">
+                  Enviar documentos →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-4 mb-8">
           {stats.map((s, i) => (

@@ -394,6 +394,16 @@ class DocumentAuditLog(Base):
     doc_type    = Column(String, nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
+class ProfileTermsConsent(Base):
+    """3.6: Track terms acceptance per profile (client, nurse, etc.) with audit."""
+    __tablename__ = "profile_terms_consent"
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id     = Column(String, nullable=False)
+    profile     = Column(String, nullable=False)  # client, nurse, technician, etc.
+    terms_version = Column(String, nullable=False, default="1.0")
+    accepted_at = Column(DateTime(timezone=True), server_default=func.now())
+    ip_address  = Column(String, nullable=True)
+
 class PlatformSettings(Base):
     """Stores editable platform operating parameters. Single row, key-value."""
     __tablename__ = "platform_settings"

@@ -119,6 +119,12 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     if patient.user_id != current.id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
 
+    # 3.5: Self-booking blocked — same person can't be both client and professional
+    if hasattr(body, 'professional_id') and body.professional_id:
+        pro = db.query(Professional).filter(Professional.id == body.professional_id).first()
+        if pro and pro.user_id == current.id:
+            raise HTTPException(400, "Não é possível agendar um atendimento consigo mesmo. Selecione outro profissional.")
+
     # Auto-detect holiday if not already set
     date_str = body.scheduled_start.strftime("%Y-%m-%d")
     holiday_info = check_date_for_holiday(date_str, db)
