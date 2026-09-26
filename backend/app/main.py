@@ -229,6 +229,14 @@ def run_migrations():
             is_read BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         )""",
+        """CREATE TABLE IF NOT EXISTS profile_terms_consent (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            profile VARCHAR NOT NULL,
+            terms_version VARCHAR NOT NULL DEFAULT '1.0',
+            accepted_at TIMESTAMPTZ DEFAULT NOW(),
+            ip_address VARCHAR
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:

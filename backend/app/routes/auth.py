@@ -381,6 +381,70 @@ def set_default_profile(profile: str, db: Session = Depends(get_db), current: Us
     db.commit()
     return {"default_profile": profile, "message": f"Perfil padrão alterado para '{profile}'."}
 
+@router.get("/can-switch-profile")
+def can_switch_profile(to_profile: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """3.4: Check if user can switch profiles — blocked when active/pending bookings exist."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    pro_roles = ["nurse", "technician", "nursing_assistant", "caregiver"]
+
+    # Check for active bookings in current role
+    active_count = 0
+    if current_role in pro_roles:
+        # Switching FROM professional — check professional bookings
+        prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+        if prof:
+            active_count = db.query(Booking).filter(
+                Booking.professional_id == prof.id,
+                Booking.status.in_(["pending", "accepted", "checked_in"]),
+                Booking.scheduled_end >= now,
+            ).count()
+    else:
+        # Switching FROM client — check client bookings via patients table
+        try:
+            from sqlalchemy import text
+            result = db.execute(text(
+                "SELECT COUNT(*) FROM bookings b JOIN patients p ON b.patient_id = p.id "
+                "WHERE p.user_id = :uid AND b.status IN ('pending','accepted','checked_in') "
+                "AND b.scheduled_end >= :now"
+            ), {"uid": current.id, "now": now})
+            active_count = result.scalar() or 0
+        except:
+            active_count = 0
+
+    can_switch = active_count == 0
+    return {
+        "can_switch": can_switch,
+        "active_bookings": active_count,
+        "message": None if can_switch else f"Você possui {active_count} agendamento(s) ativo(s). Conclua ou cancele antes de trocar de perfil.",
+    }
+
+@router.post("/accept-terms")
+def accept_terms(profile: str, terms_version: str = "1.0", db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """3.6: Record terms acceptance per profile."""
+    from app.models.models import ProfileTermsConsent
+    valid = ["client", "nurse", "technician", "nursing_assistant", "caregiver"]
+    if profile not in valid:
+        raise HTTPException(400, f"Perfil inválido. Use: {valid}")
+    consent = ProfileTermsConsent(
+        user_id=current.id, profile=profile, terms_version=terms_version,
+    )
+    db.add(consent)
+    db.commit()
+    return {"accepted": True, "profile": profile, "terms_version": terms_version}
+
+@router.get("/terms-status")
+def get_terms_status(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """3.6: Get terms acceptance status for all profiles."""
+    from app.models.models import ProfileTermsConsent
+    consents = db.query(ProfileTermsConsent).filter(ProfileTermsConsent.user_id == current.id).order_by(ProfileTermsConsent.accepted_at.desc()).all()
+    by_profile = {}
+    for c in consents:
+        if c.profile not in by_profile:
+            by_profile[c.profile] = {"terms_version": c.terms_version, "accepted_at": c.accepted_at.isoformat() if c.accepted_at else None}
+    return {"profiles": by_profile}
+
 @router.get("/sms/health")
 def sms_health():
     """46b: Check if SMS provider is configured and ready."""

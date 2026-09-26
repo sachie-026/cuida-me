@@ -161,8 +161,12 @@ const ProfileMenu = () => {
           <div className="border-t border-slate-100 mt-1 pt-1">
             {/* Client with existing pro profile → switch view (not create) */}
             {role === "client" && hasPro && (
-              <button onClick={() => {
+              <button onClick={async () => {
                 const proRole = roles.find(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r)) || "nurse";
+                try {
+                  const { data } = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=${proRole}`, { headers: { Authorization: `Bearer ${token}` } });
+                  if (!data.can_switch) { toast.error(data.message); return; }
+                } catch {}
                 localStorage.setItem("role", proRole);
                 toast.success("Modo alterado para Profissional");
                 navigate("/dashboard/professional");
@@ -183,7 +187,11 @@ const ProfileMenu = () => {
 
             {/* Professional → switch to client view */}
             {isPro && (
-              <button onClick={() => {
+              <button onClick={async () => {
+                try {
+                  const { data } = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=client`, { headers: { Authorization: `Bearer ${token}` } });
+                  if (!data.can_switch) { toast.error(data.message); return; }
+                } catch {}
                 localStorage.setItem("role", "client");
                 toast.success("Modo alterado para Cliente");
                 navigate("/dashboard/client");

@@ -81,11 +81,21 @@ def calculate_booking_price(body: PriceCalcRequest, db: Session = Depends(get_db
         raise HTTPException(400, "Invalid start_time or end_time format. Use ISO datetime.")
 
     try:
-        return calculate_price(
+        full_result = calculate_price(
             role=role, start_time=start, end_time=end,
             markup_pct=markup, is_urgent=body.is_urgent,
             is_holiday=body.is_holiday, distance_km=body.distance_km,
         )
+        # Client sees only the final price — breakdown is internal/admin only
+        client_response = {
+            "total": full_result["total"],
+            "duration_minutes": full_result["duration_minutes"],
+            "duration_hours": full_result["duration_hours"],
+            "role": full_result["role"],
+            "start_time": full_result["start_time"],
+            "end_time": full_result["end_time"],
+        }
+        return client_response
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -109,6 +119,14 @@ def get_nearby(
         Professional.approval_status == DocStatus.approved,
         Professional.is_available    == True,
     ).all()
+
+    # 2.5b: Filter out professionals whose user account is not verified
+    verified_pros = []
+    for p in professionals:
+        u = db.query(User).filter(User.id == p.user_id).first()
+        if u and u.is_verified:
+            verified_pros.append(p)
+    professionals = verified_pros
 
     # Filter out resting professionals (#7 mandatory rest)
     professionals = [p for p in professionals if not p.rest_until or p.rest_until <= now]
@@ -185,8 +203,7 @@ def get_nearby(
                         e = dt.fromisoformat(end_time) if isinstance(end_time, str) else end_time
                         price = calculate_price(role=active_role, start_time=s, end_time=e, markup_pct=prof.markup_pct or 0)
                         pro_data["total_price"] = price["total"]
-                        pro_data["base_price"] = price["base_price"]
-                        pro_data["pro_payout"] = price["pro_payout"]
+                        # Breakdown kept server-side only — client sees total_price only
                     except:
                         pass
                 filtered.append(pro_data)

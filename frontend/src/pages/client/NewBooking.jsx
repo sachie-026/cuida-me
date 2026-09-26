@@ -188,7 +188,7 @@ const NewBooking = () => {
         shift,
         scheduled_start: start.toISOString(), scheduled_end: end.toISOString(),
         is_urgent: isUrgent, distance_km: 0,
-        markup_pct: priceResult.markup_pct,
+        markup_pct: selectedPro.markup_pct || 0,
         notes,
       }, {headers});
       toast.success("Agendamento criado com sucesso!");
@@ -597,49 +597,10 @@ const NewBooking = () => {
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Detalhamento do valor</p>
-              </div>
-              <div className="p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Taxa inicial ({priceResult.initial_fee_minutes || 120}min inclusos)</span>
-                  <span>R${priceResult.initial_fee?.toFixed(2)}</span>
-                </div>
-                {priceResult.extra_day_minutes > 0 && (
-                  <div className="flex justify-between text-slate-500">
-                    <span>Horas diurnas extras ({priceResult.extra_day_minutes}min × R${priceResult.day_rate}/h)</span>
-                    <span>R${priceResult.day_cost?.toFixed(2)}</span>
-                  </div>
-                )}
-                {priceResult.extra_night_minutes > 0 && (
-                  <div className="flex justify-between text-slate-500">
-                    <span>Horas noturnas extras ({priceResult.extra_night_minutes}min × R${priceResult.night_rate}/h)</span>
-                    <span>R${priceResult.night_cost?.toFixed(2)}</span>
-                  </div>
-                )}
-                {priceResult.markup_amount>0 && (
-                  <div className="flex justify-between text-slate-500">
-                    <span>Acréscimo profissional (+{priceResult.markup_pct}%)</span>
-                    <span>+R${priceResult.markup_amount?.toFixed(2)}</span>
-                  </div>
-                )}
-                {priceResult.surcharge_amount>0 && (
-                  <div className="flex justify-between text-amber-600">
-                    <span>{priceResult.surcharge_labels?.join(", ")}</span>
-                    <span>+R${priceResult.surcharge_amount?.toFixed(2)}</span>
-                  </div>
-                )}
-                {priceResult.distance_fee>0 && (
-                  <div className="flex justify-between text-slate-500">
-                    <span>Taxa de deslocamento</span>
-                    <span>+R${priceResult.distance_fee?.toFixed(2)}</span>
-                  </div>
-                )}
-                <hr className="border-slate-200"/>
-                <div className="flex justify-between font-bold text-navy text-base">
-                  <span>Total</span><span>R${priceResult.total?.toFixed(2)}</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">💳 PIX ou cartão será processado após confirmação do profissional</p>
+              <div className="p-5 text-center">
+                <p className="text-xs text-slate-500 mb-1">Valor total</p>
+                <p className="text-3xl font-bold text-navy">R${priceResult.total?.toFixed(2)}</p>
+                <p className="text-xs text-slate-400 mt-2">💳 PIX ou cartão será processado após confirmação do profissional</p>
               </div>
             </div>
 

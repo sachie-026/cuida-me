@@ -137,6 +137,41 @@ def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db
         result.append(_ser_prof(prof, user, docs))
     return result
 
+@router.get("/clients")
+def get_clients(status: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """2.4: List clients with their documents for admin verification."""
+    q = db.query(User).filter(User.role == "client")
+    if status == "verified":
+        q = q.filter(User.is_verified == True)
+    elif status == "pending":
+        q = q.filter(User.is_verified == False)
+    clients = q.order_by(User.created_at.desc()).all()
+    result = []
+    for user in clients:
+        docs = db.query(Document).filter(Document.user_id == user.id).all()
+        result.append({
+            "id": user.id,
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "cpf": user.cpf,
+            "phone": user.phone,
+            "is_verified": user.is_verified,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "documents": [
+                {
+                    "id": d.id,
+                    "doc_type": d.doc_type,
+                    "file_url": _fresh_doc_url(d.file_url),
+                    "status": d.status.value if hasattr(d.status, 'value') else str(d.status),
+                    "rejection_reason": d.rejection_reason,
+                    "admin_feedback": d.admin_feedback,
+                }
+                for d in docs
+            ],
+        })
+    return result
+
 @router.patch("/professionals/{prof_id}/approve")
 def approve_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(require_admin)):
     prof = db.query(Professional).filter(Professional.id == prof_id).first()
@@ -160,6 +195,27 @@ def reject_professional(prof_id: str, db: Session = Depends(get_db), _=Depends(r
     db.commit()
     return {"id": prof_id, "status": "rejected"}
 
+class CorenVerifyLogRequest(BaseModel):
+    professional_id: str
+    action: str
+    justification: str = ""
+    extracted_name: Optional[str] = None
+    profile_name: Optional[str] = None
+
+@router.post("/coren-verify-log")
+def log_coren_verification(body: CorenVerifyLogRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """Log COREN verification actions (name mismatch overrides, etc.) to audit trail."""
+    log = DocumentAuditLog(
+        doc_id="coren_verification", user_id=body.professional_id,
+        admin_id=current.id, admin_name=current.full_name,
+        action=body.action, doc_type="coren_override",
+        reason=f"Extracted: {body.extracted_name} | Profile: {body.profile_name}",
+        feedback=body.justification,
+    )
+    db.add(log)
+    db.commit()
+    return {"logged": True}
+
 @router.post("/professionals/{prof_id}/complete-verification")
 def complete_verification(prof_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     """2-5: Admin marks verification as complete — sets verified, notifies user."""
@@ -182,23 +238,26 @@ def complete_verification(prof_id: str, db: Session = Depends(get_db), current: 
     prof.approval_status = DocStatus.approved
     user.is_verified = True
 
-    # 2-6: In-app notification
-    try:
-        from app.models.models import Notification
-        notif = Notification(
-            user_id=user.id,
-            title="Verificação concluída! ✅",
-            message="Sua verificação foi concluída com sucesso. Você já pode usar o app para receber atendimentos.",
-            notification_type="verification_complete",
-        )
-        db.add(notif)
-    except Exception as e:
-        print(f"[NOTIF] Failed to create notification: {e}")
+    # 2.3b: Build category-specific message from editable template
+    ROLE_LABELS_PT = {"nurse": "Enfermeiro(a)", "technician": "Técnico(a) de Enfermagem",
+                      "nursing_assistant": "Auxiliar de Enfermagem", "caregiver": "Cuidador(a)"}
+    cat_label = ROLE_LABELS_PT.get(getattr(prof, 'professional_category', None) or "nurse", "Profissional de Saúde")
+    first_name = user.full_name.split()[0] if user.full_name else "Profissional"
 
-    # 2-7: Email notification (stub — prints to log until email service configured)
-    print(f"[EMAIL STUB] To: {user.email} | Subject: Verificação concluída | Body: Olá {user.full_name}, sua verificação profissional foi concluída com sucesso. Você já pode usar o CuidaU para receber atendimentos.")
-    # TODO: Replace with real email when SendGrid/SES is configured:
-    # send_email(to=user.email, subject="Verificação concluída", body=f"Olá {user.full_name}, ...")
+    # 2.3c: Load editable message template from admin settings
+    try:
+        from app.routes.settings import get_all_settings
+        settings_data = get_all_settings(db)
+        msg_template = settings_data.get("verification_complete_msg",
+            "Olá {nome}! Sua verificação como {categoria} foi concluída com sucesso. Você já pode usar o CuidaU para receber atendimentos. Bem-vindo(a)!")
+    except:
+        msg_template = "Olá {nome}! Sua verificação como {categoria} foi concluída com sucesso. Você já pode usar o CuidaU para receber atendimentos. Bem-vindo(a)!"
+
+    notif_message = msg_template.replace("{nome}", first_name).replace("{categoria}", cat_label)
+
+    # 2.3d: Send via all channels — in-app, email, WhatsApp
+    from app.utils.notifications import notify_all_channels
+    notify_results = notify_all_channels(db, user, f"Verificação concluída, {first_name}! ✅", notif_message, "verification_complete")
 
     db.commit()
 
@@ -324,6 +383,12 @@ def reject_document(doc_id: str, reason: str = "Documento inválido ou ilegível
             if prof and prof.approval_status == DocStatus.approved:
                 prof.approval_status = DocStatus.pending
                 db.commit()
+
+        # 2.2d: Notify user via all channels
+        from app.utils.notifications import notify_all_channels
+        fb_msg = feedback or reason
+        notify_all_channels(db, user, "Documento requer atenção", f"Seu documento '{doc.doc_type}' foi revisado. Motivo: {fb_msg}", "document_feedback")
+        db.commit()
 
     return {"id": doc_id, "status": "rejected", "reason": reason}
 
@@ -1024,6 +1089,15 @@ def update_document_status(doc_id: str, status: str, reason: str = "", feedback:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
+    # 2.2d: Notify user when resend requested
+    if status == "replacement_requested":
+        user = db.query(User).filter(User.id == doc.user_id).first()
+        if user:
+            from app.utils.notifications import notify_all_channels
+            fb_msg = feedback or reason or "Documento precisa ser reenviado"
+            notify_all_channels(db, user, "Reenvio de documento solicitado", f"Seu documento '{doc.doc_type}' precisa ser reenviado. Motivo: {fb_msg}", "document_feedback")
+            db.commit()
+
     return {"doc_id": doc_id, "status": status, "reason": reason}
 
 # ── 10.1-16: Admin actions per professional ────────────────────────────────────
@@ -1367,3 +1441,21 @@ def delete_user_by_email(email: str, dev_key: str = None, db: Session = Depends(
     db.commit()
     return {"deleted_user": email, "user_id": uid, "related_deleted": counts,
             "message": f"Usuário '{email}' e todos os dados relacionados foram removidos."}
+
+@router.get("/unverified-counts")
+def get_unverified_counts(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """2.5d: Count unverified users by type for admin awareness."""
+    unverified_clients = db.query(User).filter(User.role == "client", User.is_verified == False).count()
+    unverified_pros = db.query(User).filter(
+        User.role.in_(["nurse", "technician", "nursing_assistant", "caregiver"]),
+        User.is_verified == False
+    ).count()
+    total_clients = db.query(User).filter(User.role == "client").count()
+    total_pros = db.query(Professional).count()
+    return {
+        "unverified_clients": unverified_clients,
+        "unverified_professionals": unverified_pros,
+        "total_clients": total_clients,
+        "total_professionals": total_pros,
+        "message": f"{unverified_clients} cliente(s) e {unverified_pros} profissional(ais) não verificados.",
+    }
