@@ -473,31 +473,78 @@ class BecomeProfessionalRequest(BaseModel):
     council_number: Optional[str] = None
     council_state: Optional[str] = None
 
+BRAZIL_STATES = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
+
 @router.post("/become-professional")
 def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """45b: Client adds a Professional profile to their existing account."""
     if body.professional_role not in PRO_ROLES:
         raise HTTPException(400, f"Categoria inválida. Use: {PRO_ROLES}")
 
-    # P3-3: Check if already has a professional profile — activate it instead of blocking
+    needs_coren = body.professional_role in ("nurse", "technician", "nursing_assistant")
+
+    # C2: Validate COREN required for nurse/tech/assistant
+    if needs_coren:
+        if not body.council_number or not body.council_number.strip():
+            raise HTTPException(400, "Número COREN é obrigatório para esta categoria.")
+        if not body.council_number.strip().isdigit():
+            raise HTTPException(400, "Número COREN deve conter apenas dígitos.")
+        if len(body.council_number.strip()) < 4 or len(body.council_number.strip()) > 7:
+            raise HTTPException(400, "Número COREN deve ter entre 4 e 7 dígitos.")
+        if not body.council_state or body.council_state.upper() not in BRAZIL_STATES:
+            raise HTTPException(400, f"Estado (UF) inválido. Use um dos 27 estados brasileiros.")
+
+    # C2: Check duplicate COREN — another user already has this number
+    if body.council_number and body.council_number.strip():
+        existing_coren = db.query(Professional).filter(
+            Professional.council_number == body.council_number.strip(),
+            Professional.user_id != current.id,
+        ).first()
+        if existing_coren:
+            # Flag to admin audit log
+            try:
+                from app.models.models import DocumentAuditLog
+                log = DocumentAuditLog(
+                    doc_id="duplicate_coren", user_id=current.id,
+                    admin_id="system", admin_name="Sistema",
+                    action="duplicate_coren_attempt", doc_type="coren",
+                    reason=f"COREN {body.council_number} já está vinculado a outro profissional (user_id={existing_coren.user_id})",
+                    feedback=f"Tentativa de cadastro duplicado por {current.email}",
+                )
+                db.add(log)
+                db.commit()
+            except Exception:
+                pass
+            raise HTTPException(409, f"Este número COREN ({body.council_number}) já está vinculado a outra conta. Se você acredita que houve um erro, entre em contato com o suporte.")
+
+    # Safe role extraction helper
+    def _get_role_str(user):
+        if hasattr(user.role, 'value'):
+            return user.role.value
+        return str(user.role) if user.role else "client"
+
+    # Check if already has a professional profile — update instead of blocking
     existing = db.query(Professional).filter(Professional.user_id == current.id).first()
     if existing:
-        # Update existing record with new info if provided
         if body.council_number:
-            existing.council_number = body.council_number
+            existing.council_number = body.council_number.strip()
         if body.council_state:
-            existing.council_state = body.council_state
-        if body.professional_role != "caregiver":
+            existing.council_state = body.council_state.upper()
+        if needs_coren:
             existing.council_type = "COREN"
         existing.professional_category = body.professional_role
 
-        # Ensure user roles are updated
-        roles = list(current.roles or [current.role.value if hasattr(current.role, 'value') else str(current.role)])
+        roles = list(current.roles or [_get_role_str(current)])
         if body.professional_role not in roles:
             roles.append(body.professional_role)
         current.roles = roles
         current.has_professional_profile = True
-        db.commit()
+
+        try:
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(500, f"Erro ao atualizar perfil: {str(e)}")
 
         return {
             "message": f"Perfil profissional atualizado. Categoria: {body.professional_role}. Envie seus documentos para verificação.",
@@ -509,23 +556,26 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
     # Create new professional record
     prof = Professional(
         user_id=current.id,
-        council_number=body.council_number,
-        council_state=body.council_state,
-        council_type="COREN" if body.professional_role != "caregiver" else None,
+        council_number=body.council_number.strip() if body.council_number else None,
+        council_state=body.council_state.upper() if body.council_state else None,
+        council_type="COREN" if needs_coren else None,
         professional_category=body.professional_role,
         approval_status=DocStatus.pending,
     )
     db.add(prof)
 
-    # Update user roles
-    roles = list(current.roles or [current.role.value])
+    roles = list(current.roles or [_get_role_str(current)])
     if body.professional_role not in roles:
         roles.append(body.professional_role)
     current.roles = roles
     current.has_professional_profile = True
 
-    db.commit()
-    db.refresh(prof)
+    try:
+        db.commit()
+        db.refresh(prof)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Erro ao criar perfil profissional: {str(e)}")
 
     return {
         "message": f"Perfil profissional criado como {body.professional_role}. Envie seus documentos para verificação.",

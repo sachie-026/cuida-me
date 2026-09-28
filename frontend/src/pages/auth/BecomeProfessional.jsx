@@ -117,11 +117,21 @@ const BecomeProfessional = () => {
             <div className="space-y-3">
               <div>
                 <label className="form-label">Número COREN</label>
-                <input className="form-input" placeholder="Ex: 123456" value={corenNumber} onChange={e => setCorenNumber(e.target.value)} />
+                <input className="form-input" placeholder="Ex: 528594" value={corenNumber}
+                  onChange={e => setCorenNumber(e.target.value.replace(/\D/g, "").slice(0, 7))}
+                  inputMode="numeric" pattern="[0-9]*" />
+                {corenNumber && (corenNumber.length < 4 || corenNumber.length > 7) && (
+                  <p className="text-xs text-red-500 mt-1">Deve ter entre 4 e 7 dígitos</p>
+                )}
               </div>
               <div>
                 <label className="form-label">Estado (UF)</label>
-                <input className="form-input" placeholder="Ex: SP" value={corenState} onChange={e => setCorenState(e.target.value.toUpperCase())} maxLength={2} />
+                <select className="form-input" value={corenState} onChange={e => setCorenState(e.target.value)}>
+                  <option value="">Selecione o estado...</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

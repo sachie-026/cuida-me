@@ -168,9 +168,16 @@ const NewBooking = () => {
         end_time: end.toISOString(),
         is_urgent: isUrgent, distance_km: 0,
       }, {headers});
+      if (!priceRes.data?.total) {
+        toast.error("Não foi possível calcular o valor para este profissional.");
+        return;
+      }
       setPriceResult(priceRes.data);
       setStep(3);
-    } catch { toast.error("Erro ao calcular preço."); }
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.response?.data?.message;
+      toast.error(detail || "Erro ao calcular preço. Tente novamente.");
+    }
     finally { setLoading(false); }
   };
 
@@ -558,15 +565,19 @@ const NewBooking = () => {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        {proPrice && (
+                        {proPrice ? (
                           <div className="text-right">
                             <p className="text-lg font-bold text-green-700">R$ {Number(proPrice).toFixed(0)}</p>
                             <p className="text-[10px] text-slate-400">valor estimado</p>
                           </div>
+                        ) : (
+                          <div className="text-right">
+                            <p className="text-xs text-red-400">Valor indisponível</p>
+                          </div>
                         )}
-                        <button onClick={()=>handleSelectPro(pro)} disabled={loading}
+                        <button onClick={()=>handleSelectPro(pro)} disabled={loading || !proPrice}
                           className="btn-primary text-sm px-4 py-2 disabled:opacity-60">
-                          {loading&&selectedPro?.id===pro.id?"...":"Agendar"}
+                          {loading&&selectedPro?.id===pro.id?"...": proPrice ? "Agendar" : "Indisponível"}
                         </button>
                       </div>
                     </div>
