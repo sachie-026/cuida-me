@@ -64,10 +64,11 @@ def calculate_booking_price(body: PriceCalcRequest, db: Session = Depends(get_db
         prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
         if not prof:
             raise HTTPException(404, "Professional not found")
-        user = db.query(User).filter(User.id == prof.user_id).first()
-        if not user:
-            raise HTTPException(404, "Professional user not found")
-        role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        # Use professional_category (not user.role — multi-profile users have role='client')
+        role = prof.professional_category or prof.active_category
+        if not role:
+            user = db.query(User).filter(User.id == prof.user_id).first()
+            role = user.role.value if user and hasattr(user.role, 'value') else str(user.role) if user else None
         markup = prof.markup_pct or 0
 
     if not role:
@@ -203,9 +204,13 @@ def get_nearby(
                         e = dt.fromisoformat(end_time) if isinstance(end_time, str) else end_time
                         price = calculate_price(role=active_role, start_time=s, end_time=e, markup_pct=prof.markup_pct or 0)
                         pro_data["total_price"] = price["total"]
-                        # Breakdown kept server-side only — client sees total_price only
-                    except:
-                        pass
+                    except Exception as price_err:
+                        print(f"[PRICE] Failed for prof {prof.id} role={active_role}: {price_err}")
+                        pro_data["total_price"] = None
+
+                # Only include professionals with a valid price
+                if start_time and end_time and not pro_data.get("total_price"):
+                    continue  # skip — no price means can't book
                 filtered.append(pro_data)
         return {"professionals": filtered, "count": len(filtered)}
 

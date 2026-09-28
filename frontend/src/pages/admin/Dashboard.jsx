@@ -157,7 +157,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
   const navigate = useNavigate();
   const links = [
     { key: "overview",      label: "Visão geral",   icon: <DollarSign size={18} /> },
-    { key: "professionals", label: "Profissionais", icon: <ShieldCheck size={18} /> },
+    { key: "professionals", label: "Verificação de Perfil", icon: <ShieldCheck size={18} /> },
     { key: "users",         label: "Usuários",      icon: <Users size={18} /> },
     { key: "bookings",      label: "Agendamentos",  icon: <CalendarDays size={18} /> },
     { key: "holidays",      label: "Feriados",      icon: <CalendarRange size={18} /> },
@@ -305,6 +305,8 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
   const [qrLoading, setQrLoading] = useState(false);
   const [auditHistory, setAuditHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [generalMsg, setGeneralMsg] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
 
   const loadAuditHistory = async (userId) => {
     try {
@@ -548,6 +550,40 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
           </div>
         )}
 
+        {/* C4: General message box — not tied to a specific document */}
+        <div className="mt-4 card p-4 border-2 border-blue-100">
+          <p className="font-semibold text-navy text-sm mb-2">💬 Enviar mensagem ao profissional</p>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {resendTemplates.map(t => (
+              <button key={t} type="button" onClick={() => setGeneralMsg(t)}
+                className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 border border-blue-200">{t}</button>
+            ))}
+          </div>
+          <textarea className="form-input text-xs w-full min-h-[60px] mb-2" placeholder="Escreva uma mensagem..."
+            value={generalMsg} onChange={e => setGeneralMsg(e.target.value)} />
+          {generalMsg.trim() && (
+            <div className="p-2 bg-slate-50 rounded-lg mb-2">
+              <p className="text-[10px] text-slate-400 mb-0.5">Pré-visualização:</p>
+              <p className="text-xs text-slate-600">Olá {prof.full_name?.split(" ")[0] || "Profissional"}, {generalMsg}</p>
+            </div>
+          )}
+          <button onClick={async () => {
+            if (!generalMsg.trim()) { toast.error("Escreva uma mensagem."); return; }
+            setSendingMsg(true);
+            try {
+              const fullMsg = `Olá ${prof.full_name?.split(" ")[0] || "Profissional"}, ${generalMsg}`;
+              await axios.post(`${API}/api/admin/send-message`, {
+                user_id: prof.user_id, message: fullMsg, title: "Mensagem da equipe CuidaU",
+              }, { headers });
+              toast.success("Mensagem enviada!");
+              setGeneralMsg("");
+            } catch (err) { toast.error(err.response?.data?.detail || "Erro ao enviar."); }
+            finally { setSendingMsg(false); }
+          }} disabled={sendingMsg || !generalMsg.trim()} className="btn-primary w-full text-sm disabled:opacity-50">
+            {sendingMsg ? "Enviando..." : "Enviar mensagem"}
+          </button>
+        </div>
+
         {/* Audit history */}
         {showHistory && (
           <div className="mt-3 max-h-[200px] overflow-y-auto border-t border-slate-200 pt-3">
@@ -751,15 +787,15 @@ const ProfessionalsPanel = () => {
         </div>
       )}
 
-      {/* 2.4: Professionals / Clients toggle */}
+      {/* 2.4: Professionals / Clients toggle with pending counts */}
       <div className="flex gap-2 mb-4">
         <button onClick={() => setViewMode("professionals")}
           className={`px-4 py-2 rounded-xl text-sm font-semibold ${viewMode === "professionals" ? "bg-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-          👩‍⚕️ Profissionais
+          👩‍⚕️ Profissionais {list.length > 0 && filter === "pending" && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{list.length}</span>}
         </button>
         <button onClick={() => setViewMode("clients")}
           className={`px-4 py-2 rounded-xl text-sm font-semibold ${viewMode === "clients" ? "bg-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-          👤 Clientes
+          👤 Clientes {clientList.length > 0 && clientFilter === "pending" && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{clientList.length}</span>}
         </button>
       </div>
 
@@ -767,11 +803,11 @@ const ProfessionalsPanel = () => {
         <div>
           <h2 className="font-display text-xl font-bold text-navy mb-4">Clientes</h2>
           <div className="flex gap-2 mb-5">
-            {["pending","verified"].map(s => (
+            {[["","Todos"],["pending","Pendentes"],["verified","Verificados"]].map(([s,label]) => (
               <button key={s} onClick={() => setClientFilter(s)}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors
                   ${clientFilter === s ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600 hover:border-blue-400"}`}>
-                {s === "pending" ? "Pendentes" : "Verificados"}
+                {label}
               </button>
             ))}
           </div>
@@ -806,11 +842,11 @@ const ProfessionalsPanel = () => {
       <div>
       <h2 className="font-display text-xl font-bold text-navy mb-4">Profissionais</h2>
       <div className="flex gap-2 mb-5">
-        {["pending","approved","rejected"].map(s => (
+        {[["","Todos"],["pending","Pendentes"],["approved","Aprovados"],["rejected","Rejeitados"]].map(([s,label]) => (
           <button key={s} onClick={() => setFilter(s)}
             className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors
               ${filter === s ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600 hover:border-blue-400"}`}>
-            {s === "pending" ? "Pendentes" : s === "approved" ? "Aprovados" : "Rejeitados"}
+            {label}
           </button>
         ))}
       </div>
@@ -832,10 +868,11 @@ const ProfessionalsPanel = () => {
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {["photo_id","diploma","criminal","selfie"].map(type => {
                       const doc = p.documents?.find(d => d.doc_type === type);
+                      const statusIcon = !doc ? "—" : doc.status === "approved" ? "✓" : doc.status === "rejected" ? "✗" : doc.status === "replacement_requested" ? "🔄" : "⏳";
+                      const statusColor = !doc ? "bg-slate-100 text-slate-400" : doc.status === "approved" ? "bg-green-100 text-green-700" : doc.status === "rejected" ? "bg-red-100 text-red-600" : doc.status === "replacement_requested" ? "bg-orange-100 text-orange-700" : "bg-amber-100 text-amber-700";
                       return (
-                        <span key={type} className={`text-xs px-2 py-0.5 rounded-full font-medium
-                          ${doc ? (doc.status === "approved" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700") : "bg-slate-100 text-slate-400"}`}>
-                          {DOC_LABELS[type]?.split(" ")[0]} {doc ? "✓" : "—"}
+                        <span key={type} className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
+                          {DOC_LABELS[type]?.split(" ")[0]} {statusIcon}
                         </span>
                       );
                     })}

@@ -1459,3 +1459,27 @@ def get_unverified_counts(db: Session = Depends(get_db), _=Depends(require_admin
         "total_professionals": total_pros,
         "message": f"{unverified_clients} cliente(s) e {unverified_pros} profissional(ais) não verificados.",
     }
+
+class SendMessageRequest(BaseModel):
+    user_id: str
+    message: str
+    title: str = "Mensagem da equipe CuidaU"
+
+@router.post("/send-message")
+def send_admin_message(body: SendMessageRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """C4: Send a general message to a user via all channels."""
+    user = db.query(User).filter(User.id == body.user_id).first()
+    if not user:
+        raise HTTPException(404, "Usuário não encontrado")
+    from app.utils.notifications import notify_all_channels
+    results = notify_all_channels(db, user, body.title, body.message, "admin_message")
+    # Log to audit
+    log = DocumentAuditLog(
+        doc_id="general_message", user_id=body.user_id,
+        admin_id=current.id, admin_name=current.full_name,
+        action="admin_message", doc_type="message",
+        feedback=body.message,
+    )
+    db.add(log)
+    db.commit()
+    return {"sent": True, "channels": results, "message": "Mensagem enviada com sucesso."}
