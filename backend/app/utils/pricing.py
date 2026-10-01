@@ -228,7 +228,7 @@ def calculate_price(
     # Count day/night minutes for REMAINING time only (after first 2h) — for cost calculation
     remaining_start = start_local + timedelta(minutes=INITIAL_FEE_MINUTES)
     if remaining_minutes > 0:
-        extra_split = _count_day_night_minutes(remaining_start, end_time)
+        extra_split = _count_day_night_minutes(remaining_start, end_local)
     else:
         extra_split = {"day": 0, "night": 0}
 
@@ -241,7 +241,7 @@ def calculate_price(
     initial_fee = INITIAL_SERVICE_FEE[role]
 
     # Count initial fee minutes split (first 2h day/night breakdown for display)
-    initial_split = _count_day_night_minutes(start_time, remaining_start if remaining_minutes > 0 else end_time)
+    initial_split = _count_day_night_minutes(start_local, remaining_start if remaining_minutes > 0 else end_local)
 
     # Base = initial fee + hour cost
     base = round(initial_fee + hour_cost, 2)

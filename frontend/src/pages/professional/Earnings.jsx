@@ -120,30 +120,15 @@ const EarningsPage = () => {
           </div>
         )}
 
-        {/* Bank Account (#45) */}
+        {/* Bank Account — redirect to full PayoutMethods page */}
         {tab === "bank" && (
-          <div className="card p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <CreditCard size={18} className="text-blue-500"/>
-              <h3 className="font-semibold text-navy">Conta bancária</h3>
-            </div>
-            <p className="text-xs text-slate-500 mb-4">Os pagamentos serão transferidos para esta conta após o checkout confirmado.</p>
-            <div className="space-y-3">
-              <div><label className="form-label">Banco</label>
-                <input className="form-input" value={bankAccount.bank} onChange={e=>setBankAccount(p=>({...p,bank:e.target.value}))} placeholder="Ex: Nubank, Itaú, Bradesco"/></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="form-label">Agência</label>
-                  <input className="form-input" value={bankAccount.agency} onChange={e=>setBankAccount(p=>({...p,agency:e.target.value}))} placeholder="0001"/></div>
-                <div><label className="form-label">Conta</label>
-                  <input className="form-input" value={bankAccount.account} onChange={e=>setBankAccount(p=>({...p,account:e.target.value}))} placeholder="12345-6"/></div>
-              </div>
-              <div><label className="form-label">Chave PIX (opcional)</label>
-                <input className="form-input" value={bankAccount.pix_key} onChange={e=>setBankAccount(p=>({...p,pix_key:e.target.value}))} placeholder="CPF, e-mail, telefone ou chave aleatória"/></div>
-            </div>
-            <button onClick={handleSaveBank} disabled={savingBank} className="btn-primary w-full mt-4 disabled:opacity-50">
-              {savingBank ? "Salvando..." : "Salvar dados bancários"}
+          <div className="card p-8 text-center">
+            <CreditCard size={40} className="mx-auto mb-3 text-blue-400"/>
+            <h3 className="font-semibold text-navy mb-1">Conta bancária</h3>
+            <p className="text-sm text-slate-500 mb-4">Gerencie suas contas, chaves PIX e cartões na página dedicada.</p>
+            <button onClick={() => navigate("/bank-account")} className="btn-primary inline-flex items-center gap-2">
+              Gerenciar métodos de pagamento
             </button>
-            <p className="text-[10px] text-slate-400 mt-2 text-center">Dados bancários são armazenados de forma segura e usados apenas para transferências de pagamento.</p>
           </div>
         )}
       </div>

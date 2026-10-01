@@ -1,8 +1,8 @@
 """
 Multi-channel notification service.
-Supports: in-app, email (SendGrid), WhatsApp (Twilio).
+Supports: in-app (DB-backed), email (SendGrid), WhatsApp (Twilio).
 Stubs print to server log until real providers are configured.
-Tracks delivery status per channel. Retries failed channels once.
+Tracks delivery status per channel on the Notification row. Retries failed channels once.
 
 To enable real email:
   1. pip install sendgrid
@@ -66,43 +66,79 @@ def send_whatsapp(to: str, message: str) -> dict:
         return {"sent": False, "channel": "whatsapp", "error": "not_configured"}
 
 
-def send_in_app(db, user_id: str, title: str, message: str, notif_type: str = "general") -> dict:
-    """Create in-app notification record. Returns {sent, channel, error}."""
-    try:
-        from app.models.models import Notification
-        notif = Notification(user_id=user_id, title=title, message=message, notification_type=notif_type)
-        db.add(notif)
-        return {"sent": True, "channel": "in_app"}
-    except Exception as e:
-        print(f"[NOTIF] Failed for {user_id}: {e}")
-        return {"sent": False, "channel": "in_app", "error": str(e)}
+def notify_all_channels(
+    db,
+    user,
+    title: str,
+    message: str,
+    notif_type: str = "general",
+    retry_failed: bool = True,
+    doc_id: str = None,
+    doc_type: str = None,
+):
+    """
+    Send notification via all channels. Retries failed channels once.
+    Creates a DB Notification row with delivery statuses.
+    Returns delivery report dict.
+    """
+    from app.models.models import Notification
 
+    # 1. Create DB notification (in-app channel)
+    notif = Notification(
+        user_id=user.id,
+        notification_type=notif_type,
+        title=title,
+        message=message,
+        doc_id=doc_id,
+        doc_type=doc_type,
+        delivery_in_app="sent",
+        delivery_email="pending",
+        delivery_whatsapp="pending",
+    )
+    db.add(notif)
 
-def notify_all_channels(db, user, title: str, message: str, notif_type: str = "general", retry_failed: bool = True):
-    """Send notification via all channels. Retries failed channels once. Returns delivery report."""
-    channels = [
-        ("in_app", lambda: send_in_app(db, user.id, title, message, notif_type)),
-        ("email", lambda: send_email(user.email, title, message)),
-        ("whatsapp", lambda: send_whatsapp(getattr(user, 'phone', None), message)),
-    ]
+    in_app_result = {"sent": True, "channel": "in_app"}
 
-    results = {}
+    # 2. Send email
+    email_result = send_email(user.email, title, message)
+
+    # 3. Send WhatsApp
+    whatsapp_result = send_whatsapp(getattr(user, "phone", None), message)
+
+    results = {
+        "in_app": in_app_result,
+        "email": email_result,
+        "whatsapp": whatsapp_result,
+    }
+
+    # Retry failed channels once (skip not_configured / no_email / no_phone)
+    skip_errors = ("not_configured", "no_email", "no_phone")
     failed = []
+    for name, result in [("email", email_result), ("whatsapp", whatsapp_result)]:
+        if not result.get("sent") and result.get("error") not in skip_errors:
+            failed.append(name)
 
-    for name, fn in channels:
-        result = fn()
-        results[name] = result
-        if not result.get("sent") and result.get("error") not in ("not_configured", "no_email", "no_phone"):
-            failed.append((name, fn))
-
-    # Retry failed channels once (skip not_configured)
     if retry_failed and failed:
         time.sleep(1)
-        for name, fn in failed:
-            retry_result = fn()
-            retry_result["retried"] = True
-            results[name] = retry_result
-            print(f"[NOTIFY RETRY] {name}: {'OK' if retry_result.get('sent') else 'FAILED AGAIN'}")
+        for name in failed:
+            if name == "email":
+                retry = send_email(user.email, title, message)
+            else:
+                retry = send_whatsapp(getattr(user, "phone", None), message)
+            retry["retried"] = True
+            results[name] = retry
+            print(f"[NOTIFY RETRY] {name}: {'OK' if retry.get('sent') else 'FAILED AGAIN'}")
+
+    # 4. Update delivery statuses on the Notification row
+    def _status(r):
+        if r.get("sent"):
+            return "sent"
+        if r.get("error") in skip_errors:
+            return "not_configured"
+        return "failed"
+
+    notif.delivery_email = _status(results["email"])
+    notif.delivery_whatsapp = _status(results["whatsapp"])
 
     # Log delivery report
     summary = {k: v.get("sent", False) for k, v in results.items()}
@@ -112,11 +148,13 @@ def notify_all_channels(db, user, title: str, message: str, notif_type: str = "g
     try:
         from app.models.models import DocumentAuditLog
         log = DocumentAuditLog(
-            doc_id="notification", user_id=user.id,
-            admin_id="system", admin_name="Sistema",
+            doc_id=doc_id or "notification",
+            user_id=user.id,
+            admin_id="system",
+            admin_name="Sistema",
             action=f"notify_{notif_type}",
-            doc_type="notification",
-            reason=f"Channels: {summary}",
+            doc_type=doc_type or "notification",
+            reason=f"email:{notif.delivery_email} whatsapp:{notif.delivery_whatsapp} in_app:sent",
             feedback=title,
         )
         db.add(log)

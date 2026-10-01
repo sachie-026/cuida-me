@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, Save, DollarSign, Clock, Shield, AlertTriangle, History } from "lucide-react";
+import { ChevronLeft, Save, DollarSign, Clock, Shield, AlertTriangle, History, MessageSquare, Plus, Trash2 } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -165,8 +165,46 @@ const AdminSettings = () => {
     { id: "payment", label: "Pagamento", icon: <DollarSign size={14}/> },
     { id: "content", label: "Conteúdo", icon: <Clock size={14}/> },
     { id: "general", label: "Geral", icon: <Shield size={14}/> },
+    { id: "messages", label: "Mensagens", icon: <MessageSquare size={14}/> },
     { id: "audit", label: "Auditoria", icon: <History size={14}/> },
   ];
+
+  // Quick messages management
+  const DEFAULT_REJECT_MSGS = [
+    "Documento ilegível ou danificado.",
+    "Documento vencido. Envie documento válido.",
+    "O certificado enviado pertence a outra pessoa.",
+  ];
+  const DEFAULT_RESEND_MSGS = [
+    "Por favor, reenvie uma foto mais legível do documento.",
+    "O documento está vencido. Envie um documento válido.",
+    "Falta uma página do documento. Envie o documento completo (frente e verso).",
+    "O certificado enviado pertence a outra pessoa. Envie o seu próprio documento.",
+    "A certidão de antecedentes criminais não está legível ou está incompleta. Envie novamente.",
+  ];
+
+  const getQuickMessages = (key, defaults) => {
+    const val = settings[key];
+    if (Array.isArray(val)) return val;
+    if (typeof val === "string") try { return JSON.parse(val); } catch { return defaults; }
+    return defaults;
+  };
+
+  const addQuickMsg = (key, defaults) => {
+    const msgs = [...getQuickMessages(key, defaults), ""];
+    handleChange(key, JSON.stringify(msgs));
+  };
+
+  const updateQuickMsg = (key, defaults, idx, value) => {
+    const msgs = [...getQuickMessages(key, defaults)];
+    msgs[idx] = value;
+    handleChange(key, JSON.stringify(msgs));
+  };
+
+  const removeQuickMsg = (key, defaults, idx) => {
+    const msgs = getQuickMessages(key, defaults).filter((_, i) => i !== idx);
+    handleChange(key, JSON.stringify(msgs));
+  };
 
   const SettingRow = ({ field }) => {
     const label = FIELD_LABELS[field] || field;
@@ -259,6 +297,66 @@ const AdminSettings = () => {
                 <SettingRow field={`night_rate_${role}`} />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Quick messages editor */}
+        {tab === "messages" && (
+          <div className="space-y-6">
+            {/* Verification complete template */}
+            <div className="card p-5">
+              <h3 className="font-semibold text-navy mb-2">Mensagem de verificação concluída</h3>
+              <p className="text-xs text-slate-500 mb-3">Use {"{nome}"} para o nome e {"{categoria}"} para a categoria do profissional.</p>
+              <textarea className="form-input text-sm w-full min-h-[80px]"
+                value={settings.verification_complete_msg || "Olá {nome}! Sua verificação como {categoria} foi concluída com sucesso. Você já pode usar o CuidaU para receber atendimentos. Bem-vindo(a)!"}
+                onChange={e => handleChange("verification_complete_msg", e.target.value)} />
+            </div>
+
+            {/* Resend quick messages */}
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-navy">Mensagens rápidas — Solicitar reenvio</h3>
+                <button onClick={() => addQuickMsg("quick_messages_resend", DEFAULT_RESEND_MSGS)}
+                  className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-semibold">
+                  <Plus size={12} /> Adicionar
+                </button>
+              </div>
+              <div className="space-y-2">
+                {getQuickMessages("quick_messages_resend", DEFAULT_RESEND_MSGS).map((msg, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input type="text" className="form-input text-sm flex-1" value={msg}
+                      onChange={e => updateQuickMsg("quick_messages_resend", DEFAULT_RESEND_MSGS, i, e.target.value)} />
+                    <button onClick={() => removeQuickMsg("quick_messages_resend", DEFAULT_RESEND_MSGS, i)}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Reject quick messages */}
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-navy">Mensagens rápidas — Rejeição</h3>
+                <button onClick={() => addQuickMsg("quick_messages_reject", DEFAULT_REJECT_MSGS)}
+                  className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-semibold">
+                  <Plus size={12} /> Adicionar
+                </button>
+              </div>
+              <div className="space-y-2">
+                {getQuickMessages("quick_messages_reject", DEFAULT_REJECT_MSGS).map((msg, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input type="text" className="form-input text-sm flex-1" value={msg}
+                      onChange={e => updateQuickMsg("quick_messages_reject", DEFAULT_REJECT_MSGS, i, e.target.value)} />
+                    <button onClick={() => removeQuickMsg("quick_messages_reject", DEFAULT_REJECT_MSGS, i)}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

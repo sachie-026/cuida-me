@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings
+from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, payout_methods
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -42,9 +42,11 @@ def run_migrations():
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS completed_count INTEGER DEFAULT 0",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS additional_categories JSON DEFAULT '[]'",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS professional_category VARCHAR",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS active_category VARCHAR",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS category_acceptances JSON DEFAULT '[]'",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS category_records JSON DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_otp_code VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_otp_expires TIMESTAMPTZ",
@@ -69,6 +71,10 @@ def run_migrations():
            WHERE id IN (SELECT user_id FROM professionals)
            AND role = 'client'
            AND (roles IS NULL OR roles::text = '[]' OR roles::text = 'null')""",
+        # Backfill professional_category from user.role for existing professionals
+        """UPDATE professionals SET professional_category = u.role::text
+           FROM users u WHERE professionals.user_id = u.id
+           AND (professionals.professional_category IS NULL OR professionals.professional_category = '')""",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_snapshot JSON",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS activity_state VARCHAR",
         "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS service_states JSON DEFAULT '[]'",
@@ -237,6 +243,46 @@ def run_migrations():
             accepted_at TIMESTAMPTZ DEFAULT NOW(),
             ip_address VARCHAR
         )""",
+        # Notifications table — persistent in-app notifications
+        """CREATE TABLE IF NOT EXISTS notifications (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id),
+            notification_type VARCHAR NOT NULL DEFAULT 'system',
+            title VARCHAR NOT NULL,
+            message TEXT NOT NULL,
+            read BOOLEAN DEFAULT FALSE,
+            booking_id VARCHAR,
+            doc_id VARCHAR,
+            doc_type VARCHAR,
+            delivery_email VARCHAR DEFAULT 'pending',
+            delivery_whatsapp VARCHAR DEFAULT 'pending',
+            delivery_in_app VARCHAR DEFAULT 'sent',
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
+        # Payout methods table — bank account, PIX, card for professionals
+        """CREATE TABLE IF NOT EXISTS payout_methods (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id),
+            method_type VARCHAR NOT NULL,
+            is_primary BOOLEAN DEFAULT FALSE,
+            bank_name VARCHAR,
+            bank_code VARCHAR,
+            agency VARCHAR,
+            account_number VARCHAR,
+            account_type VARCHAR,
+            holder_name VARCHAR,
+            holder_cpf VARCHAR,
+            pix_key_type VARCHAR,
+            pix_key VARCHAR,
+            card_brand VARCHAR,
+            card_last4 VARCHAR,
+            card_token VARCHAR,
+            verified BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_payout_methods_user_id ON payout_methods(user_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -275,6 +321,138 @@ app.include_router(alerts.router,       prefix="/api")
 app.include_router(alice.router,        prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(settings.router,      prefix="/api")
+app.include_router(payout_methods.router, prefix="/api")
+
+@app.post("/api/seed-test-accounts")
+def seed_test_accounts(
+    db:      Session = Depends(get_db),
+    admin:   object  = Depends(_require_admin),
+):
+    """Block 5: Create 12 test professionals (4 categories × 3 markups) + 1 test client.
+    All flagged is_test=True. They never appear to real users after launch and never receive real payments."""
+    from app.core.security import hash_password
+    from app.models.models import (
+        User, UserRole, Professional, Patient, DocStatus,
+        Availability, AvailabilityType
+    )
+    from app.utils.pricing import CAREGIVER_SERVICES, NURSING_ASSISTANT_SERVICES, TECHNICIAN_SERVICES, NURSE_SERVICES
+    from datetime import datetime, timezone
+
+    CATEGORIES = [
+        {"role": "caregiver",         "label": "Cuidador(a)",             "coren_prefix": "9990", "services": CAREGIVER_SERVICES},
+        {"role": "nursing_assistant", "label": "Auxiliar de Enfermagem",  "coren_prefix": "9991", "services": NURSING_ASSISTANT_SERVICES},
+        {"role": "technician",        "label": "Técnico(a) de Enfermagem","coren_prefix": "9992", "services": TECHNICIAN_SERVICES},
+        {"role": "nurse",             "label": "Enfermeiro(a)",           "coren_prefix": "9993", "services": NURSE_SERVICES},
+    ]
+    MARKUPS = [0, 15, 30]
+    created_pros = []
+    pro_index = 0
+
+    for cat in CATEGORIES:
+        for markup in MARKUPS:
+            pro_index += 1
+            user_id  = f"test-pro-{pro_index:03d}"
+            prof_id  = f"test-prof-{pro_index:03d}"
+            email    = f"test.pro{pro_index}@cuida.test"
+            cpf      = f"999.999.{pro_index:03d}-00"
+            coren    = f"{cat['coren_prefix']}{pro_index:03d}" if cat["role"] != "caregiver" else ""
+
+            # Skip if already exists (idempotent)
+            if db.query(User).filter(User.id == user_id).first():
+                created_pros.append({"id": user_id, "email": email, "role": cat["role"], "markup": markup, "status": "already_exists"})
+                continue
+
+            user = User(
+                id=user_id, email=email,
+                password_hash=hash_password("Test@2026"),
+                full_name=f"Teste {cat['label']} {markup}%",
+                phone=f"(11) 99999-{pro_index:04d}",
+                cpf=cpf,
+                role=UserRole[cat["role"]],
+                is_active=True, is_verified=True, is_test=True,
+                roles=[cat["role"]],
+                has_professional_profile=True,
+            )
+            db.add(user)
+            db.flush()
+
+            prof = Professional(
+                id=prof_id, user_id=user_id,
+                council_number=coren,
+                council_state="SP",
+                council_type="COREN" if cat["role"] != "caregiver" else "CERTIFICADO",
+                professional_category=cat["role"],
+                active_category=cat["role"],
+                services_offered=cat["services"],
+                markup_pct=markup,
+                service_radius=25,
+                city="São Paulo", state="SP",
+                latitude=-23.5505 + (pro_index * 0.001),
+                longitude=-46.6333 + (pro_index * 0.001),
+                is_available=True,
+                approval_status=DocStatus.approved,
+                rating_avg=round(4.5 + (pro_index % 5) * 0.1, 1),
+                rating_count=pro_index * 3,
+                bio=f"Conta de teste — {cat['label']} com markup {markup}%",
+            )
+            db.add(prof)
+            db.flush()
+
+            # Add 7 days availability (08:00–20:00)
+            for dow in range(7):
+                db.add(Availability(
+                    id=f"test-avail-{pro_index:03d}-{dow}",
+                    professional_id=prof_id,
+                    type=AvailabilityType.available,
+                    is_recurring=True,
+                    day_of_week=dow,
+                    start_time="08:00",
+                    end_time="20:00",
+                ))
+
+            created_pros.append({"id": user_id, "email": email, "role": cat["role"], "markup": markup, "status": "created"})
+
+    # Create 1 test client
+    test_client_id = "test-client-001"
+    client_status = "already_exists"
+    if not db.query(User).filter(User.id == test_client_id).first():
+        test_client = User(
+            id=test_client_id, email="test.client@cuida.test",
+            password_hash=hash_password("Test@2026"),
+            full_name="Teste Cliente",
+            phone="(11) 99999-0000",
+            cpf="999.999.000-00",
+            role=UserRole.client,
+            is_active=True, is_verified=True, is_test=True,
+            roles=["client"],
+            has_client_profile=True,
+        )
+        db.add(test_client)
+        db.flush()
+
+        # Create patient record for test client
+        test_patient = Patient(
+            id="test-patient-001", user_id=test_client_id,
+            patient_name="Teste Cliente",
+            age=50, relation="Próprio paciente",
+            address="Rua de Teste, 123, São Paulo - SP",
+            latitude=-23.5505, longitude=-46.6333,
+            is_own_account=True,
+            emergency_contact_name="Contato Teste",
+            emergency_contact_phone="(11) 99999-9999",
+        )
+        db.add(test_patient)
+        client_status = "created"
+
+    db.commit()
+
+    return {
+        "status": "✅ test accounts seeded",
+        "test_client": {"id": test_client_id, "email": "test.client@cuida.test", "password": "Test@2026", "status": client_status},
+        "test_professionals": created_pros,
+        "total": len(created_pros),
+        "note": "All test accounts have is_test=True. They will never appear in real user searches.",
+    }
 
 @app.get("/")
 def root():

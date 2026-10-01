@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, X, CheckCircle, AlertTriangle, Calendar, CreditCard, MessageSquare, Star } from "lucide-react";
 import axios from "axios";
 
@@ -15,6 +16,7 @@ const ICON_MAP = {
 };
 
 const NotificationCenter = () => {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -106,6 +108,13 @@ const NotificationCenter = () => {
                 </button>
               ))
             )}
+          </div>
+          {/* Link to full notifications page */}
+          <div className="border-t border-slate-100 px-4 py-2">
+            <button onClick={() => { setOpen(false); navigate("/notifications"); }}
+              className="w-full text-center text-xs text-blue-500 hover:text-blue-700 font-semibold py-1">
+              Ver todas as notificações →
+            </button>
           </div>
         </div>
       )}

@@ -34,6 +34,8 @@ import AdminDashboard        from "./pages/admin/Dashboard";
 import Messages              from "./pages/messages/Messages";
 import ProfilePicker         from "./pages/auth/ProfilePicker";
 import ManageProfiles        from "./pages/ManageProfiles";
+import NotificationsPage     from "./pages/notifications/NotificationsPage";
+import PayoutMethodsPanel    from "./pages/professional/PayoutMethods";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
@@ -76,6 +78,7 @@ function App() {
           <Route path="/activity"              element={<ProtectedRoute><MyActivity /></ProtectedRoute>} />
           <Route path="/payment-methods"       element={<ProtectedRoute><PaymentMethodsPage /></ProtectedRoute>} />
           <Route path="/earnings"              element={<ProtectedRoute allowedRoles={PRO_ROLES}><EarningsPage /></ProtectedRoute>} />
+          <Route path="/bank-account"           element={<ProtectedRoute allowedRoles={PRO_ROLES}><PayoutMethodsPanel /></ProtectedRoute>} />
           <Route path="/admin/settings"        element={<ProtectedRoute allowedRoles={["admin"]}><AdminSettings /></ProtectedRoute>} />
           <Route path="/register/professional"  element={<ProtectedRoute><BecomeProfessional /></ProtectedRoute>} />
           <Route path="/select-profile"          element={<ProtectedRoute><ProfilePicker /></ProtectedRoute>} />
@@ -83,6 +86,9 @@ function App() {
 
           {/* Admin */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminDashboard /></ProtectedRoute>} />
+
+          {/* Notifications — all authenticated users */}
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
           {/* Messages — all authenticated users */}
           <Route path="/messages" element={<ProtectedRoute allowedRoles={ALL_ROLES}><Messages /></ProtectedRoute>} />

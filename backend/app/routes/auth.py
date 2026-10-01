@@ -15,6 +15,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _reset_tokens: dict = {}
 
 PRO_ROLES = {"nurse", "technician", "nursing_assistant", "caregiver"}
+BRAZIL_STATES = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
 
 class GoogleAuthRequest(BaseModel):
     credential: str
@@ -27,6 +28,8 @@ class RegisterRequest(BaseModel):
     phone:     Optional[str] = None
     cpf:       Optional[str] = None
     role:      str = "client"
+    council_number: Optional[str] = None
+    council_state:  Optional[str] = None
 
 class LoginRequest(BaseModel):
     email:    EmailStr
@@ -53,15 +56,20 @@ class ResetPasswordRequest(BaseModel):
     token:        str
     new_password: str
 
-def _create_professional_profile(db: Session, user_id: str):
+def _create_professional_profile(db: Session, user_id: str, council_number: str = None, council_state: str = None, category: str = None):
     existing = db.query(Professional).filter(Professional.user_id == user_id).first()
     if not existing:
+        needs_coren = category in ("nurse", "technician", "nursing_assistant")
         prof = Professional(
             user_id=user_id,
             approval_status=DocStatus.pending,
             is_available=False,
             services_offered=[],
             markup_pct=0,
+            council_number=council_number.strip() if council_number else None,
+            council_state=council_state.upper() if council_state else None,
+            council_type="COREN" if needs_coren else None,
+            professional_category=category,
         )
         db.add(prof)
         db.commit()
@@ -123,6 +131,18 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=403, detail="Este CPF pertence a uma conta suspensa ou banida. Entre em contato com o suporte.")
             raise HTTPException(status_code=409, detail="Este CPF já possui uma conta. Faça login em sua conta existente ou recupere seu acesso.")
     is_pro = body.role in PRO_ROLES
+
+    # Block 1.3: COREN mandatory for nurse/technician/nursing_assistant at registration
+    if is_pro and body.role in ("nurse", "technician", "nursing_assistant"):
+        if not body.council_number or not body.council_number.strip():
+            raise HTTPException(400, "Número COREN é obrigatório para esta categoria.")
+        if not body.council_number.strip().isdigit():
+            raise HTTPException(400, "Número COREN deve conter apenas dígitos.")
+        if len(body.council_number.strip()) < 4 or len(body.council_number.strip()) > 7:
+            raise HTTPException(400, "Número COREN deve ter entre 4 e 7 dígitos.")
+        if not body.council_state or body.council_state.upper() not in BRAZIL_STATES:
+            raise HTTPException(400, "Estado (UF) inválido. Use um dos 27 estados brasileiros.")
+
     user = User(
         email=body.email, password_hash=hash_password(body.password),
         full_name=body.full_name, phone=body.phone, cpf=body.cpf,
@@ -135,7 +155,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     if is_pro:
-        _create_professional_profile(db, user.id)
+        _create_professional_profile(db, user.id, council_number=body.council_number, council_state=body.council_state, category=body.role)
     token = create_access_token({"sub": user.id, "role": user.role})
     approval_status = None
     if is_pro:
@@ -472,8 +492,6 @@ class BecomeProfessionalRequest(BaseModel):
     professional_role: str  # nurse, technician, nursing_assistant, caregiver
     council_number: Optional[str] = None
     council_state: Optional[str] = None
-
-BRAZIL_STATES = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
 
 @router.post("/become-professional")
 def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):

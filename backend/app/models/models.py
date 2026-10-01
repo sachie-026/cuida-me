@@ -70,6 +70,7 @@ class User(Base):
     has_professional_profile = Column(Boolean, default=False)
     # 50c: Admin sub-role (only applies when role=admin)
     admin_role   = Column(String, nullable=True)  # super_admin, finance, support, operations
+    is_test       = Column(Boolean, default=False)   # Block 5: test accounts hidden from real users
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
     reliability_score = Column(Integer, default=100)
@@ -98,6 +99,7 @@ class Professional(Base):
     reverification_due  = Column(DateTime(timezone=True), nullable=True)
     council_type     = Column(String, default="COREN")
     additional_categories = Column(JSON, default=list)
+    professional_category = Column(String, nullable=True)  # primary registered category (nurse, technician, etc.)
     active_category      = Column(String, nullable=True)  # current working category (e.g. "caregiver" for a nurse)
     category_acceptances = Column(JSON, default=list)  # audit log of category switch acceptances  # e.g. [{"role":"technician","coren":"123456","state":"SP"}]
     category_records     = Column(JSON, default=list)
@@ -423,3 +425,52 @@ class SettingsAuditLog(Base):
     old_value   = Column(String, nullable=True)
     new_value   = Column(String, nullable=False)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+class Notification(Base):
+    """Persistent in-app notifications for all users."""
+    __tablename__ = "notifications"
+    id                = Column(String, primary_key=True, default=gen_uuid)
+    user_id           = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    notification_type = Column(String, nullable=False, default="system")  # booking, payment, cancel, checkin, message, rating, system, verification_complete, document_feedback, admin_message
+    title             = Column(String, nullable=False)
+    message           = Column(Text, nullable=False)
+    read              = Column(Boolean, default=False)
+    booking_id        = Column(String, nullable=True)
+    doc_id            = Column(String, nullable=True)      # links notification to a specific document
+    doc_type          = Column(String, nullable=True)      # e.g. coren_card, criminal_record
+    delivery_email    = Column(String, default="pending")  # pending, sent, failed, not_configured
+    delivery_whatsapp = Column(String, default="pending")  # pending, sent, failed, not_configured
+    delivery_in_app   = Column(String, default="sent")     # always sent when row exists
+    created_at        = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", backref="notifications")
+
+
+class PayoutMethod(Base):
+    """Professional payout methods — bank account, PIX key, or card."""
+    __tablename__ = "payout_methods"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    user_id         = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    method_type     = Column(String, nullable=False)  # "bank_account" | "pix" | "card"
+    is_primary      = Column(Boolean, default=False)
+    # Bank account fields
+    bank_name       = Column(String, nullable=True)
+    bank_code       = Column(String, nullable=True)   # e.g. "260" for Nubank
+    agency          = Column(String, nullable=True)
+    account_number  = Column(String, nullable=True)
+    account_type    = Column(String, nullable=True)   # "corrente" | "poupanca"
+    holder_name     = Column(String, nullable=True)
+    holder_cpf      = Column(String, nullable=True)   # masked in API responses
+    # PIX fields
+    pix_key_type    = Column(String, nullable=True)   # "cpf" | "email" | "phone" | "random"
+    pix_key         = Column(String, nullable=True)
+    # Card fields (tokenized — never store full number)
+    card_brand      = Column(String, nullable=True)   # "Visa", "Mastercard", etc.
+    card_last4      = Column(String, nullable=True)   # last 4 digits only
+    card_token      = Column(String, nullable=True)   # payment gateway token
+    # Metadata
+    verified        = Column(Boolean, default=False)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User", backref="payout_methods")

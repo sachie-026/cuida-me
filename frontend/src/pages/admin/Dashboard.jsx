@@ -25,6 +25,21 @@ const DOC_STATUS_COLOR = {
   approved: "text-green-600",
   pending:  "text-amber-600",
   rejected: "text-red-600",
+  replacement_requested: "text-orange-600",
+};
+
+const DOC_STATUS_PT = {
+  approved: "Aprovado",
+  pending: "Em análise",
+  rejected: "Rejeitado",
+  replacement_requested: "Reenvio solicitado",
+};
+
+const CATEGORY_PT = {
+  nurse: "Enfermeiro(a)",
+  technician: "Técnico(a) de Enfermagem",
+  nursing_assistant: "Auxiliar de Enfermagem",
+  caregiver: "Cuidador(a)",
 };
 
 /* ── Holidays Panel ── */
@@ -320,9 +335,13 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
     if (!qrInput.trim()) return;
     setQrLoading(true);
     try {
-      const { data } = await axios.post(`${API}/api/admin/coren-verify`, { qr_data: qrInput }, { headers });
+      const { data } = await axios.post(`${API}/api/admin/coren-verify`, {
+        qr_data: qrInput,
+        state: corenState || null,
+      }, { headers });
       setQrResult(data);
       if (data.auto_verify) toast.success("COREN ativo verificado!");
+      else if (data.name_warning) toast.error("⚠️ Nome divergente! Verifique antes de aprovar.");
       else toast(data.message, { icon: "ℹ️" });
     } catch { toast.error("Erro na verificação."); }
     finally { setQrLoading(false); }
@@ -332,6 +351,11 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
     // #27: Check if QR verification returned inactive COREN
     if (qrResult && !qrResult.auto_verify && qrResult.extracted?.status && qrResult.extracted.status !== "active") {
       toast.error("Não é possível aprovar: registro COREN não está Ativo.");
+      return;
+    }
+    // Block approval on COREN name mismatch
+    if (qrResult && qrResult.name_match === false) {
+      toast.error("⚠️ Não é possível aprovar: nome no COREN não corresponde ao cadastro.");
       return;
     }
     setActionLoading(docId);
@@ -388,8 +412,8 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-sm font-semibold text-navy">{DOC_LABELS[doc.doc_type] || doc.doc_type}</p>
-                    <p className={`text-xs font-medium mt-0.5 ${DOC_STATUS_COLOR[doc.status]}`}>
-                      {doc.status === "approved" ? "✓ Aprovado" : doc.status === "pending" ? "⏳ Em análise" : "✗ Rejeitado"}
+                    <p className={`text-xs font-medium mt-0.5 ${DOC_STATUS_COLOR[doc.status] || "text-slate-500"}`}>
+                      {doc.status === "approved" ? "✓ Aprovado" : doc.status === "pending" ? "⏳ Em análise" : doc.status === "replacement_requested" ? "↻ Reenvio solicitado" : "✕ Rejeitado"}
                     </p>
                     {doc.rejection_reason && doc.status === "rejected" && (
                       <p className="text-xs text-red-500 mt-0.5">Motivo: {doc.rejection_reason}</p>
@@ -503,21 +527,72 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
           </div>
         )}
 
-        {/* COREN QR Verification */}
+        {/* COREN Verification — QR, URL, or direct number */}
         <div className="mt-5 pt-4 border-t border-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Verificação COREN via QR</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Verificação COREN</p>
           <div className="flex gap-2 mb-2">
-            <input type="text" className="form-input text-xs flex-1" placeholder="Cole o texto do QR code aqui..."
+            <input type="text" className="form-input text-xs flex-1" placeholder="Número COREN, URL do QR code, ou texto do certificado..."
               value={qrInput} onChange={e => setQrInput(e.target.value)} />
+            {/* State selector — shown when input looks like a bare number */}
+            {/^\d{4,7}$/.test(qrInput.trim()) && (
+              <select className="form-input text-xs w-20" value={corenState || ""}
+                onChange={e => {/* state comes from prof, no setter needed */}}>
+                <option value={corenState || ""}>{corenState || "UF"}</option>
+              </select>
+            )}
             <button onClick={handleQrVerify} disabled={qrLoading || !qrInput.trim()}
               className="btn-primary text-xs px-3 disabled:opacity-50">
               {qrLoading ? "..." : "Verificar"}
             </button>
           </div>
           {qrResult && (
-            <div className={`p-2 rounded-lg text-xs ${qrResult.auto_verify ? "bg-green-50 text-green-700" : qrResult.matched ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>
-              {qrResult.message}
-              {qrResult.extracted?.coren_number && <span className="block mt-1 font-mono">COREN: {qrResult.extracted.coren_number} {qrResult.extracted.state && `(${qrResult.extracted.state})`}</span>}
+            <div className={`p-3 rounded-lg text-xs space-y-2 ${qrResult.auto_verify ? "bg-green-50 border border-green-200" : qrResult.name_warning ? "bg-red-50 border border-red-200" : qrResult.matched ? "bg-blue-50 border border-blue-200" : "bg-amber-50 border border-amber-200"}`}>
+              <p className={qrResult.name_warning ? "text-red-700 font-semibold" : qrResult.auto_verify ? "text-green-700" : "text-slate-700"}>
+                {qrResult.message}
+              </p>
+              {qrResult.extracted?.coren_number && (
+                <span className="block font-mono text-slate-600">
+                  COREN: {qrResult.extracted.coren_number}{qrResult.extracted.state ? `-${qrResult.extracted.state}` : ""}
+                  {qrResult.extracted.category && ` · ${CATEGORY_PT[qrResult.extracted.category] || qrResult.extracted.category}`}
+                  {qrResult.extracted.status && ` · ${qrResult.extracted.status === "active" ? "✓ Ativo" : "✕ Inativo"}`}
+                </span>
+              )}
+              {/* Side-by-side name comparison — the critical fraud prevention feature */}
+              {qrResult.matched && (qrResult.extracted_name || qrResult.extracted?.name) && (
+                <div className="mt-2 p-2 rounded-lg bg-white border border-slate-200">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Comparação de nomes</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-slate-400">Nome no COREN</p>
+                      <p className={`text-xs font-semibold ${qrResult.name_match ? "text-green-700" : "text-red-700"}`}>
+                        {qrResult.extracted_name || qrResult.extracted?.name || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400">Nome no cadastro</p>
+                      <p className={`text-xs font-semibold ${qrResult.name_match ? "text-green-700" : "text-red-700"}`}>
+                        {qrResult.profile_name || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {qrResult.name_match === false && (
+                    <p className="mt-1 text-[11px] text-red-600 font-semibold">⚠️ NOMES NÃO CORRESPONDEM — Verifique antes de aprovar!</p>
+                  )}
+                  {qrResult.name_match === true && (
+                    <p className="mt-1 text-[11px] text-green-600">✓ Nomes correspondem</p>
+                  )}
+                </div>
+              )}
+              {/* Show when COREN lookup failed — manual check needed */}
+              {qrResult.extracted?.fetch_error && (
+                <p className="text-amber-600 text-[11px]">⚠️ {qrResult.extracted.fetch_error}</p>
+              )}
+              {qrResult.extracted?.coren_source && (
+                <a href={qrResult.extracted.coren_source} target="_blank" rel="noreferrer"
+                  className="text-blue-600 hover:underline text-[11px]">
+                  🔗 Fonte: {qrResult.extracted.coren_source}
+                </a>
+              )}
             </div>
           )}
         </div>
@@ -601,6 +676,17 @@ const DocModal = ({ prof, onClose, onDocUpdate }) => {
                     <div className="flex-1 min-w-0">
                       <p className="text-slate-600">{h.doc_type} — por {h.admin_name}</p>
                       {h.feedback && <p className="text-slate-500 italic truncate">"{h.feedback}"</p>}
+                      {/* Delivery channel status */}
+                      {h.reason && h.reason.includes("email:") && (
+                        <div className="flex gap-2 mt-0.5">
+                          {h.reason.split(" ").map((ch, ci) => {
+                            const [name, status] = ch.split(":");
+                            const color = status === "sent" ? "text-green-600" : status === "failed" ? "text-red-500" : "text-slate-400";
+                            const label = name === "email" ? "📧" : name === "whatsapp" ? "📱" : name === "in_app" ? "🔔" : "";
+                            return label ? <span key={ci} className={`text-[10px] ${color}`}>{label} {status}</span> : null;
+                          })}
+                        </div>
+                      )}
                       <p className="text-slate-400 text-[10px]">{h.created_at ? new Date(h.created_at).toLocaleString("pt-BR") : ""}</p>
                     </div>
                   </div>
@@ -626,6 +712,8 @@ const ProfessionalsPanel = () => {
   const [checklist,  setChecklist]  = useState(null);
   const [unifiedProfile, setUnifiedProfile] = useState(null);
   const [verifyAction, setVerifyAction] = useState(null);
+  const [pendingProCount, setPendingProCount] = useState(0);
+  const [pendingClientCount, setPendingClientCount] = useState(0);
 
   const loadProfessionals = () => {
     axios.get(`${API}/api/admin/professionals?status=${filter}`, { headers })
@@ -637,8 +725,17 @@ const ProfessionalsPanel = () => {
       .then(r => setClientList(r.data)).catch(() => {});
   };
 
+  // Load pending counts for tab badges (independent of current filter)
+  const loadPendingCounts = () => {
+    axios.get(`${API}/api/admin/professionals?status=pending`, { headers })
+      .then(r => setPendingProCount(r.data.length)).catch(() => {});
+    axios.get(`${API}/api/admin/clients?status=pending`, { headers })
+      .then(r => setPendingClientCount(r.data.length)).catch(() => {});
+  };
+
   useEffect(() => { loadProfessionals(); }, [filter]);
   useEffect(() => { if (viewMode === "clients") loadClients(); }, [clientFilter, viewMode]);
+  useEffect(() => { loadPendingCounts(); }, []);
 
   const approve = async (id) => {
     await axios.patch(`${API}/api/admin/professionals/${id}/approve`, {}, { headers });
@@ -791,11 +888,11 @@ const ProfessionalsPanel = () => {
       <div className="flex gap-2 mb-4">
         <button onClick={() => setViewMode("professionals")}
           className={`px-4 py-2 rounded-xl text-sm font-semibold ${viewMode === "professionals" ? "bg-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-          👩‍⚕️ Profissionais {list.length > 0 && filter === "pending" && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{list.length}</span>}
+          👩‍⚕️ Profissionais {pendingProCount > 0 && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{pendingProCount}</span>}
         </button>
         <button onClick={() => setViewMode("clients")}
           className={`px-4 py-2 rounded-xl text-sm font-semibold ${viewMode === "clients" ? "bg-navy text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-          👤 Clientes {clientList.length > 0 && clientFilter === "pending" && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{clientList.length}</span>}
+          👤 Clientes {pendingClientCount > 0 && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{pendingClientCount}</span>}
         </button>
       </div>
 
@@ -803,7 +900,7 @@ const ProfessionalsPanel = () => {
         <div>
           <h2 className="font-display text-xl font-bold text-navy mb-4">Clientes</h2>
           <div className="flex gap-2 mb-5">
-            {[["","Todos"],["pending","Pendentes"],["verified","Verificados"]].map(([s,label]) => (
+            {[["","Todos"],["pending","Pendentes"],["under_review","Em análise"],["verified","Verificados"],["rejected","Rejeitados"]].map(([s,label]) => (
               <button key={s} onClick={() => setClientFilter(s)}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors
                   ${clientFilter === s ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600 hover:border-blue-400"}`}>
@@ -821,7 +918,25 @@ const ProfessionalsPanel = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-navy text-sm">{c.full_name}</p>
                       <p className="text-xs text-slate-500">{c.email} · {c.phone || "sem telefone"}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">CPF: {c.cpf || "N/A"} · Docs: {c.documents?.length || 0}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">CPF: {c.cpf || "N/A"}</p>
+                      {/* Document status tags for client */}
+                      {c.documents && c.documents.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {c.documents.map(doc => {
+                            const statusIcon = doc.status === "approved" ? "✓" : doc.status === "rejected" ? "✕" : doc.status === "replacement_requested" ? "↻" : "⏳";
+                            const statusColor = doc.status === "approved" ? "bg-green-100 text-green-700" : doc.status === "rejected" ? "bg-red-100 text-red-600" : doc.status === "replacement_requested" ? "bg-orange-100 text-orange-700" : "bg-amber-100 text-amber-700";
+                            const tooltip = DOC_STATUS_PT[doc.status] || doc.status;
+                            return (
+                              <span key={doc.id} title={tooltip} className={`text-xs px-2 py-0.5 rounded-full font-medium cursor-default ${statusColor}`}>
+                                {DOC_LABELS[doc.doc_type]?.split(" ")[0] || doc.doc_type} {statusIcon}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {c.documents?.filter(d => d.status === "approved").length || 0} de {c.documents?.length || 0} documentos aprovados
+                      </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
                       <button onClick={() => setViewingDoc({...c, council_number: null, council_state: null})}
@@ -842,7 +957,7 @@ const ProfessionalsPanel = () => {
       <div>
       <h2 className="font-display text-xl font-bold text-navy mb-4">Profissionais</h2>
       <div className="flex gap-2 mb-5">
-        {[["","Todos"],["pending","Pendentes"],["approved","Aprovados"],["rejected","Rejeitados"]].map(([s,label]) => (
+        {[["","Todos"],["pending","Pendentes"],["under_review","Em análise"],["approved","Verificados"],["rejected","Rejeitados"]].map(([s,label]) => (
           <button key={s} onClick={() => setFilter(s)}
             className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors
               ${filter === s ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600 hover:border-blue-400"}`}>
@@ -859,24 +974,35 @@ const ProfessionalsPanel = () => {
             <div key={p.id} className="card p-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-navy text-sm">{p.full_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-navy text-sm">{p.full_name}</p>
+                    {p.professional_category && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        {CATEGORY_PT[p.professional_category] || p.professional_category}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500">{p.email} · {p.phone}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {p.council_type} {p.council_number}-{p.council_state} · {p.city}
+                    {p.council_type} {p.council_number ? `${p.council_number}-${p.council_state}` : "sem COREN"} · {p.city}
                   </p>
                   {/* Document status summary */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {["photo_id","diploma","criminal","selfie"].map(type => {
                       const doc = p.documents?.find(d => d.doc_type === type);
-                      const statusIcon = !doc ? "—" : doc.status === "approved" ? "✓" : doc.status === "rejected" ? "✗" : doc.status === "replacement_requested" ? "🔄" : "⏳";
+                      const statusIcon = !doc ? "—" : doc.status === "approved" ? "✓" : doc.status === "rejected" ? "✕" : doc.status === "replacement_requested" ? "↻" : "⏳";
                       const statusColor = !doc ? "bg-slate-100 text-slate-400" : doc.status === "approved" ? "bg-green-100 text-green-700" : doc.status === "rejected" ? "bg-red-100 text-red-600" : doc.status === "replacement_requested" ? "bg-orange-100 text-orange-700" : "bg-amber-100 text-amber-700";
+                      const tooltip = !doc ? "Não enviado" : DOC_STATUS_PT[doc.status] || doc.status;
                       return (
-                        <span key={type} className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
+                        <span key={type} title={tooltip} className={`text-xs px-2 py-0.5 rounded-full font-medium cursor-default ${statusColor}`}>
                           {DOC_LABELS[type]?.split(" ")[0]} {statusIcon}
                         </span>
                       );
                     })}
                   </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {p.documents?.filter(d => d.status === "approved").length || 0} de 4 documentos aprovados
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
@@ -1248,6 +1374,7 @@ const ValidationPanel = () => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
   const [corenLoading, setCorenLoading] = useState(false);
+  const [corenState, setCorenState] = useState("");
 
   const handleValidate = async () => {
     if (!docId.trim()) { toast.error("Informe o ID do documento."); return; }
@@ -1266,6 +1393,7 @@ const ValidationPanel = () => {
       const { data } = await axios.post(`${API}/api/admin/coren-verify`, {
         qr_data: corenInput,
         manual_name: manualName.trim() || null,
+        state: corenState.trim() || null,
       }, { headers });
       setCorenResult(data);
       setNameConfirmed(false);
@@ -1314,6 +1442,17 @@ const ValidationPanel = () => {
           <button onClick={handleCorenVerify} disabled={corenLoading} className="btn-primary text-sm px-4 disabled:opacity-50">
             {corenLoading ? "..." : "Verificar"}
           </button>
+        </div>
+
+        {/* State selector for direct number lookups */}
+        <div className="mb-3">
+          <label className="text-xs text-slate-500">Estado do COREN (para consulta no site oficial)</label>
+          <select className="form-input text-sm mt-1" value={corenState} onChange={e => setCorenState(e.target.value)}>
+            <option value="">Selecione o estado...</option>
+            {Object.keys(COREN_URLS).sort().map(uf => (
+              <option key={uf} value={uf}>{uf}</option>
+            ))}
+          </select>
         </div>
 
         {/* 1-5: Manual name field for comparison when URL fetch can't get name */}
