@@ -76,6 +76,7 @@ def _ser_prof(prof: Professional, user: User, docs: list) -> dict:
         "rating_avg":       prof.rating_avg,
         "rating_count":     prof.rating_count,
         "approval_status":  prof.approval_status.value if hasattr(prof.approval_status, 'value') else str(prof.approval_status),
+        "professional_category": prof.professional_category or (user.role.value if user and hasattr(user.role, 'value') else None),
         "is_available":     prof.is_available,
         "documents": [
             {
@@ -127,7 +128,15 @@ def block_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_ad
 @router.get("/professionals")
 def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
     q = db.query(Professional)
-    if status:
+    if status == "under_review":
+        # "Em análise": pending approval but at least one document already reviewed
+        from sqlalchemy import and_, exists, or_
+        has_reviewed_doc = db.query(Document.id).filter(
+            Document.user_id == Professional.user_id,
+            or_(Document.status == DocStatus.approved, Document.status == DocStatus.rejected)
+        ).exists()
+        q = q.filter(Professional.approval_status == DocStatus.pending, has_reviewed_doc)
+    elif status:
         q = q.filter(Professional.approval_status == status)
     professionals = q.order_by(Professional.created_at.desc()).all()
     result = []
@@ -145,6 +154,21 @@ def get_clients(status: Optional[str] = None, db: Session = Depends(get_db), _=D
         q = q.filter(User.is_verified == True)
     elif status == "pending":
         q = q.filter(User.is_verified == False)
+    elif status == "under_review":
+        # Clients with at least one document reviewed but not yet fully verified
+        from sqlalchemy import or_
+        has_reviewed_doc = db.query(Document.id).filter(
+            Document.user_id == User.id,
+            or_(Document.status == DocStatus.approved, Document.status == DocStatus.rejected)
+        ).exists()
+        q = q.filter(User.is_verified == False, has_reviewed_doc)
+    elif status == "rejected":
+        # Clients with at least one rejected document
+        has_rejected_doc = db.query(Document.id).filter(
+            Document.user_id == User.id,
+            Document.status == DocStatus.rejected
+        ).exists()
+        q = q.filter(has_rejected_doc)
     clients = q.order_by(User.created_at.desc()).all()
     result = []
     for user in clients:
@@ -387,7 +411,7 @@ def reject_document(doc_id: str, reason: str = "Documento inválido ou ilegível
         # 2.2d: Notify user via all channels
         from app.utils.notifications import notify_all_channels
         fb_msg = feedback or reason
-        notify_all_channels(db, user, "Documento requer atenção", f"Seu documento '{doc.doc_type}' foi revisado. Motivo: {fb_msg}", "document_feedback")
+        notify_all_channels(db, user, "Documento requer atenção", f"Seu documento '{doc.doc_type}' foi revisado. Motivo: {fb_msg}", "document_feedback", doc_id=doc.id, doc_type=doc.doc_type)
         db.commit()
 
     return {"id": doc_id, "status": "rejected", "reason": reason}
@@ -419,6 +443,7 @@ def _check_auto_approve(user_id: str, db: Session):
 class CorenVerifyRequest(BaseModel):
     qr_data: str  # Raw text from QR scan or certificate URL
     manual_name: Optional[str] = None  # Admin can paste name from certificate for comparison
+    state: Optional[str] = None  # UF for direct number lookup (e.g. "SP", "RJ")
 
 @router.post("/coren-verify")
 def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin)):
@@ -437,6 +462,26 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
     if re.match(r'^\d{4,7}$', raw):
         extracted["coren_number"] = raw
         extracted["method"] = "direct_number"
+
+        # CRITICAL FIX: For bare numbers, query the COREN website to get the
+        # real owner's name. Without this, admin only sees the signup name,
+        # which enables fraud (e.g. Sandra using Gabriel's COREN number).
+        if body.state:
+            try:
+                from app.utils.coren_lookup import lookup_coren
+                coren_result = lookup_coren(body.state, raw)
+                if coren_result.get("success") and coren_result.get("name"):
+                    extracted["name"] = coren_result["name"]
+                    extracted["category"] = coren_result.get("category")
+                    extracted["status"] = coren_result.get("status")
+                    extracted["state"] = body.state.upper()
+                    extracted["coren_source"] = coren_result.get("source_url")
+                    extracted["coren_lookup_method"] = coren_result.get("method")
+                else:
+                    extracted["fetch_error"] = coren_result.get("error", "Consulta ao COREN não retornou dados")
+                    extracted["state"] = body.state.upper()
+            except Exception as e:
+                extracted["fetch_error"] = f"Erro na consulta COREN: {str(e)}"
 
     # ── Step 1: If input is a COREN certificate URL, fetch the page and parse HTML ──
     elif "coren" in raw.lower() and ("gov.br" in raw.lower() or "http" in raw.lower()):
@@ -552,6 +597,26 @@ def verify_coren_qr(body: CorenVerifyRequest, db: Session = Depends(get_db), _=D
     if match:
         user = db.query(User).filter(User.id == match.user_id).first()
         profile_name = user.full_name if user else ""
+
+        # If we don't have COREN website name yet, try using the professional's stored state
+        if not extracted.get("name") and not body.manual_name:
+            lookup_state = extracted.get("state") or getattr(match, "council_state", None)
+            if lookup_state and extracted.get("coren_number"):
+                try:
+                    from app.utils.coren_lookup import lookup_coren
+                    coren_result = lookup_coren(lookup_state, extracted["coren_number"])
+                    if coren_result.get("success") and coren_result.get("name"):
+                        extracted["name"] = coren_result["name"]
+                        extracted["category"] = coren_result.get("category") or extracted.get("category")
+                        extracted["status"] = coren_result.get("status") or extracted.get("status")
+                        extracted["state"] = lookup_state.upper()
+                        extracted["coren_source"] = coren_result.get("source_url")
+                        extracted["coren_lookup_method"] = coren_result.get("method")
+                    elif not extracted.get("fetch_error"):
+                        extracted["fetch_error"] = coren_result.get("error")
+                except Exception as e:
+                    if not extracted.get("fetch_error"):
+                        extracted["fetch_error"] = f"Erro na consulta COREN: {str(e)}"
 
         # 1-2: Name comparison — normalize and compare
         import unicodedata
@@ -1095,7 +1160,7 @@ def update_document_status(doc_id: str, status: str, reason: str = "", feedback:
         if user:
             from app.utils.notifications import notify_all_channels
             fb_msg = feedback or reason or "Documento precisa ser reenviado"
-            notify_all_channels(db, user, "Reenvio de documento solicitado", f"Seu documento '{doc.doc_type}' precisa ser reenviado. Motivo: {fb_msg}", "document_feedback")
+            notify_all_channels(db, user, "Reenvio de documento solicitado", f"Seu documento '{doc.doc_type}' precisa ser reenviado. Motivo: {fb_msg}", "document_feedback", doc_id=doc.id, doc_type=doc.doc_type)
             db.commit()
 
     return {"doc_id": doc_id, "status": status, "reason": reason}

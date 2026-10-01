@@ -122,11 +122,22 @@ def get_nearby(
     ).all()
 
     # 2.5b: Filter out professionals whose user account is not verified
+    # Block 5: Filter out test accounts from real user searches
     verified_pros = []
+    is_current_test = False
+    if current:
+        is_current_test = getattr(current, 'is_test', False)
     for p in professionals:
         u = db.query(User).filter(User.id == p.user_id).first()
-        if u and u.is_verified:
-            verified_pros.append(p)
+        if not u or not u.is_verified:
+            continue
+        # Test accounts only visible to other test accounts
+        if getattr(u, 'is_test', False) and not is_current_test:
+            continue
+        # Real accounts hidden from test account searches
+        if not getattr(u, 'is_test', False) and is_current_test:
+            continue
+        verified_pros.append(p)
     professionals = verified_pros
 
     # Filter out resting professionals (#7 mandatory rest)
