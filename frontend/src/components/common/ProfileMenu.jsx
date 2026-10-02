@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LogOut, User, ChevronDown, LayoutDashboard, CreditCard, Bell, Settings,
-  Calendar, MessageSquare, Star, Shield, Share2, HelpCircle, FileText, RefreshCw, Wallet, History
+  Calendar, MessageSquare, Star, Shield, Share2, HelpCircle, FileText, RefreshCw, Wallet, History, Trash2, AlertTriangle
 } from "lucide-react";
 import toast from "react-hot-toast";
 import axios from "axios";
@@ -12,6 +12,9 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const ProfileMenu = () => {
   const [open, setOpen] = useState(false);
   const [showSOS, setShowSOS] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
 
@@ -44,6 +47,28 @@ const ProfileMenu = () => {
     navigate("/");
   };
 
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "EXCLUIR") return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const userId = localStorage.getItem("user_id");
+      await axios.delete(`${API}/api/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Conta excluída com sucesso.");
+      localStorage.clear();
+      navigate("/");
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.response?.data?.message;
+      toast.error(detail || "Erro ao excluir conta. Tente novamente.");
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+      setDeleteConfirmText("");
+    }
+  };
+
   const go = (path) => { navigate(path); setOpen(false); };
 
   // Menu sections based on role
@@ -60,7 +85,7 @@ const ProfileMenu = () => {
       { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
     ]},
     { label: "CONFIGURAÇÕES", items: [
-      { icon: <Bell size={15}/>, text: "Notificações", path: "/notifications" },
+      { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
       { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
       { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
       { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
@@ -86,7 +111,7 @@ const ProfileMenu = () => {
       { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
     ]},
     { label: "CONFIGURAÇÕES", items: [
-      { icon: <Bell size={15}/>, text: "Notificações", path: "/notifications" },
+      { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
       { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
       { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
       { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
@@ -238,8 +263,14 @@ const ProfileMenu = () => {
             </div>
           )}
 
-          {/* Logout */}
+          {/* Delete Account + Logout */}
           <div className="border-t border-slate-100 mt-1 pt-1">
+            {!isAdmin && (
+              <button onClick={() => { setShowDeleteConfirm(true); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-50 transition-colors">
+                <Trash2 size={15} /> Excluir minha conta
+              </button>
+            )}
             <button onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">
               <LogOut size={15} /> Sair
@@ -264,6 +295,51 @@ const ProfileMenu = () => {
               ))}
             </div>
             <button onClick={() => setShowSOS(false)} className="btn-outline w-full">Fechar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(""); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <h3 className="font-bold text-navy text-lg">Excluir conta</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-2">
+              Esta ação irá desativar sua conta permanentemente. Você não poderá mais acessar a plataforma.
+            </p>
+            <p className="text-sm text-slate-600 mb-4">
+              Para confirmar, digite <strong className="text-red-600">EXCLUIR</strong> abaixo:
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              placeholder="Digite EXCLUIR"
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm mb-4 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-200"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(""); }}
+                className="flex-1 btn-outline text-sm py-2.5">
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== "EXCLUIR" || deleting}
+                className={`flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl font-semibold transition-colors
+                  ${deleteConfirmText === "EXCLUIR" && !deleting
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}>
+                <Trash2 size={14} /> {deleting ? "Excluindo..." : "Excluir conta"}
+              </button>
+            </div>
           </div>
         </div>
       )}

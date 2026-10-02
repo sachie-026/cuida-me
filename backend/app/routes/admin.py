@@ -125,6 +125,26 @@ def block_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_ad
     db.commit()
     return {"id": user.id, "is_active": user.is_active}
 
+
+@router.delete("/users/{user_id}")
+def admin_delete_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """Admin soft-deletes a user account (sets is_active=False, marks professional unavailable)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Usuário não encontrado")
+    if user.role == UserRole.admin:
+        raise HTTPException(400, "Não é possível excluir contas de administrador")
+    user.is_active = False
+    # Mark professional as unavailable
+    role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    if role not in ("client", "admin"):
+        prof = db.query(Professional).filter(Professional.user_id == user_id).first()
+        if prof:
+            prof.is_available = False
+    db.commit()
+    return {"id": user_id, "is_active": False, "message": f"Conta de {user.full_name} desativada."}
+
+
 @router.get("/professionals")
 def get_professionals(status: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_admin)):
     q = db.query(Professional)
