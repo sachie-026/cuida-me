@@ -1065,10 +1065,23 @@ const UsersPanel = () => {
     axios.get(`${API}/api/admin/users`, { headers }).then(r => setUsers(r.data)).catch(() => {});
   }, []);
 
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const toggleBlock = async (userId, isActive) => {
     await axios.patch(`${API}/api/admin/users/${userId}/block`, {}, { headers });
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: !isActive } : u));
     toast(isActive ? "Usuário bloqueado." : "Usuário desbloqueado.", { icon: isActive ? "🔒" : "🔓" });
+  };
+
+  const handleDeleteUser = async (userId) => {
+    try {
+      await axios.delete(`${API}/api/admin/users/${userId}`, { headers });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: false } : u));
+      toast.success("Conta desativada com sucesso.");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao excluir usuário.");
+    }
+    setDeleteTarget(null);
   };
 
   return (
@@ -1104,11 +1117,17 @@ const UsersPanel = () => {
                   </td>
                   <td className="px-4 py-3">
                     {u.role !== "admin" && (
-                      <button onClick={() => toggleBlock(u.id, u.is_active)}
-                        className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors
-                          ${u.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
-                        <Ban size={12} /> {u.is_active ? "Bloquear" : "Desbloquear"}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => toggleBlock(u.id, u.is_active)}
+                          className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors
+                            ${u.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
+                          <Ban size={12} /> {u.is_active ? "Bloquear" : "Desbloquear"}
+                        </button>
+                        <button onClick={() => setDeleteTarget(u)}
+                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+                          <Trash2 size={12} /> Excluir
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -1117,6 +1136,27 @@ const UsersPanel = () => {
           </table>
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-navy text-lg mb-2">Confirmar exclusão</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Deseja desativar a conta de <strong>{deleteTarget.full_name}</strong> ({deleteTarget.email})?
+              O usuário não poderá mais acessar a plataforma.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 btn-outline text-sm py-2.5">Cancelar</button>
+              <button onClick={() => handleDeleteUser(deleteTarget.id)}
+                className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors">
+                <Trash2 size={14} /> Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

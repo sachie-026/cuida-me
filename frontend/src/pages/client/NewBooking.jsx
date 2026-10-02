@@ -200,7 +200,10 @@ const NewBooking = () => {
       }, {headers});
       toast.success("Agendamento criado com sucesso!");
       navigate("/dashboard/client");
-    } catch { toast.error("Erro ao criar agendamento."); }
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.response?.data?.message;
+      toast.error(detail || "Erro ao criar agendamento. Tente novamente.");
+    }
     finally { setSubmitting(false); }
   };
 

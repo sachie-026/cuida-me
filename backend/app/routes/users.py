@@ -111,3 +111,29 @@ def update_patient(user_id: str, body: PatientUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(patient)
     return patient
+
+
+@router.delete("/{user_id}")
+def delete_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Soft-delete: deactivate user account. User can delete own account; admin can delete any."""
+    _check_own_or_admin(current, user_id)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    # Prevent non-admin from deleting other users
+    if current.id != user_id and current_role != "admin":
+        raise HTTPException(403, "Access denied")
+    # Prevent deleting admin accounts (only super-admin via admin panel)
+    target_role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    if target_role == "admin" and current.id != user_id:
+        raise HTTPException(400, "Não é possível excluir contas de administrador")
+    # Soft-delete: deactivate
+    user.is_active = False
+    # Also mark professional as unavailable if applicable
+    if target_role not in ("client", "admin"):
+        prof = db.query(Professional).filter(Professional.user_id == user_id).first()
+        if prof:
+            prof.is_available = False
+    db.commit()
+    return {"id": user_id, "is_active": False, "message": "Conta desativada com sucesso."}
