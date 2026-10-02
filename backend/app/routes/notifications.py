@@ -87,7 +87,7 @@ def _serialize(n: Notification) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 def get_notifications(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
