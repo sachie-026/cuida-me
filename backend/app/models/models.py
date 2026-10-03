@@ -70,6 +70,7 @@ class User(Base):
     has_professional_profile = Column(Boolean, default=False)
     # 50c: Admin sub-role (only applies when role=admin)
     admin_role   = Column(String, nullable=True)  # super_admin, finance, support, operations
+    stripe_customer_id = Column(String, nullable=True)  # Stripe Customer ID for saved payment methods
     is_test       = Column(Boolean, default=False)   # Block 5: test accounts hidden from real users
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
