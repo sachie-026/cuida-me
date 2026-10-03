@@ -36,11 +36,26 @@ def get_stripe():
 class PaymentCreate(BaseModel):
     booking_id: str
     method:     str   # "pix" | "credit_card" | "debit_card"
+    payment_method_id: Optional[str] = None  # Stripe PaymentMethod ID (saved card)
 
 class RefundRequest(BaseModel):
     booking_id: str
     reason:     Optional[str] = "Cancelamento do agendamento"
     percentage: int = 100  # 100, 50, or 0
+
+
+def _get_or_create_stripe_customer(stripe, user: User, db) -> str:
+    """Get or create a Stripe Customer for this user."""
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
+    customer = stripe.Customer.create(
+        email=user.email,
+        name=user.full_name,
+        metadata={"user_id": user.id},
+    )
+    user.stripe_customer_id = customer.id
+    db.commit()
+    return customer.id
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
@@ -87,10 +102,12 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
     if stripe:
         try:
             amount_cents = int(amount_brl * 100)
+            customer_id = _get_or_create_stripe_customer(stripe, current, db)
             if body.method == "pix":
                 intent = stripe.PaymentIntent.create(
                     amount=amount_cents,
                     currency="brl",
+                    customer=customer_id,
                     payment_method_types=["pix"],
                     metadata={"booking_id": body.booking_id},
                 )
@@ -99,16 +116,25 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
                 result["status"] = "awaiting_pix"
             else:
                 # Credit/debit — capture_method=manual for pre-auth
-                intent = stripe.PaymentIntent.create(
-                    amount=amount_cents,
-                    currency="brl",
-                    payment_method_types=["card"],
-                    capture_method="manual",
-                    metadata={"booking_id": body.booking_id},
-                )
+                intent_params = {
+                    "amount": amount_cents,
+                    "currency": "brl",
+                    "customer": customer_id,
+                    "payment_method_types": ["card"],
+                    "capture_method": "manual",
+                    "metadata": {"booking_id": body.booking_id},
+                }
+                # If using a saved payment method, attach it
+                if body.payment_method_id:
+                    intent_params["payment_method"] = body.payment_method_id
+                    intent_params["confirm"] = True
+                    intent_params["off_session"] = False
+                intent = stripe.PaymentIntent.create(**intent_params)
                 payment.stripe_intent_id = intent.id
                 result["client_secret"] = intent.client_secret
                 result["status"] = "awaiting_card"
+                if body.payment_method_id and intent.status in ("succeeded", "requires_capture"):
+                    result["status"] = "confirmed"
         except Exception as e:
             payment.status = PaymentStatus.failed
             db.add(payment)
@@ -276,6 +302,65 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.commit()
 
     return {"received": True}
+
+# ── Saved Payment Methods (Client) ────────────────────────────────────────────
+
+@router.post("/setup-intent")
+def create_setup_intent(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Create a SetupIntent so the client can save a card via Stripe Elements."""
+    stripe = get_stripe()
+    if not stripe:
+        return {"mock": True, "message": "Stripe não configurado (modo desenvolvimento)."}
+    try:
+        customer_id = _get_or_create_stripe_customer(stripe, current, db)
+        intent = stripe.SetupIntent.create(
+            customer=customer_id,
+            payment_method_types=["card"],
+        )
+        return {"client_secret": intent.client_secret, "customer_id": customer_id}
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao criar setup: {str(e)}")
+
+@router.get("/methods")
+def list_payment_methods(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """List saved payment methods for the current user."""
+    stripe = get_stripe()
+    if not stripe or not current.stripe_customer_id:
+        return {"methods": []}
+    try:
+        methods = stripe.PaymentMethod.list(
+            customer=current.stripe_customer_id,
+            type="card",
+        )
+        return {"methods": [
+            {
+                "id": m.id,
+                "brand": m.card.brand,
+                "last4": m.card.last4,
+                "exp_month": m.card.exp_month,
+                "exp_year": m.card.exp_year,
+            }
+            for m in methods.data
+        ]}
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao listar métodos: {str(e)}")
+
+@router.delete("/methods/{method_id}")
+def delete_payment_method(method_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Detach a saved payment method."""
+    stripe = get_stripe()
+    if not stripe:
+        raise HTTPException(400, "Stripe não configurado.")
+    try:
+        pm = stripe.PaymentMethod.retrieve(method_id)
+        if pm.customer != current.stripe_customer_id:
+            raise HTTPException(403, "Este método não pertence a você.")
+        stripe.PaymentMethod.detach(method_id)
+        return {"message": "Método de pagamento removido."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao remover método: {str(e)}")
 
 # ── Queries ───────────────────────────────────────────────────────────────────
 
