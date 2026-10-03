@@ -38,9 +38,15 @@ const ManageProfiles = () => {
         return;
       }
     } catch { /* if check fails, allow switch */ }
-    localStorage.setItem("role", role);
-    toast.success(`${t("manage_profiles.active_profile")}: ${t(`roles.${role}`)}`);
-    navigate(["nurse","technician","nursing_assistant","caregiver"].includes(role) ? "/dashboard/professional" : "/dashboard/client");
+    try {
+      const { data } = await axios.post(`${API}/api/auth/switch-role`, { role }, { headers });
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("token", data.access_token);
+      toast.success(`${t("manage_profiles.active_profile")}: ${t(`roles.${role}`)}`);
+      navigate(["nurse","technician","nursing_assistant","caregiver"].includes(role) ? "/dashboard/professional" : "/dashboard/client");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao trocar perfil.");
+    }
   };
 
   const proRoles = roles.filter(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r));

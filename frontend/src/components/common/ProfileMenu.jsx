@@ -184,17 +184,24 @@ const ProfileMenu = () => {
 
           {/* 10.3-1,5: Proper profile management — no instant switching */}
           <div className="border-t border-slate-100 mt-1 pt-1">
-            {/* Client with existing pro profile → switch view (not create) */}
+            {/* Client with existing pro profile → switch to professional mode */}
             {role === "client" && hasPro && (
               <button onClick={async () => {
+                const token = localStorage.getItem("token");
                 const proRole = roles.find(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r)) || "nurse";
                 try {
-                  const { data } = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=${proRole}`, { headers: { Authorization: `Bearer ${token}` } });
-                  if (!data.can_switch) { toast.error(data.message); return; }
+                  const canSwitch = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=${proRole}`, { headers: { Authorization: `Bearer ${token}` } });
+                  if (!canSwitch.data.can_switch) { toast.error(canSwitch.data.message); return; }
                 } catch {}
-                localStorage.setItem("role", proRole);
-                toast.success("Modo alterado para Profissional");
-                navigate("/dashboard/professional");
+                try {
+                  const { data } = await axios.post(`${API}/api/auth/switch-role`, { role: proRole }, { headers: { Authorization: `Bearer ${token}` } });
+                  localStorage.setItem("role", data.role);
+                  localStorage.setItem("token", data.access_token);
+                  toast.success("Modo alterado para Profissional");
+                  navigate("/dashboard/professional");
+                } catch (err) {
+                  toast.error(err.response?.data?.detail || "Erro ao trocar perfil.");
+                }
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
@@ -210,16 +217,23 @@ const ProfileMenu = () => {
               </button>
             )}
 
-            {/* Professional → switch to client view */}
+            {/* Professional → switch to client mode */}
             {isPro && (
               <button onClick={async () => {
+                const token = localStorage.getItem("token");
                 try {
-                  const { data } = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=client`, { headers: { Authorization: `Bearer ${token}` } });
-                  if (!data.can_switch) { toast.error(data.message); return; }
+                  const canSwitch = await axios.get(`${API}/api/auth/can-switch-profile?to_profile=client`, { headers: { Authorization: `Bearer ${token}` } });
+                  if (!canSwitch.data.can_switch) { toast.error(canSwitch.data.message); return; }
                 } catch {}
-                localStorage.setItem("role", "client");
-                toast.success("Modo alterado para Cliente");
-                navigate("/dashboard/client");
+                try {
+                  const { data } = await axios.post(`${API}/api/auth/switch-role`, { role: "client" }, { headers: { Authorization: `Bearer ${token}` } });
+                  localStorage.setItem("role", data.role);
+                  localStorage.setItem("token", data.access_token);
+                  toast.success("Modo alterado para Cliente");
+                  navigate("/dashboard/client");
+                } catch (err) {
+                  toast.error(err.response?.data?.detail || "Erro ao trocar perfil.");
+                }
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">

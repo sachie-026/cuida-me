@@ -143,12 +143,16 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         if not body.council_state or body.council_state.upper() not in BRAZIL_STATES:
             raise HTTPException(400, "Estado (UF) inválido. Use um dos 27 estados brasileiros.")
 
+    # 45a: All users can be clients — professionals also get "client" in roles
+    initial_roles = [body.role]
+    if is_pro and "client" not in initial_roles:
+        initial_roles.append("client")
     user = User(
         email=body.email, password_hash=hash_password(body.password),
         full_name=body.full_name, phone=body.phone, cpf=body.cpf,
         role=UserRole(body.role),
-        roles=[body.role],
-        has_client_profile=not is_pro,
+        roles=initial_roles,
+        has_client_profile=True,  # everyone can be a client
         has_professional_profile=is_pro,
     )
     db.add(user)
@@ -599,4 +603,85 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
         "message": f"Perfil profissional criado como {body.professional_role}. Envie seus documentos para verificação.",
         "professional_id": prof.id,
         "roles": current.roles,
+    }
+
+# ── 45a: Switch active role (dual-role users) ──────────────────────────────────
+
+class SwitchRoleRequest(BaseModel):
+    role: str  # target role to switch to
+
+@router.post("/switch-role")
+def switch_role(body: SwitchRoleRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Switch the user's active role. Only allowed if role is in their roles array."""
+    valid_roles = ["client", "nurse", "technician", "nursing_assistant", "caregiver"]
+    if body.role not in valid_roles:
+        raise HTTPException(400, f"Perfil inválido. Use: {valid_roles}")
+
+    user_roles = current.roles or []
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+
+    # Allow switching to client if has_client_profile, even if "client" not explicitly in roles
+    if body.role == "client":
+        if not getattr(current, 'has_client_profile', False) and "client" not in user_roles:
+            raise HTTPException(400, "Você não possui perfil de cliente.")
+    else:
+        # Switching to a professional role — must be in roles array
+        if body.role not in user_roles:
+            # Also check if they have a Professional record with matching category
+            prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+            if not prof or prof.professional_category != body.role:
+                raise HTTPException(400, f"Você não possui o perfil '{body.role}'. Solicite primeiro.")
+
+    # Already on this role — no-op
+    if current_role == body.role:
+        token = create_access_token({"sub": current.id, "role": current.role})
+        return {
+            "message": f"Já está usando o perfil '{body.role}'.",
+            "role": body.role,
+            "access_token": token,
+            "roles": user_roles,
+        }
+
+    # Update the active role in DB
+    try:
+        current.role = UserRole(body.role)
+    except ValueError:
+        raise HTTPException(400, f"Role '{body.role}' inválido.")
+
+    # Ensure role is in roles array
+    if body.role not in user_roles:
+        user_roles.append(body.role)
+        current.roles = user_roles
+
+    db.commit()
+
+    # Issue new token with updated role
+    token = create_access_token({"sub": current.id, "role": current.role})
+    return {
+        "message": f"Perfil alterado para '{body.role}'.",
+        "role": body.role,
+        "access_token": token,
+        "roles": current.roles,
+    }
+
+# ── 45a: Become client (professional adds client profile) ──────────────────────
+
+@router.post("/become-client")
+def become_client(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Professional adds a Client profile to their existing account."""
+    if getattr(current, 'has_client_profile', False):
+        return {"message": "Você já possui perfil de cliente.", "roles": current.roles}
+
+    current_role = current.role.value if hasattr(current.role, 'value') else str(current.role)
+    roles = list(current.roles or [current_role])
+    if "client" not in roles:
+        roles.append("client")
+    current.roles = roles
+    current.has_client_profile = True
+    db.commit()
+
+    return {
+        "message": "Perfil de cliente adicionado com sucesso.",
+        "roles": current.roles,
+        "has_client_profile": True,
     }
