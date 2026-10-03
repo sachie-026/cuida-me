@@ -56,15 +56,23 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 def require_professional(user: User = Depends(get_current_user)) -> User:
-    """Only professionals (nurse/technician/caregiver) can access."""
+    """Only professionals (nurse/technician/caregiver) can access.
+    Checks both the active role and the roles array for dual-role users."""
     if user.role not in PRO_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Professional access required")
+        # 45a: Also check roles JSON array — dual-role users may have active role=client
+        user_roles = set(user.roles or [])
+        if not user_roles.intersection({r.value for r in PRO_ROLES}):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Professional access required")
     return user
 
 def require_client(user: User = Depends(get_current_user)) -> User:
-    """Only clients can access."""
+    """Only clients can access.
+    Checks both the active role and the roles array for dual-role users."""
     if user.role != UserRole.client:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client access required")
+        # 45a: Also check roles JSON array — dual-role users may have active role=nurse etc.
+        user_roles = set(user.roles or [])
+        if "client" not in user_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client access required")
     return user
 
 def get_optional_user(
