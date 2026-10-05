@@ -85,7 +85,7 @@ const ProfileMenu = () => {
       { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
     ]},
     { label: "CONFIGURAÇÕES", items: [
-      { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
+      { icon: <Bell size={15}/>, text: "Notificações", path: "/notifications" },
       { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
       { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
       { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
@@ -111,7 +111,7 @@ const ProfileMenu = () => {
       { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
     ]},
     { label: "CONFIGURAÇÕES", items: [
-      { icon: <Bell size={15}/>, text: "Notificações", path: "/settings" },
+      { icon: <Bell size={15}/>, text: "Notificações", path: "/notifications" },
       { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
       { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
       { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
