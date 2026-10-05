@@ -18,6 +18,24 @@ router = APIRouter(prefix="/availability", tags=["availability"])
 
 DAY_NAMES = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
 
+
+def _is_overnight(start_time: str, end_time: str) -> bool:
+    """Check if a slot crosses midnight (e.g. 19:00 → 07:00)."""
+    return start_time > end_time
+
+
+def _slot_covers_request(slot_start_str: str, slot_end_str: str, date_str: str,
+                         req_start: datetime, req_end: datetime) -> bool:
+    """Check if an availability slot covers the requested time window.
+    Handles overnight slots (start_time > end_time) by extending end to next day.
+    """
+    slot_start = datetime.strptime(f"{date_str} {slot_start_str}", "%Y-%m-%d %H:%M")
+    slot_end   = datetime.strptime(f"{date_str} {slot_end_str}",   "%Y-%m-%d %H:%M")
+    # Overnight slot: end is on the next day
+    if _is_overnight(slot_start_str, slot_end_str):
+        slot_end += timedelta(days=1)
+    return slot_start <= req_start and req_end <= slot_end
+
 class SlotCreate(BaseModel):
     type:          str = "available"   # "available" | "blocked"
     is_recurring:  bool = False
@@ -171,26 +189,54 @@ def check_availability(
             **holiday_info,
         }
 
-    # Check if time falls within a recurring available slot
+    # Check if time falls within a recurring available slot (supports overnight)
     slot_covers = False
     for slot in recurring_slots:
-        slot_start = datetime.strptime(f"{date} {slot.start_time}", "%Y-%m-%d %H:%M")
-        slot_end   = datetime.strptime(f"{date} {slot.end_time}",   "%Y-%m-%d %H:%M")
-        if slot_start <= d and end_dt <= slot_end:
+        if _slot_covers_request(slot.start_time, slot.end_time, date, d, end_dt):
             slot_covers = True
             break
+
+    # Also check previous day's overnight recurring slots that extend into this date
+    if not slot_covers:
+        prev_day = (day_of_week - 1) % 7
+        prev_date_obj = d.date() - timedelta(days=1)
+        prev_recurring = db.query(Availability).filter(
+            Availability.professional_id == professional_id,
+            Availability.is_recurring     == True,
+            Availability.day_of_week      == prev_day,
+            Availability.type             == AvailabilityType.available,
+        ).all()
+        for slot in prev_recurring:
+            if _is_overnight(slot.start_time, slot.end_time):
+                if _slot_covers_request(slot.start_time, slot.end_time,
+                                        prev_date_obj.isoformat(), d, end_dt):
+                    slot_covers = True
+                    break
 
     # Also check specific date available override
     specific_available = db.query(Availability).filter(
         Availability.professional_id == professional_id,
         Availability.specific_date   == date,
         Availability.type            == AvailabilityType.available,
-    ).first()
-    if specific_available:
-        sa_start = datetime.strptime(f"{date} {specific_available.start_time}", "%Y-%m-%d %H:%M")
-        sa_end   = datetime.strptime(f"{date} {specific_available.end_time}",   "%Y-%m-%d %H:%M")
-        if sa_start <= d and end_dt <= sa_end:
+    ).all()
+    for sa in specific_available:
+        if _slot_covers_request(sa.start_time, sa.end_time, date, d, end_dt):
             slot_covers = True
+            break
+
+    # Check previous day's specific overnight slot
+    if not slot_covers:
+        prev_date_str = (d.date() - timedelta(days=1)).isoformat()
+        prev_specific = db.query(Availability).filter(
+            Availability.professional_id == professional_id,
+            Availability.specific_date   == prev_date_str,
+            Availability.type            == AvailabilityType.available,
+        ).all()
+        for sa in prev_specific:
+            if _is_overnight(sa.start_time, sa.end_time):
+                if _slot_covers_request(sa.start_time, sa.end_time, prev_date_str, d, end_dt):
+                    slot_covers = True
+                    break
 
     if not slot_covers and not specific_available:
         return {
@@ -259,12 +305,42 @@ def get_slots_for_date(
         return {"slots": [], "blocked": True, **holiday_info}
 
     available_slots = [
-        {"start_time": s.start_time, "end_time": s.end_time, "source": "recurring"}
+        {"start_time": s.start_time, "end_time": s.end_time, "source": "recurring",
+         "overnight": _is_overnight(s.start_time, s.end_time)}
         for s in recurring if s.type == AvailabilityType.available
     ]
     available_slots += [
-        {"start_time": s.start_time, "end_time": s.end_time, "source": "specific"}
+        {"start_time": s.start_time, "end_time": s.end_time, "source": "specific",
+         "overnight": _is_overnight(s.start_time, s.end_time)}
         for s in specific if s.type == AvailabilityType.available
     ]
+
+    # Include previous day's overnight slots that extend into this date
+    prev_day = (day_of_week - 1) % 7
+    prev_recurring = db.query(Availability).filter(
+        Availability.professional_id == professional_id,
+        Availability.is_recurring    == True,
+        Availability.day_of_week     == prev_day,
+        Availability.type            == AvailabilityType.available,
+    ).all()
+    for s in prev_recurring:
+        if _is_overnight(s.start_time, s.end_time):
+            available_slots.append({
+                "start_time": "00:00", "end_time": s.end_time,
+                "source": "recurring_overnight", "overnight": True,
+            })
+
+    prev_date_str = (d.date() - timedelta(days=1)).isoformat() if hasattr(d, 'date') else (datetime.strptime(date, "%Y-%m-%d").date() - timedelta(days=1)).isoformat()
+    prev_specific = db.query(Availability).filter(
+        Availability.professional_id == professional_id,
+        Availability.specific_date   == prev_date_str,
+        Availability.type            == AvailabilityType.available,
+    ).all()
+    for s in prev_specific:
+        if _is_overnight(s.start_time, s.end_time):
+            available_slots.append({
+                "start_time": "00:00", "end_time": s.end_time,
+                "source": "specific_overnight", "overnight": True,
+            })
 
     return {"slots": available_slots, "blocked": False, **holiday_info}

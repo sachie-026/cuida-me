@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 
 const API     = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const DAYS    = ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
-const TIMES   = Array.from({length:32},(_,i)=>{const h=Math.floor(i/2)+6;const m=i%2===0?"00":"30";return `${String(h).padStart(2,"0")}:${m}`;});
+const TIMES   = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2);const m=i%2===0?"00":"30";return `${String(h).padStart(2,"0")}:${m}`;});
 
 const AvailabilityCalendar = ({ userId }) => {
   const token   = localStorage.getItem("token");
@@ -158,7 +158,7 @@ const AvailabilityCalendar = ({ userId }) => {
                           <div key={slot.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${
                             slot.type === "available" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
                             <Clock size={11} />
-                            {slot.start_time} – {slot.end_time}
+                            {slot.start_time} – {slot.end_time}{slot.start_time > slot.end_time ? " 🌙" : ""}
                             <button onClick={() => handleDelete(slot.id)} className="hover:text-red-500 transition-colors ml-1">
                               <Trash2 size={11} />
                             </button>
@@ -185,8 +185,8 @@ const AvailabilityCalendar = ({ userId }) => {
                     <span className="flex items-center gap-2">
                       <Calendar size={11} />
                       {new Date(slot.specific_date + "T12:00:00").toLocaleDateString("pt-BR")}
-                      · {slot.start_time} – {slot.end_time}
-                      · {slot.type === "available" ? "Disponível" : "Bloqueado"}
+                      · {slot.start_time} – {slot.end_time}{slot.start_time > slot.end_time ? " 🌙" : ""}
+                      · {slot.type === "available" ? "Disponível" : "Bloqueado"}{slot.start_time > slot.end_time ? " (noturno)" : ""}
                     </span>
                     <button onClick={() => handleDelete(slot.id)} className="hover:text-red-500 transition-colors">
                       <Trash2 size={13} />
