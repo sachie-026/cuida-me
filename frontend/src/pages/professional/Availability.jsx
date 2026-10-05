@@ -8,8 +8,8 @@ import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
 
 const API     = process.env.REACT_APP_API_URL || "http://localhost:8000";
-const TIMES   = Array.from({ length: 32 }, (_, i) => {
-  const h = Math.floor(i / 2) + 6;
+const TIMES   = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
   const m = i % 2 === 0 ? "00" : "30";
   return `${String(h).padStart(2, "0")}:${m}`;
 });
@@ -42,7 +42,7 @@ const SlotModal = ({ date, existingSlots, onClose, onAdd, onDelete }) => {
   });
 
   const handleAdd = async () => {
-    if (start >= end) { toast.error("Horário de fim deve ser após o início."); return; }
+    if (start === end) { toast.error("Horário de início e fim não podem ser iguais."); return; }
     setSaving(true);
     await onAdd({ specific_date: date, start_time: start, end_time: end, type, is_recurring: false });
     setSaving(false);
@@ -72,8 +72,8 @@ const SlotModal = ({ date, existingSlots, onClose, onAdd, onDelete }) => {
                   ${s.type === "available" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
                   <span className="flex items-center gap-2">
                     <Clock size={13} />
-                    {s.start_time} – {s.end_time}
-                    <span className="text-xs opacity-70">· {s.type === "available" ? "Disponível" : "Bloqueado"}</span>
+                    {s.start_time} – {s.end_time}{s.start_time > s.end_time ? " 🌙" : ""}
+                    <span className="text-xs opacity-70">· {s.type === "available" ? "Disponível" : "Bloqueado"}{s.start_time > s.end_time ? " (noturno)" : ""}</span>
                   </span>
                   <button onClick={() => onDelete(s.id)} className="hover:opacity-60 transition-opacity">
                     <Trash2 size={14} />
@@ -351,7 +351,7 @@ const CalendarTab = ({ userId, profId }) => {
                   <span className="flex items-center gap-2">
                     <CalendarDays size={13} />
                     {new Date(s.specific_date + "T12:00:00").toLocaleDateString("pt-BR", { weekday:"short", day:"numeric", month:"short" })}
-                    · <Clock size={11} /> {s.start_time} – {s.end_time}
+                    · <Clock size={11} /> {s.start_time} – {s.end_time}{s.start_time > s.end_time ? " 🌙" : ""}
                   </span>
                   <button onClick={() => handleDeleteSlot(s.id)} className="hover:opacity-60 transition-opacity ml-2">
                     <Trash2 size={13} />
@@ -462,8 +462,8 @@ const CalendarTab = ({ userId, profId }) => {
                       <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-green-50 border border-green-100">
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-green-400" />
-                          <span className="text-sm text-green-700 font-medium">{s.start_time} – {s.end_time}</span>
-                          <span className="text-[10px] text-green-500">Disponível</span>
+                          <span className="text-sm text-green-700 font-medium">{s.start_time} – {s.end_time}{s.start_time > s.end_time ? " 🌙" : ""}</span>
+                          <span className="text-[10px] text-green-500">{s.start_time > s.end_time ? "Noturno" : "Disponível"}</span>
                         </div>
                         <button onClick={() => handleDeleteSlot(s.id)} className="text-xs text-red-400 hover:text-red-600 font-medium">Remover</button>
                       </div>
@@ -522,7 +522,7 @@ const RecurringTab = ({ userId }) => {
   }, [userId]);
 
   const handleAdd = async (dow) => {
-    if (form.start_time >= form.end_time) { toast.error("Horário de fim deve ser após o início."); return; }
+    if (form.start_time === form.end_time) { toast.error("Horário de início e fim não podem ser iguais."); return; }
     setSaving(true);
     try {
       const { data } = await axios.post(`${API}/api/availability/professional/${userId}`, {
@@ -580,8 +580,8 @@ const RecurringTab = ({ userId }) => {
                       <div key={s.id} className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium
                         ${s.type === "available" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
                         <span className="flex items-center gap-2">
-                          <Clock size={11} /> {s.start_time} – {s.end_time}
-                          <span className="opacity-60">· {s.type === "available" ? "Disponível" : "Bloqueado"}</span>
+                          <Clock size={11} /> {s.start_time} – {s.end_time}{s.start_time > s.end_time ? " 🌙" : ""}
+                          <span className="opacity-60">· {s.type === "available" ? "Disponível" : "Bloqueado"}{s.start_time > s.end_time ? " (noturno)" : ""}</span>
                         </span>
                         <button onClick={() => handleDelete(s.id)} className="hover:opacity-60 transition-opacity">
                           <Trash2 size={12} />
