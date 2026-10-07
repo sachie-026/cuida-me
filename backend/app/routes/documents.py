@@ -4,6 +4,7 @@ from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Document, Professional, DocStatus, User
 from app.utils.cloudinary_helper import upload_document, ALLOWED_TYPES, MAX_SIZE_MB
+from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -45,12 +46,34 @@ async def upload_doc(
         existing.status   = DocStatus.pending
         db.commit()
         db.refresh(existing)
+
+        # ── Notify: account.document_submitted → user (confirmation) ──
+        try:
+            fire_event(db, "account.document_submitted", {
+                "user_name": current.full_name,
+                "doc_type_label": doc_type,
+            }, recipient_users={"user": [current]})
+            db.commit()
+        except Exception as e:
+            print(f"[NOTIFY] account.document_submitted error: {e}")
+
         return {"id": existing.id, "url": url, "doc_type": doc_type, "status": "pending"}
     else:
         doc = Document(user_id=current.id, doc_type=doc_type, file_url=url, status=DocStatus.pending)
         db.add(doc)
         db.commit()
         db.refresh(doc)
+
+        # ── Notify: account.document_submitted → user (confirmation) ──
+        try:
+            fire_event(db, "account.document_submitted", {
+                "user_name": current.full_name,
+                "doc_type_label": doc_type,
+            }, recipient_users={"user": [current]})
+            db.commit()
+        except Exception as e:
+            print(f"[NOTIFY] account.document_submitted error: {e}")
+
         return {"id": doc.id, "url": url, "doc_type": doc_type, "status": "pending"}
 
 @router.get("/my-documents")

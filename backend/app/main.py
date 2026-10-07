@@ -284,6 +284,66 @@ def run_migrations():
             updated_at TIMESTAMPTZ
         )""",
         "CREATE INDEX IF NOT EXISTS idx_payout_methods_user_id ON payout_methods(user_id)",
+        # ── Notification Engine Tables ──
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS event_key VARCHAR",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS category VARCHAR",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority VARCHAR DEFAULT 'normal'",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action_link VARCHAR",
+        "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_mandatory BOOLEAN DEFAULT FALSE",
+        """CREATE TABLE IF NOT EXISTS notification_events (
+            id VARCHAR PRIMARY KEY,
+            event_key VARCHAR UNIQUE NOT NULL,
+            category VARCHAR NOT NULL,
+            description VARCHAR,
+            variables JSON DEFAULT '[]',
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notification_events_key ON notification_events(event_key)",
+        """CREATE TABLE IF NOT EXISTS notification_rules (
+            id VARCHAR PRIMARY KEY,
+            event_id VARCHAR NOT NULL REFERENCES notification_events(id),
+            recipient VARCHAR NOT NULL,
+            channels JSON DEFAULT '[]',
+            priority VARCHAR DEFAULT 'normal',
+            is_active BOOLEAN DEFAULT TRUE,
+            is_mandatory BOOLEAN DEFAULT FALSE,
+            action_link VARCHAR,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notification_rules_event ON notification_rules(event_id)",
+        """CREATE TABLE IF NOT EXISTS notification_templates (
+            id VARCHAR PRIMARY KEY,
+            rule_id VARCHAR NOT NULL REFERENCES notification_rules(id),
+            channel VARCHAR NOT NULL,
+            language VARCHAR DEFAULT 'pt-BR',
+            title VARCHAR NOT NULL,
+            body TEXT NOT NULL,
+            email_subject VARCHAR,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notification_templates_rule ON notification_templates(rule_id)",
+        """CREATE TABLE IF NOT EXISTS notification_schedules (
+            id VARCHAR PRIMARY KEY,
+            rule_id VARCHAR NOT NULL REFERENCES notification_rules(id),
+            offset_minutes INTEGER NOT NULL,
+            reference VARCHAR DEFAULT 'event',
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notification_schedules_rule ON notification_schedules(rule_id)",
+        """CREATE TABLE IF NOT EXISTS notification_deliveries (
+            id VARCHAR PRIMARY KEY,
+            notification_id VARCHAR NOT NULL REFERENCES notifications(id),
+            channel VARCHAR NOT NULL,
+            status VARCHAR DEFAULT 'pending',
+            attempts INTEGER DEFAULT 0,
+            last_attempt_at TIMESTAMPTZ,
+            error TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notification_deliveries_notif ON notification_deliveries(notification_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -295,6 +355,29 @@ def run_migrations():
     print("✅ Migrations complete")
 
 run_migrations()
+
+# Seed notification events (idempotent — skips if already seeded)
+def _seed_notifications():
+    from app.core.database import SessionLocal
+    from app.utils.seed_notification_events import seed_notification_events
+    db = SessionLocal()
+    try:
+        seed_notification_events(db)
+    except Exception as e:
+        print(f"[SEED] Error seeding notifications: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+_seed_notifications()
+
+# ── Start scheduled notification runner ──────────────────────────────────────
+try:
+    from app.utils.notification_scheduler import start_scheduler
+    start_scheduler()
+    print("[STARTUP] Notification scheduler started")
+except Exception as e:
+    print(f"[STARTUP] Notification scheduler failed to start: {e}")
 
 app = FastAPI(title="Cuida.me API", version="1.0.0", redirect_slashes=False)
 

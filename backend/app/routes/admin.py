@@ -8,6 +8,7 @@ from app.core.auth_deps import require_admin
 from pydantic import BaseModel
 from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole, DocumentAuditLog
 from app.utils.pricing import MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE
+from app.utils.notification_engine import fire_event
 
 def _fresh_doc_url(file_url):
     """Generate fresh signed Cloudinary URL. Returns original if generation fails."""
@@ -299,9 +300,13 @@ def complete_verification(prof_id: str, db: Session = Depends(get_db), current: 
 
     notif_message = msg_template.replace("{nome}", first_name).replace("{categoria}", cat_label)
 
-    # 2.3d: Send via all channels — in-app, email, WhatsApp
-    from app.utils.notifications import notify_all_channels
-    notify_results = notify_all_channels(db, user, f"Verificação concluída, {first_name}! ✅", notif_message, "verification_complete")
+    # 2.3d: Notify professional — verification complete
+    try:
+        fire_event(db, "account.professional_activated", {
+            "user_name": first_name,
+        }, recipient_users={"professional": [user]})
+    except Exception as e:
+        print(f"[NOTIFY] account.professional_activated error: {e}")
 
     db.commit()
 
@@ -428,11 +433,17 @@ def reject_document(doc_id: str, reason: str = "Documento inválido ou ilegível
                 prof.approval_status = DocStatus.pending
                 db.commit()
 
-        # 2.2d: Notify user via all channels
-        from app.utils.notifications import notify_all_channels
-        fb_msg = feedback or reason
-        notify_all_channels(db, user, "Documento requer atenção", f"Seu documento '{doc.doc_type}' foi revisado. Motivo: {fb_msg}", "document_feedback", doc_id=doc.id, doc_type=doc.doc_type)
-        db.commit()
+        # 2.2d: Notify user — document rejected
+        try:
+            fb_msg = feedback or reason
+            fire_event(db, "account.document_rejected", {
+                "user_name": user.full_name,
+                "doc_type_label": doc.doc_type,
+                "rejection_reason": fb_msg,
+            }, recipient_users={"user": [user]})
+            db.commit()
+        except Exception as e:
+            print(f"[NOTIFY] account.document_rejected error: {e}")
 
     return {"id": doc_id, "status": "rejected", "reason": reason}
 
@@ -780,17 +791,18 @@ def request_new_document(body: DocRequestPayload, db: Session = Depends(get_db),
             prof.approval_status = DocStatus.pending
     db.commit()
 
-    # Create notification for user
+    # Notify user — document requested
     try:
-        from app.routes.notifications import create_notification
-        create_notification(
-            user_id=body.user_id,
-            type="system",
-            title="Documento solicitado",
-            message=f"A equipe CuidaU solicitou o documento '{body.doc_type}'. Motivo: {body.reason}. Acesse seu perfil para enviar.",
-        )
-    except:
-        pass
+        user_to_notify = db.query(User).filter(User.id == body.user_id).first()
+        if user_to_notify:
+            fire_event(db, "account.document_rejected", {
+                "user_name": user_to_notify.full_name,
+                "doc_type_label": body.doc_type,
+                "rejection_reason": body.reason or "Documento necessário",
+            }, recipient_users={"user": [user_to_notify]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] account.document_rejected (request) error: {e}")
 
     return {
         "doc_id": doc_id,
@@ -1178,10 +1190,16 @@ def update_document_status(doc_id: str, status: str, reason: str = "", feedback:
     if status == "replacement_requested":
         user = db.query(User).filter(User.id == doc.user_id).first()
         if user:
-            from app.utils.notifications import notify_all_channels
-            fb_msg = feedback or reason or "Documento precisa ser reenviado"
-            notify_all_channels(db, user, "Reenvio de documento solicitado", f"Seu documento '{doc.doc_type}' precisa ser reenviado. Motivo: {fb_msg}", "document_feedback", doc_id=doc.id, doc_type=doc.doc_type)
-            db.commit()
+            try:
+                fb_msg = feedback or reason or "Documento precisa ser reenviado"
+                fire_event(db, "account.document_rejected", {
+                    "user_name": user.full_name,
+                    "doc_type_label": doc.doc_type,
+                    "rejection_reason": fb_msg,
+                }, recipient_users={"user": [user]})
+                db.commit()
+            except Exception as e:
+                print(f"[NOTIFY] account.document_rejected (replacement) error: {e}")
 
     return {"doc_id": doc_id, "status": status, "reason": reason}
 
@@ -1556,8 +1574,15 @@ def send_admin_message(body: SendMessageRequest, db: Session = Depends(get_db), 
     user = db.query(User).filter(User.id == body.user_id).first()
     if not user:
         raise HTTPException(404, "Usuário não encontrado")
-    from app.utils.notifications import notify_all_channels
-    results = notify_all_channels(db, user, body.title, body.message, "admin_message")
+    # Notify user via fire_event
+    try:
+        fire_event(db, "admin.message", {
+            "title": body.title,
+            "message": body.message,
+            "admin_name": current.full_name,
+        }, recipient_users={"other_party": [user]})
+    except Exception as e:
+        print(f"[NOTIFY] admin.message error: {e}")
     # Log to audit
     log = DocumentAuditLog(
         doc_id="general_message", user_id=body.user_id,
