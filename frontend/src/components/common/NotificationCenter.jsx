@@ -1,18 +1,30 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, X, CheckCircle, AlertTriangle, Calendar, CreditCard, MessageSquare, Star } from "lucide-react";
+import {
+  Bell, X, CheckCircle, AlertTriangle, Calendar, CreditCard,
+  MessageSquare, Star, Shield, UserCheck, Clock, FileText,
+} from "lucide-react";
 import axios from "axios";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const ICON_MAP = {
-  booking:    <Calendar size={14} className="text-blue-500" />,
-  payment:    <CreditCard size={14} className="text-green-500" />,
-  cancel:     <AlertTriangle size={14} className="text-red-500" />,
-  checkin:    <CheckCircle size={14} className="text-purple-500" />,
-  message:    <MessageSquare size={14} className="text-blue-500" />,
-  rating:     <Star size={14} className="text-amber-500" />,
-  system:     <Bell size={14} className="text-slate-500" />,
+  booking:  <Calendar size={14} className="text-blue-500" />,
+  payment:  <CreditCard size={14} className="text-green-500" />,
+  cancel:   <AlertTriangle size={14} className="text-red-500" />,
+  checkin:  <CheckCircle size={14} className="text-purple-500" />,
+  message:  <MessageSquare size={14} className="text-blue-500" />,
+  rating:   <Star size={14} className="text-amber-500" />,
+  system:   <Bell size={14} className="text-slate-500" />,
+  account:  <UserCheck size={14} className="text-teal-500" />,
+  admin:    <Shield size={14} className="text-indigo-500" />,
+  reminder: <Clock size={14} className="text-orange-500" />,
+  service:  <Calendar size={14} className="text-cyan-500" />,
+  penalty:  <AlertTriangle size={14} className="text-red-600" />,
+  alert:    <AlertTriangle size={14} className="text-yellow-500" />,
+  verification_complete: <CheckCircle size={14} className="text-green-600" />,
+  document_feedback:     <FileText size={14} className="text-orange-500" />,
+  admin_message:         <Shield size={14} className="text-indigo-500" />,
 };
 
 const NotificationCenter = () => {
@@ -24,33 +36,57 @@ const NotificationCenter = () => {
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
-  // Poll for notifications every 30 seconds
-  useEffect(() => {
-    const fetch = () => {
-      if (!token) return;
-      axios.get(`${API}/api/notifications`, { headers }).then(r => {
-        const data = Array.isArray(r.data) ? r.data : [];
-        setNotifications(data);
-        setUnreadCount(data.filter(n => !n.read).length);
-      }).catch(() => {});
-    };
-    fetch();
-    const interval = setInterval(fetch, 30000);
-    return () => clearInterval(interval);
+  // Poll unread count every 30s (lightweight endpoint)
+  const fetchUnreadCount = useCallback(() => {
+    if (!token) return;
+    axios.get(`${API}/api/notifications/unread-count`, { headers })
+      .then(r => setUnreadCount(r.data?.unread_count ?? 0))
+      .catch(() => {});
   }, [token]);
 
+  // Fetch full notification list (on dropdown open)
+  const fetchNotifications = useCallback(() => {
+    if (!token) return;
+    axios.get(`${API}/api/notifications?limit=20`, { headers })
+      .then(r => {
+        const items = r.data?.items ?? (Array.isArray(r.data) ? r.data : []);
+        setNotifications(items);
+        const count = r.data?.unread_count ?? items.filter(n => !n.read).length;
+        setUnreadCount(count);
+      })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [fetchUnreadCount]);
+
+  // Fetch full list when dropdown opens
+  useEffect(() => {
+    if (open) fetchNotifications();
+  }, [open, fetchNotifications]);
+
+  // Close on outside click
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const markRead = async (id) => {
-    try {
-      await axios.patch(`${API}/api/notifications/${id}/read`, {}, { headers });
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch {}
+  const handleClick = async (n) => {
+    if (!n.read) {
+      try {
+        await axios.patch(`${API}/api/notifications/${n.id}/read`, {}, { headers });
+        setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      } catch {}
+    }
+    if (n.action_link) {
+      setOpen(false);
+      navigate(n.action_link);
+    }
   };
 
   const markAllRead = async () => {
@@ -59,6 +95,10 @@ const NotificationCenter = () => {
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch {}
+  };
+
+  const getIcon = (n) => {
+    return ICON_MAP[n.category] || ICON_MAP[n.type] || ICON_MAP.system;
   };
 
   return (
@@ -91,11 +131,11 @@ const NotificationCenter = () => {
                 <p className="text-xs text-slate-400">Nenhuma notificação</p>
               </div>
             ) : (
-              notifications.slice(0, 20).map(n => (
-                <button key={n.id} onClick={() => markRead(n.id)}
+              notifications.map(n => (
+                <button key={n.id} onClick={() => handleClick(n)}
                   className={`w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${!n.read ? "bg-blue-50/50" : ""}`}>
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5">{ICON_MAP[n.type] || ICON_MAP.system}</span>
+                    <span className="mt-0.5">{getIcon(n)}</span>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm ${!n.read ? "font-semibold text-navy" : "text-slate-600"}`}>{n.title}</p>
                       <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
@@ -109,7 +149,7 @@ const NotificationCenter = () => {
               ))
             )}
           </div>
-          {/* Link to full notifications page */}
+
           <div className="border-t border-slate-100 px-4 py-2">
             <button onClick={() => { setOpen(false); navigate("/notifications"); }}
               className="w-full text-center text-xs text-blue-500 hover:text-blue-700 font-semibold py-1">

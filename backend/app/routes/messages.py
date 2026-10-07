@@ -16,6 +16,7 @@ from datetime import datetime
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Message, User, Booking
+from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -70,6 +71,17 @@ def send_message(body: MessageCreate, db: Session = Depends(get_db), current: Us
     db.add(msg)
     db.commit()
     db.refresh(msg)
+
+    # ── Notify: message.new → recipient ──
+    try:
+        fire_event(db, "message.new", {
+            "sender_name": current.full_name,
+            "message_preview": body.content[:100],
+        }, recipient_users={"other_party": [recipient]})
+        db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] message.new error: {e}")
+
     return msg
 
 @router.get("/conversations")

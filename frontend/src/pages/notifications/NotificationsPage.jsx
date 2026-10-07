@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Bell, BellOff, Trash2, ChevronLeft, CheckCircle, AlertTriangle,
   Calendar, CreditCard, MessageSquare, Star, Mail, Phone, Smartphone,
-  Filter, Check,
+  Filter, Check, Shield, UserCheck, Clock, FileText,
 } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -19,11 +19,17 @@ const ICON_MAP = {
   cancel:                <AlertTriangle size={16} className="text-red-500" />,
   checkin:               <CheckCircle size={16} className="text-purple-500" />,
   message:               <MessageSquare size={16} className="text-blue-500" />,
-  admin_message:         <MessageSquare size={16} className="text-indigo-500" />,
+  admin_message:         <Shield size={16} className="text-indigo-500" />,
   rating:                <Star size={16} className="text-amber-500" />,
   system:                <Bell size={16} className="text-slate-500" />,
+  account:               <UserCheck size={16} className="text-teal-500" />,
+  admin:                 <Shield size={16} className="text-indigo-500" />,
+  reminder:              <Clock size={16} className="text-orange-500" />,
+  service:               <Calendar size={16} className="text-cyan-500" />,
+  penalty:               <AlertTriangle size={16} className="text-red-600" />,
+  alert:                 <AlertTriangle size={16} className="text-yellow-500" />,
   verification_complete: <CheckCircle size={16} className="text-green-600" />,
-  document_feedback:     <AlertTriangle size={16} className="text-orange-500" />,
+  document_feedback:     <FileText size={16} className="text-orange-500" />,
 };
 
 const TYPE_LABELS = {
@@ -35,6 +41,12 @@ const TYPE_LABELS = {
   admin_message: "Mensagem da equipe",
   rating: "Avaliação",
   system: "Sistema",
+  account: "Conta",
+  admin: "Administração",
+  reminder: "Lembrete",
+  service: "Serviço",
+  penalty: "Penalidade",
+  alert: "Alerta",
   verification_complete: "Verificação concluída",
   document_feedback: "Documento",
 };
@@ -60,8 +72,11 @@ const NotificationsPage = () => {
   const backPath = isPro ? "/dashboard/professional" : role === "admin" ? "/admin" : "/dashboard/client";
 
   useEffect(() => {
-    axios.get(`${API}/api/notifications`, { headers })
-      .then(r => setNotifications(Array.isArray(r.data) ? r.data : []))
+    axios.get(`${API}/api/notifications?limit=100`, { headers })
+      .then(r => {
+        const items = r.data?.items ?? (Array.isArray(r.data) ? r.data : []);
+        setNotifications(items);
+      })
       .catch(() => toast.error("Erro ao carregar notificações."))
       .finally(() => setLoading(false));
   }, []);
@@ -147,13 +162,16 @@ const NotificationsPage = () => {
         ) : (
           <div className="space-y-2">
             {filtered.map(n => {
-              const icon = ICON_MAP[n.type] || ICON_MAP.system;
-              const typeLabel = TYPE_LABELS[n.type] || n.type;
+              const icon = ICON_MAP[n.category] || ICON_MAP[n.type] || ICON_MAP.system;
+              const typeLabel = TYPE_LABELS[n.category] || TYPE_LABELS[n.type] || n.category || n.type;
               return (
                 <div
                   key={n.id}
                   className={`card p-4 transition-all cursor-pointer ${!n.read ? "border-l-4 border-l-blue-500 bg-blue-50/30" : "hover:bg-slate-50"}`}
-                  onClick={() => !n.read && markRead(n.id)}
+                  onClick={() => {
+                    if (!n.read) markRead(n.id);
+                    if (n.action_link) navigate(n.action_link);
+                  }}
                 >
                   <div className="flex items-start gap-3">
                     <span className="mt-0.5 flex-shrink-0">{icon}</span>

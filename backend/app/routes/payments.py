@@ -13,7 +13,8 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user, require_admin
-from app.models.models import Payment, PaymentStatus, Booking, BookingStatus, User, Patient
+from app.models.models import Payment, PaymentStatus, Booking, BookingStatus, User, Patient, Professional
+from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -139,6 +140,18 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
             payment.status = PaymentStatus.failed
             db.add(payment)
             db.commit()
+            # ── Notify: payment.failed → client ──
+            try:
+                fire_event(db, "payment.failed", {
+                    "service": booking.service_type or "Cuidado",
+                    "booking_code": f"#{booking.id[:6].upper()}",
+                    "booking_id": booking.id,
+                    "amount": f"{amount_brl:.2f}",
+                    "error_message": str(e)[:100],
+                }, recipient_users={"client": [current]})
+                db.commit()
+            except Exception:
+                pass
             raise HTTPException(400, f"Erro Stripe: {str(e)}")
     else:
         # No Stripe configured — dev/mock mode
@@ -169,6 +182,22 @@ def confirm_payment(payment_id: str, db: Session = Depends(get_db), current: Use
     payment.status = PaymentStatus.held
     payment.held_at = datetime.now(timezone.utc)
     db.commit()
+
+    # ── Notify: payment.authorized → client ──
+    try:
+        booking = db.query(Booking).filter(Booking.id == payment.booking_id).first()
+        client_user = db.query(User).filter(User.id == booking.user_id).first() if booking else None
+        if client_user and booking:
+            fire_event(db, "payment.authorized", {
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "amount": f"{payment.amount:.2f}",
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] payment.authorized error: {e}")
+
     return {"payment_id": payment.id, "status": "held", "message": "Pagamento confirmado e em custódia."}
 
 @router.post("/capture/{payment_id}")
@@ -218,6 +247,22 @@ def release_payment(booking_id: str, db: Session = Depends(get_db), current: Use
     payment.status = PaymentStatus.released
     payment.released_at = datetime.now(timezone.utc)
     db.commit()
+
+    # ── Notify: payment.released_to_professional → professional ──
+    try:
+        pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        pro_user = db.query(User).filter(User.id == pro.user_id).first() if pro else None
+        if pro_user:
+            fire_event(db, "payment.released_to_professional", {
+                "amount": f"{payment.pro_payout:.2f}",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "service": booking.service_type or "Cuidado",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] payment.released_to_professional error: {e}")
+
     return {
         "payment_id": payment.id, "status": "released",
         "pro_payout": payment.pro_payout, "commission": payment.commission,
@@ -255,6 +300,22 @@ def refund_payment(body: RefundRequest, db: Session = Depends(get_db), current: 
     payment.refunded_at = datetime.now(timezone.utc)
     payment.refund_amount = refund_amount
     db.commit()
+
+    # ── Notify: payment.refund_issued → client ──
+    try:
+        booking = db.query(Booking).filter(Booking.id == body.booking_id).first()
+        client_user = db.query(User).filter(User.id == booking.user_id).first() if booking else None
+        if client_user and booking:
+            fire_event(db, "payment.refund_issued", {
+                "amount": f"{refund_amount:.2f}",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "refund_reason": body.reason or "Cancelamento",
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] payment.refund_issued error: {e}")
+
     return {
         "payment_id": payment.id, "status": "refunded",
         "refund_amount": refund_amount, "percentage": body.percentage,
@@ -294,12 +355,43 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             payment.held_at = datetime.now(timezone.utc)
             db.commit()
 
+            # ── Notify: payment.authorized → client ──
+            try:
+                booking = db.query(Booking).filter(Booking.id == payment.booking_id).first()
+                client_user = db.query(User).filter(User.id == booking.user_id).first() if booking else None
+                if client_user and booking:
+                    fire_event(db, "payment.authorized", {
+                        "service": booking.service_type or "Cuidado",
+                        "booking_code": f"#{booking.id[:6].upper()}",
+                        "booking_id": booking.id,
+                        "amount": f"{payment.amount:.2f}",
+                    }, recipient_users={"client": [client_user]})
+                    db.commit()
+            except Exception as e:
+                print(f"[NOTIFY] payment.authorized (webhook) error: {e}")
+
     elif event_type == "payment_intent.payment_failed":
         intent_id = data_obj.get("id")
         payment = db.query(Payment).filter(Payment.stripe_intent_id == intent_id).first()
         if payment:
             payment.status = PaymentStatus.failed
             db.commit()
+
+            # ── Notify: payment.failed → client ──
+            try:
+                booking = db.query(Booking).filter(Booking.id == payment.booking_id).first()
+                client_user = db.query(User).filter(User.id == booking.user_id).first() if booking else None
+                if client_user and booking:
+                    fire_event(db, "payment.failed", {
+                        "service": booking.service_type or "Cuidado",
+                        "booking_code": f"#{booking.id[:6].upper()}",
+                        "booking_id": booking.id,
+                        "amount": f"{payment.amount:.2f}",
+                        "error_message": data_obj.get("last_payment_error", {}).get("message", "Pagamento recusado"),
+                    }, recipient_users={"client": [client_user]})
+                    db.commit()
+            except Exception as e:
+                print(f"[NOTIFY] payment.failed (webhook) error: {e}")
 
     return {"received": True}
 

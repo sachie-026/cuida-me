@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Menu, X } from "lucide-react";
 import Logo from "../common/Logo";
 import LanguageSwitcher from "../common/LanguageSwitcher";
+import NotificationCenter from "../common/NotificationCenter";
 import ProfileMenu from "../common/ProfileMenu";
 
 const Navbar = () => {
@@ -60,6 +61,7 @@ const Navbar = () => {
               <Link to="/messages" className="text-sm font-medium text-slate-600 hover:text-blue-500 transition-colors px-3 py-1.5">
                 Mensagens
               </Link>
+              <NotificationCenter />
               <ProfileMenu />
             </>
           ) : (
@@ -77,6 +79,7 @@ const Navbar = () => {
         {/* Mobile */}
         <div className="flex md:hidden items-center gap-2">
           <LanguageSwitcher />
+          {token && <NotificationCenter />}
           {token && <ProfileMenu />}
           <button onClick={() => setMenuOpen(!menuOpen)}
             className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">

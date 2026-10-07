@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Assessment, Booking, Professional, BookingStatus, User
 from sqlalchemy import func
+from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
@@ -140,6 +141,22 @@ def create_rating(body: RatingCreate, db: Session = Depends(get_db), current: Us
 
     db.commit()
     db.refresh(assessment)
+
+    # ── Notify: rating.received → reviewee ──
+    try:
+        reviewee = db.query(User).filter(User.id == reviewee_user_id).first()
+        if reviewee:
+            fire_event(db, "rating.received", {
+                "rater_name": current.full_name,
+                "rating_value": str(body.rating),
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+            }, recipient_users={"other_party": [reviewee]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] rating.received error: {e}")
+
     return assessment
 
 @router.get("/booking/{booking_id}")
