@@ -439,12 +439,96 @@ class Notification(Base):
     booking_id        = Column(String, nullable=True)
     doc_id            = Column(String, nullable=True)      # links notification to a specific document
     doc_type          = Column(String, nullable=True)      # e.g. coren_card, criminal_record
+    # Spec fields — event engine
+    event_key         = Column(String, nullable=True)      # e.g. "booking.requested", "document.approved"
+    category          = Column(String, nullable=True)       # account, booking, service, payment, ratings, penalties, admin, alerts, messages
+    priority          = Column(String, default="normal")    # critical, normal, low
+    action_link       = Column(String, nullable=True)       # screen to open: booking_detail, profile, documents, payment, rating
+    is_mandatory      = Column(Boolean, default=False)      # user cannot turn it off
     delivery_email    = Column(String, default="pending")  # pending, sent, failed, not_configured
     delivery_whatsapp = Column(String, default="pending")  # pending, sent, failed, not_configured
     delivery_in_app   = Column(String, default="sent")     # always sent when row exists
     created_at        = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", backref="notifications")
+
+
+# ── Notification Engine Tables ──────────────────────────────────────────────
+
+class NotificationEvent(Base):
+    """Fixed list of event keys the code can fire + the variables each one provides."""
+    __tablename__ = "notification_events"
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    event_key   = Column(String, unique=True, nullable=False, index=True)  # e.g. "booking.requested"
+    category    = Column(String, nullable=False)   # account, booking, service, payment, ratings, penalties, admin, alerts, messages
+    description = Column(String, nullable=True)     # human-readable description
+    variables   = Column(JSON, default=list)         # list of variable names this event provides
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    rules = relationship("NotificationRule", back_populates="event")
+
+
+class NotificationRule(Base):
+    """One row per event × recipient type: active on/off, channels, priority, mandatory flag."""
+    __tablename__ = "notification_rules"
+    id            = Column(String, primary_key=True, default=gen_uuid)
+    event_id      = Column(String, ForeignKey("notification_events.id"), nullable=False, index=True)
+    recipient     = Column(String, nullable=False)   # client, professional, both, admin, other_party, user
+    channels      = Column(JSON, default=list)        # ["in_app", "email", "push", "whatsapp"]
+    priority      = Column(String, default="normal")  # critical, normal, low
+    is_active     = Column(Boolean, default=True)
+    is_mandatory  = Column(Boolean, default=False)    # user cannot turn it off
+    action_link   = Column(String, nullable=True)     # screen the button opens
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
+
+    event     = relationship("NotificationEvent", back_populates="rules")
+    templates = relationship("NotificationTemplate", back_populates="rule")
+    schedules = relationship("NotificationSchedule", back_populates="rule")
+
+
+class NotificationTemplate(Base):
+    """Text per rule × channel × language: title, body, email subject."""
+    __tablename__ = "notification_templates"
+    id            = Column(String, primary_key=True, default=gen_uuid)
+    rule_id       = Column(String, ForeignKey("notification_rules.id"), nullable=False, index=True)
+    channel       = Column(String, nullable=False)    # in_app, email, push, whatsapp
+    language      = Column(String, default="pt-BR")
+    title         = Column(String, nullable=False)
+    body          = Column(Text, nullable=False)
+    email_subject = Column(String, nullable=True)      # only for email channel
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at    = Column(DateTime(timezone=True), onupdate=func.now())
+
+    rule = relationship("NotificationRule", back_populates="templates")
+
+
+class NotificationSchedule(Base):
+    """Offsets for scheduled rules (e.g. -24h, -2h, +25min)."""
+    __tablename__ = "notification_schedules"
+    id            = Column(String, primary_key=True, default=gen_uuid)
+    rule_id       = Column(String, ForeignKey("notification_rules.id"), nullable=False, index=True)
+    offset_minutes = Column(Integer, nullable=False)  # negative = before, positive = after. e.g. -1440 = 24h before
+    reference     = Column(String, default="event")    # "event", "booking_start", "signup", "expiry"
+    is_active     = Column(Boolean, default=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+
+    rule = relationship("NotificationRule", back_populates="schedules")
+
+
+class NotificationDelivery(Base):
+    """One row per channel attempt: status (sent, delivered, failed), timestamp, error."""
+    __tablename__ = "notification_deliveries"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    notification_id = Column(String, ForeignKey("notifications.id"), nullable=False, index=True)
+    channel         = Column(String, nullable=False)   # in_app, email, push, whatsapp
+    status          = Column(String, default="pending") # pending, sent, delivered, failed
+    attempts        = Column(Integer, default=0)
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    error           = Column(Text, nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    notification = relationship("Notification", backref="deliveries")
 
 
 class PayoutMethod(Base):

@@ -69,6 +69,8 @@ const FIELD_LABELS = {
   // 50-28: Pro penalties
   pro_cancel_warning_threshold: "Aviso após N cancelamentos", pro_cancel_suspend_days_first: "Suspensão 1ª vez (dias)",
   pro_cancel_suspend_days_repeat: "Suspensão reincidência (dias)", pro_cancel_review_threshold: "Revisão após N cancelamentos",
+  // General: Phone verification
+  require_phone_verification: "Exigir verificação telefone",
 };
 const FIELD_UNITS = {
   min_advance_hours: "h", min_booking_hours: "h", urgent_window_start_hours: "h",
