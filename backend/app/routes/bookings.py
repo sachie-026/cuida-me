@@ -8,6 +8,7 @@ from app.core.auth_deps import get_current_user, require_admin
 from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus, DocStatus
 from app.utils.pricing import calculate_price, MINIMUM_PRICES, detect_shift, HOUR_RATES, INITIAL_SERVICE_FEE
 from app.utils.holidays import check_date_for_holiday
+from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -102,9 +103,11 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     if current.role.value == "client":
         if not current.is_verified:
             raise HTTPException(403, "Verifique sua identidade antes de agendar. Envie seus documentos no perfil.")
-        # Phone verification — uncomment when SMS provider is live:
-        # if not getattr(current, 'phone_verified', False):
-        #     raise HTTPException(403, "Verifique seu telefone antes de agendar. Acesse Perfil → Verificar telefone.")
+        # Phone verification — controlled by admin toggle
+        from app.routes.settings import get_setting
+        if get_setting("require_phone_verification", db) == "true":
+            if not getattr(current, 'phone_verified', False):
+                raise HTTPException(403, "Verifique seu telefone antes de agendar. Acesse Perfil → Verificar telefone.")
 
     # Minimum advance booking = 5 hours
     from datetime import datetime, timezone
@@ -175,6 +178,27 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     db.add(booking)
     db.commit()
     db.refresh(booking)
+
+    # ── Notify: booking.requested → professional ──
+    try:
+        pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        pro_user = db.query(User).filter(User.id == pro.user_id).first() if pro else None
+        if pro_user:
+            booking_code = f"#{booking.id[:6].upper()}"
+            fire_event(db, "booking.requested", {
+                "client_name": current.full_name or "Cliente",
+                "service": booking.service_type or "Cuidado",
+                "booking_date": booking.scheduled_start.strftime("%d/%m"),
+                "booking_time": f"{booking.scheduled_start.strftime('%Hh')}–{booking.scheduled_end.strftime('%Hh')}",
+                "neighborhood": "",
+                "booking_code": booking_code,
+                "booking_id": booking.id,
+                "response_deadline": "3h",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] booking.requested error: {e}")
+
     return booking
 
 @router.get("/{booking_id}")
@@ -238,6 +262,26 @@ def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Se
     b.status = BookingStatus.accepted
     db.commit()
     db.refresh(b)
+
+    # ── Notify: booking.accepted → client ──
+    try:
+        _prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+        pro_user = db.query(User).filter(User.id == _prof.user_id).first() if _prof else None
+        client_user = db.query(User).filter(User.id == b.user_id).first()
+        booking_code = f"#{b.id[:6].upper()}"
+        if client_user:
+            fire_event(db, "booking.accepted", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "service": b.service_type or "Cuidado",
+                "booking_date": b.scheduled_start.strftime("%d/%m"),
+                "booking_time": f"{b.scheduled_start.strftime('%Hh')}–{b.scheduled_end.strftime('%Hh')}",
+                "booking_code": booking_code,
+                "booking_id": b.id,
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] booking.accepted error: {e}")
+
     return b
 
 @router.patch("/{booking_id}/checkin")
@@ -327,6 +371,31 @@ def cancel_booking(
 
     db.commit()
     db.refresh(b)
+
+    # ── Notify: booking.cancelled_by_client or booking.cancelled_by_professional ──
+    try:
+        pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+        client_user = db.query(User).filter(User.id == b.user_id).first()
+        booking_code = f"#{b.id[:6].upper()}"
+        cancel_vars = {
+            "service": b.service_type or "Cuidado",
+            "booking_date": b.scheduled_start.strftime("%d/%m"),
+            "booking_code": booking_code,
+            "booking_id": b.id,
+            "cancellation_reason": body.reason or "Não informado",
+        }
+        if cancelled_by == "client" and pro_user:
+            cancel_vars["client_name"] = current.full_name or "Cliente"
+            fire_event(db, "booking.cancelled_by_client", cancel_vars,
+                       recipient_users={"professional": [pro_user]})
+        elif cancelled_by == "professional" and client_user:
+            cancel_vars["professional_name"] = current.full_name or "Profissional"
+            fire_event(db, "booking.cancelled_by_professional", cancel_vars,
+                       recipient_users={"client": [client_user]})
+        db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] booking.cancel error: {e}")
+
     return {**{c.key: getattr(b, c.key) for c in b.__table__.columns if c.key != "status"},
             "status": b.status.value,
             "refund_policy": refund_policy}
@@ -488,6 +557,20 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
     booking.arrival_timer_start = datetime.now(timezone.utc)
 
     db.commit()
+
+    # ── Notify: service.professional_arrived → client ──
+    try:
+        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        if client_user:
+            fire_event(db, "service.professional_arrived", {
+                "professional_name": current.full_name or "Profissional",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] service.professional_arrived error: {e}")
+
     return {
         "booking_id": booking_id, "status": "checked_in",
         "checkin_time": booking.actual_checkin.isoformat(),
@@ -511,6 +594,22 @@ def start_service(booking_id: str, db: Session = Depends(get_db), current: User 
     booking.service_started_at = datetime.now(timezone.utc)
     booking.status = BookingStatus.checked_in
     db.commit()
+
+    # ── Notify: service.checked_in → client ──
+    try:
+        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        if client_user:
+            fire_event(db, "service.checked_in", {
+                "professional_name": current.full_name or "Profissional",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "start_time": booking.service_started_at.strftime("%H:%M"),
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] service.checked_in error: {e}")
+
     return {"booking_id": booking_id, "service_started": True, "started_at": booking.service_started_at.isoformat(),
             "message": "Serviço iniciado. Bom atendimento!"}
 
@@ -543,6 +642,24 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
     # Update professional stats
     prof.completed_count = (prof.completed_count or 0) + 1
     db.commit()
+
+    # ── Notify: service.completed → client ──
+    try:
+        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        if client_user:
+            duration_str = f"{booking.actual_duration_minutes or 0} min"
+            total_amount = f"{booking.total_price:.2f}" if booking.total_price else "0.00"
+            fire_event(db, "service.completed", {
+                "professional_name": current.full_name or "Profissional",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "duration": duration_str,
+                "total_amount": total_amount,
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] service.completed error: {e}")
 
     return {
         "booking_id": booking_id, "status": "completed",
@@ -585,6 +702,25 @@ def report_client_no_show(booking_id: str, db: Session = Depends(get_db), curren
         client.reliability_score = max(0, (client.reliability_score or 100) - 10)
 
     db.commit()
+
+    # ── Notify: service.no_show_client → professional + client ──
+    try:
+        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        booking_code = f"#{booking.id[:6].upper()}"
+        recipients = {}
+        if client_user:
+            recipients["client"] = [client_user]
+        recipients["professional"] = [current]
+        fire_event(db, "service.no_show_client", {
+            "client_name": (client_user.full_name if client_user else "Cliente"),
+            "service": booking.service_type or "Cuidado",
+            "booking_code": booking_code,
+            "booking_id": booking.id,
+        }, recipient_users=recipients)
+        db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] service.no_show_client error: {e}")
+
     return {"booking_id": booking_id, "status": "cancelled", "reason": "client_no_show",
             "message": "No-show do cliente registrado. Pagamento será processado conforme política."}
 
@@ -913,6 +1049,31 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
         payment.refund_reason = body.reason
         db.commit()
         refund_result = {"refund_pct": refund_pct, "refund_amount": refund_amount}
+
+    # ── Notify: booking.cancelled_by_client or _by_professional ──
+    try:
+        _prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        pro_user = db.query(User).filter(User.id == _prof.user_id).first() if _prof else None
+        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        booking_code = f"#{booking.id[:6].upper()}"
+        cancel_vars = {
+            "service": booking.service_type or "Cuidado",
+            "booking_date": booking.scheduled_start.strftime("%d/%m"),
+            "booking_code": booking_code,
+            "booking_id": booking.id,
+            "cancellation_reason": body.reason or "Não informado",
+        }
+        if body.cancelled_by == "client" and pro_user:
+            cancel_vars["client_name"] = (client_user.full_name if client_user else "Cliente")
+            fire_event(db, "booking.cancelled_by_client", cancel_vars,
+                       recipient_users={"professional": [pro_user]})
+        elif body.cancelled_by == "professional" and client_user:
+            cancel_vars["professional_name"] = (pro_user.full_name if pro_user else "Profissional")
+            fire_event(db, "booking.cancelled_by_professional", cancel_vars,
+                       recipient_users={"client": [client_user]})
+        db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] booking.cancel(POST) error: {e}")
 
     return {
         "booking_id": booking_id,

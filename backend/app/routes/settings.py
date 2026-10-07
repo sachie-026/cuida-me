@@ -89,6 +89,7 @@ DEFAULTS = {
     # 50d: General settings
     "maintenance_mode":             "false",
     "allow_new_registrations":      "true",
+    "require_phone_verification":   "false",
     # 50-4: Weekend pricing
     "weekend_pricing_enabled":      "false",
     "weekend_saturday_applies":     "true",
@@ -269,7 +270,7 @@ def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
                             "category_active_caregiver", "category_active_nursing_assistant",
                             "category_active_technician", "category_active_nurse"],
             "content":      ["platform_name", "support_email", "support_whatsapp"],
-            "general":      ["maintenance_mode", "allow_new_registrations"],
+            "general":      ["maintenance_mode", "allow_new_registrations", "require_phone_verification"],
             "weekend":      ["weekend_pricing_enabled", "weekend_saturday_applies", "weekend_sunday_applies",
                             "weekend_pricing_method", "weekend_surcharge_pct", "weekend_specific_rate"],
             "travel":       ["travel_fee_enabled", "travel_free_distance_km", "travel_fee_method", "travel_fee_rate"],
