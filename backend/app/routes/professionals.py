@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user, get_optional_user
-from app.models.models import Professional, DocStatus, User
+from app.models.models import Professional, DocStatus, User, Availability, AvailabilityType
 from app.utils.pricing import (
     professional_can_perform, minimum_role_for_services,
     SERVICES_BY_ROLE, calculate_price, VALID_MARKUPS,
@@ -200,6 +200,47 @@ def get_nearby(
                         can_perform = False  # time slot already booked
                 except:
                     pass
+
+            # Availability slot check — professional must have a slot covering requested time
+            if can_perform and start_time and end_time:
+                try:
+                    from datetime import datetime as dt
+                    from sqlalchemy import or_, and_
+                    s = dt.fromisoformat(start_time) if isinstance(start_time, str) else start_time
+                    e = dt.fromisoformat(end_time) if isinstance(end_time, str) else end_time
+                    req_date  = s.strftime("%Y-%m-%d")     # e.g. "2026-10-09"
+                    req_start = s.strftime("%H:%M")        # e.g. "18:00"
+                    req_end   = e.strftime("%H:%M")        # e.g. "21:00"
+                    req_dow   = s.weekday()                 # 0=Mon … 6=Sun
+
+                    # Find an 'available' slot that fully covers the requested window
+                    avail_slot = db.query(Availability).filter(
+                        Availability.professional_id == prof.id,
+                        Availability.type == AvailabilityType.available,
+                        Availability.start_time <= req_start,
+                        Availability.end_time   >= req_end,
+                        or_(
+                            Availability.specific_date == req_date,
+                            and_(Availability.is_recurring == True, Availability.day_of_week == req_dow)
+                        )
+                    ).first()
+
+                    # Check no 'blocked' slot overlaps the requested window
+                    blocked_slot = db.query(Availability).filter(
+                        Availability.professional_id == prof.id,
+                        Availability.type == AvailabilityType.blocked,
+                        Availability.start_time < req_end,
+                        Availability.end_time   > req_start,
+                        or_(
+                            Availability.specific_date == req_date,
+                            and_(Availability.is_recurring == True, Availability.day_of_week == req_dow)
+                        )
+                    ).first()
+
+                    if not avail_slot or blocked_slot:
+                        can_perform = False
+                except Exception as avail_err:
+                    print(f"[AVAIL] Check failed for prof {prof.id}: {avail_err}")
 
             if can_perform and any(s in prof_services for s in required_services):
                 pro_data = {
