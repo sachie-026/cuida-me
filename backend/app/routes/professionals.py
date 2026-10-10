@@ -241,12 +241,18 @@ def get_nearby(
                         if not avail_slot or blocked_slot:
                             can_perform = False
                     else:
-                        # No time filter — just check professional has ANY availability slots
+                        # No time filter — check professional has current/future availability slots
+                        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                         has_slots = db.query(Availability).filter(
                             Availability.professional_id == prof.id,
                             Availability.type == AvailabilityType.available,
+                            or_(
+                                Availability.is_recurring == True,
+                                Availability.specific_date >= today_str,
+                            )
                         ).first()
                         if not has_slots:
+                            print(f"[AVAIL] Prof {prof.id} has no current/future availability slots")
                             can_perform = False
                 except Exception as avail_err:
                     print(f"[AVAIL] Check failed for prof {prof.id}: {avail_err}")
@@ -282,14 +288,20 @@ def get_nearby(
         user = db.query(User).filter(User.id == prof.user_id).first()
         if not user:
             continue
-        # Must have at least one availability slot to appear in search
+        # Must have at least one current/future availability slot to appear in search
         try:
+            from sqlalchemy import or_
+            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             has_slots = db.query(Availability).filter(
                 Availability.professional_id == prof.id,
                 Availability.type == AvailabilityType.available,
+                or_(
+                    Availability.is_recurring == True,
+                    Availability.specific_date >= today_str,
+                )
             ).first()
             if not has_slots:
-                print(f"[NEARBY] Skipping prof {prof.id} — no availability slots")
+                print(f"[NEARBY] Skipping prof {prof.id} — no current/future availability slots")
                 continue
         except Exception as avail_err:
             print(f"[NEARBY] Availability check failed for prof {prof.id}: {avail_err}")
