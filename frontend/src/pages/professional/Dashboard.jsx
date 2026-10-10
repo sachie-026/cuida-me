@@ -31,11 +31,10 @@ const ProfessionalDashboard = () => {
   const headers   = { Authorization: `Bearer ${token}` };
 
   const [bookings,       setBookings]       = useState([]);
-  const [available,      setAvailable]      = useState(false);
   const [approvalStatus, setApprovalStatus] = useState("pending");
+  const [hasAvailability, setHasAvailability] = useState(false);
   const [profId,         setProfId]         = useState(null);
   const [loading,        setLoading]        = useState(true);
-  const [toggling,       setToggling]       = useState(false);
   const [cancellingBooking, setCancellingBooking] = useState(null);
 
   useEffect(() => {
@@ -46,46 +45,27 @@ const ProfessionalDashboard = () => {
     axios.get(`${API}/api/professionals/${userId}`, { headers })
       .then(profRes => {
         const prof = profRes.data;
-        setAvailable(prof.is_available || false);
         setApprovalStatus(prof.approval_status || "pending");
         setProfId(prof.id);
         setLoading(false); // 53c: Dashboard interactive immediately with profile
         console.log(`[53a] Pro profile: ${Math.round(performance.now()-t0)}ms — dashboard interactive`);
 
-        // 53c: Bookings load in background (deferred)
-        return axios.get(`${API}/api/bookings/professional/${prof.id}`, { headers });
+        // Check if professional has any availability slots
+        return axios.get(`${API}/api/availability/professional/${userId}`, { headers })
+          .then(availRes => {
+            const slots = availRes.data?.slots || [];
+            setHasAvailability(slots.length > 0);
+          })
+          .catch(() => setHasAvailability(false))
+          .then(() => axios.get(`${API}/api/bookings/professional/${prof.id}`, { headers }));
       })
       .then(bookRes => {
-        setBookings(Array.isArray(bookRes.data) ? bookRes.data : []);
+        if (bookRes) setBookings(Array.isArray(bookRes.data) ? bookRes.data : []);
         console.log(`[53a] Pro bookings: ${Math.round(performance.now()-t0)}ms`);
       })
       .catch(() => { setLoading(false); });
   }, [userId]);
 
-  const toggleAvailability = async () => {
-    if (approvalStatus !== "approved") {
-      toast("Sua conta precisa ser verificada primeiro.", { icon: "⚠️" });
-      navigate("/profile/professional");
-      return;
-    }
-    setToggling(true);
-    try {
-      const { data } = await axios.patch(
-        `${API}/api/professionals/${userId}/toggle-availability`, {}, { headers }
-      );
-      setAvailable(data.is_available);
-      toast.success(data.is_available ? "Você está disponível!" : "Você está indisponível.");
-    } catch (err) {
-      if (err.response?.data?.detail === "ACCOUNT_NOT_VERIFIED") {
-        toast("Conta pendente de verificação.", { icon: "⚠️" });
-        navigate("/profile/professional");
-      } else {
-        toast.error("Erro ao atualizar disponibilidade.");
-      }
-    } finally {
-      setToggling(false);
-    }
-  };
 
   const handleAccept = async (bookingId) => {
     try {
@@ -164,15 +144,15 @@ const ProfessionalDashboard = () => {
               className="btn-outline flex items-center gap-2 text-sm">
               <Clock size={16} /> Disponibilidade
             </button>
-            <span className={`text-sm font-medium ${available ? "text-green-600" : "text-slate-500"}`}>
-              {available ? "Disponível" : "Indisponível"}
+            <span className={`text-sm font-medium ${hasAvailability ? "text-green-600" : "text-amber-600"}`}>
+              {hasAvailability ? "✓ Disponível" : "⚠️ Sem horários definidos"}
             </span>
-            <button onClick={toggleAvailability} disabled={toggling}
-              className={`w-12 h-6 rounded-full relative transition-colors duration-300 disabled:opacity-60
-                ${available ? "bg-green-500" : approvalStatus !== "approved" ? "bg-slate-200" : "bg-slate-300"}`}>
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all duration-300 shadow
-                ${available ? "right-0.5" : "left-0.5"}`} />
-            </button>
+            {!hasAvailability && (
+              <button onClick={() => navigate("/availability")}
+                className="text-xs text-blue-600 underline hover:text-blue-800">
+                Adicionar horários
+              </button>
+            )}
             {approvalStatus !== "approved" && (
               <span className="text-xs text-amber-600 font-medium">⚠️ Não verificado</span>
             )}
