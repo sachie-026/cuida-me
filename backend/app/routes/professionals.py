@@ -111,8 +111,9 @@ def get_nearby(
     db:       Session = Depends(get_db),
     current:  Optional[User] = Depends(get_optional_user),
 ):
-    """Public endpoint — returns approved+available professionals, filtered by services if provided."""
+    """Public endpoint — returns approved professionals with availability slots, filtered by services if provided."""
     from datetime import datetime, timezone
+    print("[NEARBY] v2 — availability-slot filtering active")
     required_services = [s.strip() for s in services.split(",")] if services else []
     now = datetime.now(timezone.utc)
 
@@ -249,6 +250,7 @@ def get_nearby(
                             can_perform = False
                 except Exception as avail_err:
                     print(f"[AVAIL] Check failed for prof {prof.id}: {avail_err}")
+                    can_perform = False  # If availability check fails, exclude professional
 
             if can_perform and any(s in prof_services for s in required_services):
                 pro_data = {
@@ -281,12 +283,17 @@ def get_nearby(
         if not user:
             continue
         # Must have at least one availability slot to appear in search
-        has_slots = db.query(Availability).filter(
-            Availability.professional_id == prof.id,
-            Availability.type == AvailabilityType.available,
-        ).first()
-        if not has_slots:
-            continue
+        try:
+            has_slots = db.query(Availability).filter(
+                Availability.professional_id == prof.id,
+                Availability.type == AvailabilityType.available,
+            ).first()
+            if not has_slots:
+                print(f"[NEARBY] Skipping prof {prof.id} — no availability slots")
+                continue
+        except Exception as avail_err:
+            print(f"[NEARBY] Availability check failed for prof {prof.id}: {avail_err}")
+            continue  # If check fails, exclude professional
         role = user.role.value if hasattr(user.role, 'value') else str(user.role)
         result.append({
             **{c.key: getattr(prof, c.key) for c in prof.__table__.columns},
