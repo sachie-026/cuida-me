@@ -145,11 +145,16 @@ const NewBooking = () => {
     if (!emergencyContact.name || !emergencyContact.phone) { toast.error("Contato de emergência é obrigatório."); return; }
     setLoading(true);
     const svcParam = encodeURIComponent(selectedSvcs.join(","));
-    const startISO = new Date(`${date}T${startTime}`).toISOString();
-    let endDt = new Date(`${date}T${endTime}`);
-    if (endDt <= new Date(`${date}T${startTime}`)) endDt.setDate(endDt.getDate() + 1);
-    const endISO = endDt.toISOString();
-    axios.get(`${API}/api/professionals/nearby?services=${svcParam}&start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`, {headers})
+    // Send local date+time without UTC conversion — availability slots are stored in local time
+    const startLocal = `${date}T${startTime}:00`;
+    let endLocal = `${date}T${endTime}:00`;
+    // Handle overnight: if end <= start, bump to next day
+    if (endTime <= startTime) {
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      endLocal = `${nextDay.toISOString().split("T")[0]}T${endTime}:00`;
+    }
+    axios.get(`${API}/api/professionals/nearby?services=${svcParam}&start_time=${encodeURIComponent(startLocal)}&end_time=${encodeURIComponent(endLocal)}`, {headers})
       .then(r => { setProfessionals(r.data.professionals||[]); setStep(2); })
       .catch(() => toast.error("Erro ao buscar profissionais."))
       .finally(() => setLoading(false));
@@ -158,14 +163,19 @@ const NewBooking = () => {
   const handleSelectPro = async (pro) => {
     setSelectedPro(pro);
     setLoading(true);
-    const start = new Date(`${date}T${startTime}`);
-    let end = new Date(`${date}T${endTime}`);
-    if (end <= start) end.setDate(end.getDate() + 1);
+    // Send local date+time without UTC conversion — pricing uses local time
+    const startLocal = `${date}T${startTime}:00`;
+    let endLocal = `${date}T${endTime}:00`;
+    if (endTime <= startTime) {
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      endLocal = `${nextDay.toISOString().split("T")[0]}T${endTime}:00`;
+    }
     try {
       const priceRes = await axios.post(`${API}/api/professionals/calculate-price`, {
         professional_id: pro.id,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
+        start_time: startLocal,
+        end_time: endLocal,
         is_urgent: isUrgent, distance_km: 0,
       }, {headers});
       if (!priceRes.data?.total) {
@@ -185,15 +195,20 @@ const NewBooking = () => {
     if (!patient||!selectedPro||!priceResult) return;
     setSubmitting(true);
     try {
-      const start = new Date(`${date}T${startTime}`);
-      let end = new Date(`${date}T${endTime}`);
-      if (end <= start) end.setDate(end.getDate() + 1);
+      // Send local date+time without UTC conversion — consistent with search and pricing
+      const startLocal = `${date}T${startTime}:00`;
+      let endLocal = `${date}T${endTime}:00`;
+      if (endTime <= startTime) {
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+        endLocal = `${nextDay.toISOString().split("T")[0]}T${endTime}:00`;
+      }
       await axios.post(`${API}/api/bookings`, {
         patient_id: patient.id, professional_id: selectedPro.id,
         service_type: selectedSvcs.join(", "), services: selectedSvcs,
         duration_hours: durationInfo?.hours || Math.round(durationInfo?.totalMinutes/60),
         shift,
-        scheduled_start: start.toISOString(), scheduled_end: end.toISOString(),
+        scheduled_start: startLocal, scheduled_end: endLocal,
         is_urgent: isUrgent, distance_km: 0,
         markup_pct: selectedPro.markup_pct || 0,
         notes,
