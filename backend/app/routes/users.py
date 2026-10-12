@@ -100,6 +100,44 @@ def get_patient(user_id: str, db: Session = Depends(get_db), current: User = Dep
         raise HTTPException(404, "Patient not found")
     return patient
 
+class PatientCreate(BaseModel):
+    patient_name: str
+    age: Optional[int] = None
+    relation: Optional[str] = None
+    diagnoses: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    is_own_account: Optional[bool] = True
+
+@router.post("/{user_id}/patient")
+def create_patient(user_id: str, body: PatientCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    _check_own_or_admin(current, user_id)
+    # Return existing patient if one already exists
+    existing = db.query(Patient).filter(Patient.user_id == user_id).first()
+    if existing:
+        return existing
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    patient = Patient(
+        user_id=user_id,
+        patient_name=body.patient_name,
+        age=body.age,
+        relation=body.relation,
+        diagnoses=body.diagnoses,
+        address=body.address,
+        is_own_account=body.is_own_account,
+        emergency_contact_name=body.emergency_contact_name,
+        emergency_contact_phone=body.emergency_contact_phone,
+    )
+    db.add(patient)
+    db.commit()
+    db.refresh(patient)
+    return patient
+
 @router.patch("/{user_id}/patient")
 def update_patient(user_id: str, body: PatientUpdate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     _check_own_or_admin(current, user_id)

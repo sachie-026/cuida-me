@@ -192,9 +192,25 @@ const NewBooking = () => {
   };
 
   const handleConfirm = async () => {
-    if (!patient||!selectedPro||!priceResult) return;
+    if (!selectedPro||!priceResult) { toast.error("Selecione um profissional e aguarde o cálculo do preço."); return; }
     setSubmitting(true);
     try {
+      // Ensure patient record exists — auto-create for "myself" mode if needed
+      let activePatient = patient;
+      if (!activePatient) {
+        const userName = localStorage.getItem("full_name") || "Paciente";
+        const patRes = await axios.post(`${API}/api/users/${userId}/patient`, {
+          patient_name: patientMode === "myself" ? userName : patientForm.patient_name,
+          age: patientMode === "other" ? (parseInt(patientForm.age)||null) : null,
+          relation: patientMode === "other" ? patientForm.relation : "self",
+          address: patientMode === "other" ? patientForm.address : "",
+          is_own_account: patientMode === "myself",
+          emergency_contact_name: emergencyContact.name,
+          emergency_contact_phone: emergencyContact.phone,
+        }, {headers});
+        activePatient = patRes.data;
+        setPatient(activePatient);
+      }
       // Send local date+time without UTC conversion — consistent with search and pricing
       const startLocal = `${date}T${startTime}:00`;
       let endLocal = `${date}T${endTime}:00`;
@@ -204,7 +220,7 @@ const NewBooking = () => {
         endLocal = `${nextDay.toISOString().split("T")[0]}T${endTime}:00`;
       }
       await axios.post(`${API}/api/bookings`, {
-        patient_id: patient.id, professional_id: selectedPro.id,
+        patient_id: activePatient.id, professional_id: selectedPro.id,
         service_type: selectedSvcs.join(", "), services: selectedSvcs,
         duration_hours: durationInfo?.hours || Math.round(durationInfo?.totalMinutes/60),
         shift,
