@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare } from "lucide-react";
+import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
 import RatingModal from "../../components/common/RatingModal";
+import PaymentForm from "../../components/common/PaymentForm";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -30,6 +32,7 @@ const ClientDashboard = () => {
   const [ratingBooking,setRatingBooking] = useState(null);
   const [ratedIds,     setRatedIds]     = useState([]);
   const [cancellingBooking, setCancellingBooking] = useState(null);
+  const [payingBooking,     setPayingBooking]     = useState(null);
 
   useEffect(() => {
     // 2.5c: Check verification status
@@ -86,7 +89,7 @@ const ClientDashboard = () => {
     <div className="min-h-screen bg-slate-50">
       <nav className="bg-white border-b border-slate-100 px-4 sm:px-6 h-16 flex items-center justify-between sticky top-0 z-40 shadow-sm">
         <Logo size="sm" />
-        <div className="flex items-center gap-3"><LanguageSwitcher /><ProfileMenu /></div>
+        <div className="flex items-center gap-3"><NotificationCenter /><LanguageSwitcher /><ProfileMenu /></div>
       </nav>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -171,7 +174,7 @@ const ClientDashboard = () => {
                       {statusLabel(b.status)}
                     </span>
                     {b.status === "accepted" && (
-                      <button onClick={() => navigate(`/booking/new?pay=${b.id}`)}
+                      <button onClick={() => setPayingBooking(b)}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
                         <CreditCard size={11} /> Pagar
                       </button>
@@ -211,6 +214,31 @@ const ClientDashboard = () => {
           onClose={() => setCancellingBooking(null)}
           onCancelled={() => { setCancellingBooking(null); window.location.reload(); }}
         />
+      )}
+      {payingBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-display font-bold text-navy">Pagamento</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {payingBooking.service_type} · R$ {payingBooking.total_price?.toFixed(2)}
+                </p>
+              </div>
+              <button onClick={() => setPayingBooking(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                <X size={18} className="text-slate-400" />
+              </button>
+            </div>
+            <div className="p-5">
+              <PaymentForm
+                bookingId={payingBooking.id}
+                amount={payingBooking.total_price}
+                onPaymentComplete={() => { setPayingBooking(null); window.location.reload(); }}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
