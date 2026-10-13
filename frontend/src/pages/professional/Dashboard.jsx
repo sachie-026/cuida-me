@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -103,7 +104,7 @@ const ProfessionalDashboard = () => {
     <div className="min-h-screen bg-slate-50">
       <nav className="bg-white border-b border-slate-100 px-4 sm:px-6 h-16 flex items-center justify-between sticky top-0 z-40 shadow-sm">
         <Logo size="sm" />
-        <div className="flex items-center gap-3"><LanguageSwitcher /><ProfileMenu /></div>
+        <div className="flex items-center gap-3"><NotificationCenter /><LanguageSwitcher /><ProfileMenu /></div>
       </nav>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
