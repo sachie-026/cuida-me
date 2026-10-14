@@ -410,10 +410,30 @@ app.include_router(payout_methods.router, prefix="/api")
 @app.post("/api/seed-test-accounts")
 def seed_test_accounts(
     db:      Session = Depends(get_db),
-    admin:   object  = Depends(_require_admin),
+    dev_key: str     = "",
+    credentials: __import__('fastapi').security.HTTPAuthorizationCredentials = Depends(
+        __import__('fastapi').security.HTTPBearer(auto_error=False)
+    ),
 ):
     """Block 5: Create 12 test professionals (4 categories × 3 markups) + 1 test client.
-    All flagged is_test=True. They never appear to real users after launch and never receive real payments."""
+    All flagged is_test=True. They never appear to real users after launch and never receive real payments.
+    Accepts either ?dev_key=cuida-dev-2026 OR a valid admin JWT."""
+    from app.core.security import hash_password, decode_token
+    from app.models.models import User as _U, UserRole as _UR
+
+    SEED_DEV_KEY = "cuida-dev-2026"
+    allowed = False
+    if dev_key == SEED_DEV_KEY:
+        allowed = True
+    if not allowed and credentials:
+        payload = decode_token(credentials.credentials)
+        if payload:
+            user = db.query(_U).filter(_U.id == payload.get("sub")).first()
+            if user and user.role == _UR.admin:
+                allowed = True
+    if not allowed:
+        raise HTTPException(status_code=401, detail="dev_key or admin token required")
+
     from app.core.security import hash_password
     from app.models.models import (
         User, UserRole, Professional, Patient, DocStatus,
