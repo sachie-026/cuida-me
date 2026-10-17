@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { User, Stethoscope, ChevronRight } from "lucide-react";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
@@ -12,13 +13,7 @@ const ROLE_HOME = {
   admin: "/dashboard/admin",
 };
 
-const ROLE_LABELS = {
-  client: "Cliente",
-  nurse: "Enfermeiro(a)",
-  technician: "Técnico(a) de Enfermagem",
-  nursing_assistant: "Auxiliar de Enfermagem",
-  caregiver: "Cuidador(a)",
-};
+const ROLE_KEYS = ["client", "nurse", "technician", "nursing_assistant", "caregiver"];
 
 const ROLE_ICONS = {
   client: <User size={24} className="text-blue-500" />,
@@ -29,12 +24,13 @@ const ROLE_ICONS = {
 };
 
 const ProfilePicker = () => {
+  const { t }    = useTranslation();
   const navigate = useNavigate();
-  const fullName = localStorage.getItem("full_name") || "Usuário";
+  const fullName = localStorage.getItem("full_name") || t("profile_picker.default_user");
   const roles = JSON.parse(localStorage.getItem("roles") || "[]");
 
   // Filter to real roles only (not professional_pending)
-  const realRoles = roles.filter(r => ROLE_LABELS[r]);
+  const realRoles = roles.filter(r => ROLE_KEYS.includes(r));
 
   const selectProfile = (role) => {
     localStorage.setItem("role", role);
@@ -53,8 +49,10 @@ const ProfilePicker = () => {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Logo size="md" />
-          <h1 className="font-display text-2xl font-bold text-navy mt-4">Olá, {fullName.split(" ")[0]}!</h1>
-          <p className="text-sm text-slate-500 mt-1">Como deseja usar o CuidaU hoje?</p>
+          <h1 className="font-display text-2xl font-bold text-navy mt-4">
+            {t("profile_picker.greeting", { name: fullName.split(" ")[0] })}
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">{t("profile_picker.subtitle")}</p>
         </div>
 
         <div className="space-y-3">
@@ -65,9 +63,9 @@ const ProfilePicker = () => {
                 {ROLE_ICONS[role] || <User size={24} className="text-slate-400" />}
               </div>
               <div className="flex-1 text-left">
-                <p className="font-semibold text-navy">{ROLE_LABELS[role] || role}</p>
+                <p className="font-semibold text-navy">{t(`roles.${role}`)}</p>
                 <p className="text-xs text-slate-400">
-                  {role === "client" ? "Buscar e agendar profissionais" : "Receber e gerenciar atendimentos"}
+                  {role === "client" ? t("profile_picker.client_desc") : t("profile_picker.pro_desc")}
                 </p>
               </div>
               <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-400 transition-colors" />
@@ -78,13 +76,13 @@ const ProfilePicker = () => {
         {/* Pending profiles */}
         {roles.includes("professional_pending") && !realRoles.some(r => r !== "client") && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
-            <p className="text-xs text-amber-700 font-medium">👩‍⚕️ Perfil profissional em verificação</p>
-            <p className="text-[10px] text-amber-500 mt-0.5">Você receberá acesso assim que a verificação for concluída.</p>
+            <p className="text-xs text-amber-700 font-medium">{t("profile_picker.pending_title")}</p>
+            <p className="text-[10px] text-amber-500 mt-0.5">{t("profile_picker.pending_desc")}</p>
           </div>
         )}
 
         <p className="text-[10px] text-slate-400 text-center mt-6">
-          Você pode trocar de perfil a qualquer momento no menu do app.
+          {t("profile_picker.switch_note")}
         </p>
         <div className="flex justify-center mt-4">
           <LanguageSwitcher />

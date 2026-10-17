@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { ChevronLeft, Calendar, CheckCircle, XCircle, Clock } from "lucide-react";
 import axios from "axios";
 import Logo from "../../components/common/Logo";
@@ -7,11 +8,12 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const TABS = [
-  { id: "upcoming", label: "Próximos", icon: <Calendar size={14}/> },
-  { id: "completed", label: "Concluídos", icon: <CheckCircle size={14}/> },
-  { id: "cancelled", label: "Cancelados", icon: <XCircle size={14}/> },
-];
+const TAB_KEYS = ["upcoming", "completed", "cancelled"];
+const TAB_ICONS = {
+  upcoming:  <Calendar size={14}/>,
+  completed: <CheckCircle size={14}/>,
+  cancelled: <XCircle size={14}/>,
+};
 
 const STATUS_COLOR = {
   pending: "bg-yellow-100 text-yellow-700", accepted: "bg-blue-100 text-blue-700",
@@ -19,15 +21,12 @@ const STATUS_COLOR = {
   cancelled: "bg-red-100 text-red-600", no_show: "bg-red-100 text-red-600",
   professional_arrived: "bg-indigo-100 text-indigo-700", under_review: "bg-amber-100 text-amber-700",
 };
-const STATUS_LABEL = {
-  pending: "Pendente", accepted: "Confirmado", checked_in: "Em andamento", completed: "Concluído",
-  cancelled: "Cancelado", no_show: "No-show", professional_arrived: "Profissional chegou", under_review: "Em análise",
-};
 
 const MyActivity = () => {
-  const navigate = useNavigate();
-  const token = localStorage.getItem("token");
-  const headers = { Authorization: `Bearer ${token}` };
+  const { t }     = useTranslation();
+  const navigate  = useNavigate();
+  const token     = localStorage.getItem("token");
+  const headers   = { Authorization: `Bearer ${token}` };
   const [tab, setTab] = useState("upcoming");
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +38,6 @@ const MyActivity = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  const now = new Date();
   const filtered = bookings.filter(b => {
     if (tab === "upcoming") return ["pending","accepted","checked_in","professional_arrived"].includes(b.status);
     if (tab === "completed") return b.status === "completed";
@@ -55,26 +53,26 @@ const MyActivity = () => {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronLeft size={20}/></button>
-          <h1 className="font-display text-2xl font-bold text-navy">Minha atividade</h1>
+          <h1 className="font-display text-2xl font-bold text-navy">{t("client_activity.title")}</h1>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+          {TAB_KEYS.map(key => (
+            <button key={key} onClick={() => setTab(key)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                tab === t.id ? "bg-blue-500 text-white" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"}`}>
-              {t.icon} {t.label}
+                tab === key ? "bg-blue-500 text-white" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"}`}>
+              {TAB_ICONS[key]} {t(`client_activity.tab_${key}`)}
             </button>
           ))}
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-400 text-center py-8">Carregando...</p>
+          <p className="text-sm text-slate-400 text-center py-8">{t("client_activity.loading")}</p>
         ) : filtered.length === 0 ? (
           <div className="card p-8 text-center">
             <Clock size={40} className="mx-auto mb-3 text-slate-300"/>
-            <p className="text-sm text-slate-500">Nenhum agendamento {tab === "upcoming" ? "próximo" : tab === "completed" ? "concluído" : "cancelado"}.</p>
+            <p className="text-sm text-slate-500">{t(`client_activity.empty_${tab}`)}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -84,13 +82,13 @@ const MyActivity = () => {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLOR[b.status]}`}>
-                        {STATUS_LABEL[b.status]}
+                        {t(`client_activity.status.${b.status}`)}
                       </span>
                       <span className="text-xs text-slate-400">
                         {b.scheduled_start && new Date(b.scheduled_start).toLocaleDateString("pt-BR")}
                       </span>
                     </div>
-                    <p className="text-sm font-semibold text-navy">{b.service_type || "Atendimento"}</p>
+                    <p className="text-sm font-semibold text-navy">{b.service_type || t("client_activity.fallback_service")}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}
                       {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}`}
@@ -99,7 +97,7 @@ const MyActivity = () => {
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-bold text-navy">R$ {(b.total_price || 0).toFixed(2)}</p>
                     {b.cancel_reason && (
-                      <p className="text-[10px] text-red-500 mt-0.5">Motivo: {b.cancel_reason.substring(0, 30)}...</p>
+                      <p className="text-[10px] text-red-500 mt-0.5">{t("client_activity.reason")}: {b.cancel_reason.substring(0, 30)}...</p>
                     )}
                   </div>
                 </div>

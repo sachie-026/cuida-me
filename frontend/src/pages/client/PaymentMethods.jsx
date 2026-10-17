@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ChevronLeft, CreditCard, Plus, Trash2, CheckCircle, Loader } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import axios from "axios";
@@ -26,10 +27,11 @@ const CARD_ELEMENT_OPTIONS = {
 // ── Add Card Form (needs Stripe context) ─────────────────────────────────────
 
 const AddCardForm = ({ onSuccess, onCancel }) => {
-  const stripe = useStripe();
+  const { t }    = useTranslation();
+  const stripe   = useStripe();
   const elements = useElements();
-  const token = localStorage.getItem("token");
-  const headers = { Authorization: `Bearer ${token}` };
+  const token    = localStorage.getItem("token");
+  const headers  = { Authorization: `Bearer ${token}` };
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -39,7 +41,7 @@ const AddCardForm = ({ onSuccess, onCancel }) => {
       // 1. Get SetupIntent from backend
       const { data } = await axios.post(`${API}/api/payments/setup-intent`, {}, { headers });
       if (data.mock) {
-        toast.success("Cartão salvo (modo desenvolvimento).");
+        toast.success(t("client_payment.toast_saved_dev"));
         onSuccess?.();
         return;
       }
@@ -51,29 +53,29 @@ const AddCardForm = ({ onSuccess, onCancel }) => {
       });
 
       if (error) {
-        toast.error(error.message || "Erro ao salvar cartão.");
+        toast.error(error.message || t("client_payment.toast_save_error"));
       } else if (setupIntent.status === "succeeded") {
-        toast.success("Cartão salvo com sucesso!");
+        toast.success(t("client_payment.toast_saved"));
         onSuccess?.();
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao salvar cartão.");
+      toast.error(err.response?.data?.detail || t("client_payment.toast_save_error"));
     } finally { setLoading(false); }
   };
 
   return (
     <div className="card p-5 space-y-3">
-      <p className="text-sm font-semibold text-navy">Novo cartão</p>
+      <p className="text-sm font-semibold text-navy">{t("client_payment.new_card")}</p>
       <div className="bg-white p-3 rounded-lg border border-slate-200">
         <CardElement options={CARD_ELEMENT_OPTIONS} />
       </div>
-      <p className="text-[10px] text-slate-400">Dados processados com segurança via Stripe. A CuidaU nunca armazena dados do cartão.</p>
+      <p className="text-[10px] text-slate-400">{t("client_payment.stripe_disclaimer")}</p>
       <div className="flex gap-2">
-        <button onClick={onCancel} className="btn-outline flex-1">Cancelar</button>
+        <button onClick={onCancel} className="btn-outline flex-1">{t("client_payment.cancel")}</button>
         <button onClick={handleSubmit} disabled={loading || !stripe}
           className="btn-primary flex-1 flex items-center justify-center gap-2">
           {loading ? <Loader size={14} className="animate-spin" /> : null}
-          Salvar
+          {t("client_payment.save")}
         </button>
       </div>
     </div>
@@ -83,9 +85,10 @@ const AddCardForm = ({ onSuccess, onCancel }) => {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 const PaymentMethodsPage = () => {
-  const navigate = useNavigate();
-  const token = localStorage.getItem("token");
-  const headers = { Authorization: `Bearer ${token}` };
+  const { t }     = useTranslation();
+  const navigate  = useNavigate();
+  const token     = localStorage.getItem("token");
+  const headers   = { Authorization: `Bearer ${token}` };
 
   const [methods, setMethods] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -122,9 +125,9 @@ const PaymentMethodsPage = () => {
     try {
       await axios.delete(`${API}/api/payments/methods/${id}`, { headers });
       setMethods(prev => prev.filter(m => m.id !== id));
-      toast.success("Cartão removido.");
+      toast.success(t("client_payment.toast_removed"));
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao remover cartão.");
+      toast.error(err.response?.data?.detail || t("client_payment.toast_remove_error"));
     }
   };
 
@@ -136,7 +139,7 @@ const PaymentMethodsPage = () => {
       <div className="max-w-md mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronLeft size={20}/></button>
-          <h1 className="font-display text-2xl font-bold text-navy">Métodos de pagamento</h1>
+          <h1 className="font-display text-2xl font-bold text-navy">{t("client_payment.title")}</h1>
         </div>
 
         {loading && (
@@ -146,8 +149,8 @@ const PaymentMethodsPage = () => {
         {!loading && methods.length === 0 && !adding && (
           <div className="card p-8 text-center">
             <CreditCard size={40} className="mx-auto mb-3 text-slate-300"/>
-            <p className="text-sm text-slate-500 mb-4">Nenhum método de pagamento cadastrado.</p>
-            <button onClick={() => setAdding(true)} className="btn-primary"><Plus size={14}/> Adicionar cartão</button>
+            <p className="text-sm text-slate-500 mb-4">{t("client_payment.no_methods")}</p>
+            <button onClick={() => setAdding(true)} className="btn-primary"><Plus size={14}/> {t("client_payment.add_card")}</button>
           </div>
         )}
 
@@ -159,7 +162,7 @@ const PaymentMethodsPage = () => {
                   <CreditCard size={20} className="text-blue-500"/>
                   <div>
                     <p className="text-sm font-semibold text-navy capitalize">{m.brand} •••• {m.last4}</p>
-                    <p className="text-xs text-slate-400">Expira {m.exp_month}/{m.exp_year}</p>
+                    <p className="text-xs text-slate-400">{t("client_payment.expires")} {m.exp_month}/{m.exp_year}</p>
                   </div>
                 </div>
                 <button onClick={() => handleRemove(m.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={14}/></button>
@@ -167,7 +170,7 @@ const PaymentMethodsPage = () => {
             ))}
             {!adding && (
               <button onClick={() => setAdding(true)} className="btn-outline w-full flex items-center justify-center gap-2">
-                <Plus size={14}/> Adicionar cartão
+                <Plus size={14}/> {t("client_payment.add_card")}
               </button>
             )}
           </div>
@@ -183,9 +186,9 @@ const PaymentMethodsPage = () => {
             </Elements>
           ) : (
             <div className="card p-5 space-y-3">
-              <p className="text-sm text-amber-600 font-medium">Modo desenvolvimento: Stripe não configurado.</p>
-              <p className="text-xs text-slate-500">Configure STRIPE_PUBLISHABLE_KEY para salvar cartões.</p>
-              <button onClick={() => setAdding(false)} className="btn-outline w-full">Fechar</button>
+              <p className="text-sm text-amber-600 font-medium">{t("client_payment.dev_mode")}</p>
+              <p className="text-xs text-slate-500">{t("client_payment.dev_mode_desc")}</p>
+              <button onClick={() => setAdding(false)} className="btn-outline w-full">{t("client_payment.close")}</button>
             </div>
           )
         )}
