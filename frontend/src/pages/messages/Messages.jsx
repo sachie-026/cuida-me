@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Send, MessageSquare } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -10,6 +11,7 @@ import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const Messages = () => {
+  const { t } = useTranslation();
   const navigate    = useNavigate();
   const [params]    = useSearchParams();
   const token       = localStorage.getItem("token");
@@ -52,7 +54,7 @@ const Messages = () => {
       }, { headers });
       setMessages(prev => [...prev, data]);
       setNewMsg("");
-    } catch { toast.error("Erro ao enviar mensagem."); }
+    } catch { toast.error(t("messages.send_error")); }
     finally { setSending(false); }
   };
 
@@ -67,11 +69,11 @@ const Messages = () => {
         {/* Conversations list */}
         <div className="w-72 bg-white border-r border-slate-100 flex flex-col flex-shrink-0">
           <div className="p-4 border-b border-slate-100">
-            <h2 className="font-semibold text-navy">Mensagens</h2>
+            <h2 className="font-semibold text-navy">{t("messages.header")}</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
             {conversations.length === 0 ? (
-              <div className="p-4 text-center text-slate-400 text-sm">Nenhuma conversa ainda</div>
+              <div className="p-4 text-center text-slate-400 text-sm">{t("messages.no_conversations")}</div>
             ) : (
               conversations.map(conv => (
                 <button key={conv.partner_id} onClick={() => setActivePartner(conv.partner_id)}
@@ -95,8 +97,8 @@ const Messages = () => {
             <div className="flex-1 flex items-center justify-center text-center p-8">
               <div>
                 <MessageSquare size={48} className="mx-auto text-slate-200 mb-3" />
-                <p className="text-slate-400 font-medium">Selecione uma conversa</p>
-                <p className="text-xs text-slate-300 mt-1">ou inicie uma nova a partir de um agendamento</p>
+                <p className="text-slate-400 font-medium">{t("messages.select_conversation")}</p>
+                <p className="text-xs text-slate-300 mt-1">{t("messages.or_start_new")}</p>
               </div>
             </div>
           ) : (
@@ -110,7 +112,7 @@ const Messages = () => {
                   {(conversations.find(c => c.partner_id === activePartner)?.partner_name || "?")[0]}
                 </div>
                 <p className="font-semibold text-navy text-sm">
-                  {conversations.find(c => c.partner_id === activePartner)?.partner_name || "Conversa"}
+                  {conversations.find(c => c.partner_id === activePartner)?.partner_name || t("messages.conversation_fallback")}
                 </p>
               </div>
 
@@ -137,7 +139,7 @@ const Messages = () => {
               <div className="bg-white border-t border-slate-100 p-4 flex gap-3">
                 <input
                   className="form-input flex-1"
-                  placeholder="Digite uma mensagem..."
+                  placeholder={t("messages.placeholder")}
                   value={newMsg}
                   onChange={e => setNewMsg(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}

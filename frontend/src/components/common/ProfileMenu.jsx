@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   LogOut, User, ChevronDown, LayoutDashboard, CreditCard, Bell, Settings,
   Calendar, MessageSquare, Star, Shield, Share2, HelpCircle, FileText, RefreshCw, Wallet, History, Trash2, AlertTriangle
@@ -10,6 +11,7 @@ import axios from "axios";
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const ProfileMenu = () => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [showSOS, setShowSOS] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -18,7 +20,7 @@ const ProfileMenu = () => {
   const ref = useRef(null);
   const navigate = useNavigate();
 
-  const fullName = localStorage.getItem("full_name") || "Usuário";
+  const fullName = localStorage.getItem("full_name") || t("profile_menu.default_user");
   const role     = localStorage.getItem("role") || "";
   const roles    = JSON.parse(localStorage.getItem("roles") || "[]");
   const hasPro   = localStorage.getItem("has_pro") === "true" || roles.some(r => ["nurse","technician","nursing_assistant","caregiver","professional_pending"].includes(r));
@@ -29,11 +31,7 @@ const ProfileMenu = () => {
   const dashPath    = isAdmin ? "/admin" : isPro ? "/dashboard/professional" : "/dashboard/client";
   const profilePath = isPro ? "/profile/professional" : "/profile/client";
 
-  const roleLabel = {
-    client: "Cliente", nurse: "Enfermeiro(a)",
-    technician: "Técnico de Enfermagem", nursing_assistant: "Auxiliar de Enfermagem",
-    caregiver: "Cuidador(a)", admin: "Admin",
-  }[role] || role;
+  const roleLabel = t(`profile_menu.roles.${role}`, { defaultValue: role });
 
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -43,7 +41,7 @@ const ProfileMenu = () => {
 
   const handleLogout = () => {
     localStorage.clear();
-    toast.success("Logout realizado!");
+    toast.success(t("profile_menu.logout_success"));
     navigate("/");
   };
 
@@ -56,12 +54,12 @@ const ProfileMenu = () => {
       await axios.delete(`${API}/api/users/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      toast.success("Conta excluída com sucesso.");
+      toast.success(t("profile_menu.account_deleted"));
       localStorage.clear();
       navigate("/");
     } catch (err) {
       const detail = err.response?.data?.detail || err.response?.data?.message;
-      toast.error(detail || "Erro ao excluir conta. Tente novamente.");
+      toast.error(detail || t("profile_menu.delete_error"));
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
@@ -73,53 +71,53 @@ const ProfileMenu = () => {
 
   // Menu sections based on role
   const clientSections = [
-    { label: "MINHA CONTA", items: [
-      { icon: <User size={15}/>, text: "Meu perfil", path: "/profile/client" },
-      { icon: <History size={15}/>, text: "Minha atividade", path: "/activity" },
-      { icon: <MessageSquare size={15}/>, text: "Mensagens", path: "/messages" },
+    { label: t("profile_menu.section_my_account"), items: [
+      { icon: <User size={15}/>, text: t("profile_menu.my_profile"), path: "/profile/client" },
+      { icon: <History size={15}/>, text: t("profile_menu.my_activity"), path: "/activity" },
+      { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
     ]},
-    { label: "PAGAMENTOS", items: [
-      { icon: <CreditCard size={15}/>, text: "Métodos de pagamento", path: "/payment-methods" },
+    { label: t("profile_menu.section_payments"), items: [
+      { icon: <CreditCard size={15}/>, text: t("profile_menu.payment_methods"), path: "/payment-methods" },
     ]},
-    { label: "COMPARTILHAR", items: [
-      { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
+    { label: t("profile_menu.section_share"), items: [
+      { icon: <Share2 size={15}/>, text: t("profile_menu.invite_friends"), path: "/invite" },
     ]},
-    { label: "CONFIGURAÇÕES", items: [
-      { icon: <Bell size={15}/>, text: "Notificações", path: "/notifications" },
-      { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
-      { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
-      { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
+    { label: t("profile_menu.section_settings"), items: [
+      { icon: <Bell size={15}/>, text: t("profile_menu.notifications"), path: "/notifications" },
+      { icon: <HelpCircle size={15}/>, text: t("profile_menu.help_center"), path: "/help" },
+      { icon: <FileText size={15}/>, text: t("profile_menu.terms_privacy"), path: "/terms" },
+      { icon: <Shield size={15}/>, text: t("profile_menu.sos_emergency"), action: "sos" },
     ]},
   ];
 
   const proSections = [
-    { label: "MINHA CONTA", items: [
-      { icon: <User size={15}/>, text: "Meu perfil", path: "/profile/professional" },
-      { icon: <Calendar size={15}/>, text: "Minha agenda", path: "/availability" },
-      { icon: <LayoutDashboard size={15}/>, text: "Meus atendimentos", path: "/dashboard/professional" },
-      { icon: <MessageSquare size={15}/>, text: "Mensagens", path: "/messages" },
+    { label: t("profile_menu.section_my_account"), items: [
+      { icon: <User size={15}/>, text: t("profile_menu.my_profile"), path: "/profile/professional" },
+      { icon: <Calendar size={15}/>, text: t("profile_menu.my_schedule"), path: "/availability" },
+      { icon: <LayoutDashboard size={15}/>, text: t("profile_menu.my_services"), path: "/dashboard/professional" },
+      { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
     ]},
-    { label: "GANHOS", items: [
-      { icon: <Wallet size={15}/>, text: "Ganhos", path: "/earnings" },
-      { icon: <CreditCard size={15}/>, text: "Conta bancária", path: "/bank-account" },
+    { label: t("profile_menu.section_earnings"), items: [
+      { icon: <Wallet size={15}/>, text: t("profile_menu.earnings"), path: "/earnings" },
+      { icon: <CreditCard size={15}/>, text: t("profile_menu.bank_account"), path: "/bank-account" },
     ]},
-    { label: "PERFIL PROFISSIONAL", items: [
-      { icon: <Star size={15}/>, text: "Avaliações", path: "/reviews" },
-      { icon: <Shield size={15}/>, text: "Verificação profissional", path: "/profile/professional" },
+    { label: t("profile_menu.section_pro_profile"), items: [
+      { icon: <Star size={15}/>, text: t("profile_menu.reviews"), path: "/reviews" },
+      { icon: <Shield size={15}/>, text: t("profile_menu.pro_verification"), path: "/profile/professional" },
     ]},
-    { label: "COMPARTILHAR", items: [
-      { icon: <Share2 size={15}/>, text: "Convidar amigos", path: "/invite" },
+    { label: t("profile_menu.section_share"), items: [
+      { icon: <Share2 size={15}/>, text: t("profile_menu.invite_friends"), path: "/invite" },
     ]},
-    { label: "CONFIGURAÇÕES", items: [
-      { icon: <Bell size={15}/>, text: "Notificações", path: "/notifications" },
-      { icon: <HelpCircle size={15}/>, text: "Central de ajuda", path: "/help" },
-      { icon: <FileText size={15}/>, text: "Termos e privacidade", path: "/terms" },
-      { icon: <Shield size={15}/>, text: "SOS — Emergência", action: "sos" },
+    { label: t("profile_menu.section_settings"), items: [
+      { icon: <Bell size={15}/>, text: t("profile_menu.notifications"), path: "/notifications" },
+      { icon: <HelpCircle size={15}/>, text: t("profile_menu.help_center"), path: "/help" },
+      { icon: <FileText size={15}/>, text: t("profile_menu.terms_privacy"), path: "/terms" },
+      { icon: <Shield size={15}/>, text: t("profile_menu.sos_emergency"), action: "sos" },
     ]},
   ];
 
   const sections = isAdmin ? [{ label: "ADMIN", items: [
-    { icon: <LayoutDashboard size={15}/>, text: "Painel Admin", path: "/admin" },
+    { icon: <LayoutDashboard size={15}/>, text: t("profile_menu.admin_panel"), path: "/admin" },
   ]}] : isPro ? proSections : clientSections;
 
   return (
@@ -144,12 +142,12 @@ const ProfileMenu = () => {
             <div className="flex items-center gap-2 mt-1">
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                 isPro ? "bg-blue-100 text-blue-700" : isAdmin ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"
-              }`}>{isPro ? "Profissional" : isAdmin ? "Admin" : "Cliente"}</span>
+              }`}>{isPro ? t("profile_menu.role_professional") : isAdmin ? "Admin" : t("profile_menu.role_client")}</span>
               <span className="text-xs text-slate-500">{roleLabel}</span>
             </div>
             {roles.filter(r => ["client","nurse","technician","nursing_assistant","caregiver"].includes(r)).length > 1 && (
               <p className="text-[10px] text-slate-400 mt-1">
-                Usando como: <strong>{roleLabel}</strong>
+                {t("profile_menu.using_as")} <strong>{roleLabel}</strong>
               </p>
             )}
           </div>
@@ -163,7 +161,7 @@ const ProfileMenu = () => {
           {/* Manage Profiles link */}
           <button onClick={() => go("/manage-profiles")}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-            <Settings size={15} className="text-slate-400" /> Gerenciar Perfis
+            <Settings size={15} className="text-slate-400" /> {t("profile_menu.manage_profiles")}
           </button>
 
           {/* Sections */}
@@ -197,15 +195,15 @@ const ProfileMenu = () => {
                   const { data } = await axios.post(`${API}/api/auth/switch-role`, { role: proRole }, { headers: { Authorization: `Bearer ${token}` } });
                   localStorage.setItem("role", data.role);
                   localStorage.setItem("token", data.access_token);
-                  toast.success("Modo alterado para Profissional");
+                  toast.success(t("profile_menu.switched_to_pro"));
                   navigate("/dashboard/professional");
                 } catch (err) {
-                  toast.error(err.response?.data?.detail || "Erro ao trocar perfil.");
+                  toast.error(err.response?.data?.detail || t("profile_menu.switch_error"));
                 }
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                <RefreshCw size={15} /> Mudar para modo Profissional
+                <RefreshCw size={15} /> {t("profile_menu.switch_to_pro")}
               </button>
             )}
 
@@ -213,7 +211,7 @@ const ProfileMenu = () => {
             {role === "client" && !hasPro && (
               <button onClick={() => { navigate("/register/professional"); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
-                <RefreshCw size={15} /> Solicitar perfil Profissional
+                <RefreshCw size={15} /> {t("profile_menu.request_pro_profile")}
               </button>
             )}
 
@@ -229,15 +227,15 @@ const ProfileMenu = () => {
                   const { data } = await axios.post(`${API}/api/auth/switch-role`, { role: "client" }, { headers: { Authorization: `Bearer ${token}` } });
                   localStorage.setItem("role", data.role);
                   localStorage.setItem("token", data.access_token);
-                  toast.success("Modo alterado para Cliente");
+                  toast.success(t("profile_menu.switched_to_client"));
                   navigate("/dashboard/client");
                 } catch (err) {
-                  toast.error(err.response?.data?.detail || "Erro ao trocar perfil.");
+                  toast.error(err.response?.data?.detail || t("profile_menu.switch_error"));
                 }
                 setOpen(false);
               }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                <RefreshCw size={15} /> Mudar para modo Cliente
+                <RefreshCw size={15} /> {t("profile_menu.switch_to_client")}
               </button>
             )}
 
@@ -245,7 +243,7 @@ const ProfileMenu = () => {
             {isPro && (
               <button onClick={() => { navigate("/profile/professional#categories"); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-green-600 hover:bg-green-50 transition-colors">
-                <RefreshCw size={15} /> Gerenciar categorias
+                <RefreshCw size={15} /> {t("profile_menu.manage_categories")}
               </button>
             )}
           </div>
@@ -253,7 +251,7 @@ const ProfileMenu = () => {
           {/* 1-5: Default profile preference */}
           {roles.length > 1 && (
             <div className="border-t border-slate-100 mt-1 pt-1 px-4 py-2">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Perfil padrão no login</p>
+              <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">{t("profile_menu.default_login_profile")}</p>
               <select value={localStorage.getItem("default_profile") || role}
                 onChange={async (e) => {
                   const profile = e.target.value;
@@ -263,15 +261,13 @@ const ProfileMenu = () => {
                       headers: { Authorization: `Bearer ${token}` }
                     });
                     localStorage.setItem("default_profile", profile);
-                    toast.success(`Perfil padrão: ${profile}`);
-                  } catch (err) { toast.error(err.response?.data?.detail || "Erro."); }
+                    toast.success(`${t("profile_menu.default_profile_set")}: ${profile}`);
+                  } catch (err) { toast.error(err.response?.data?.detail || t("profile_menu.error")); }
                 }}
                 className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700">
-                <option value="client">Cliente</option>
+                <option value="client">{t("profile_menu.role_client")}</option>
                 {roles.filter(r => r !== "client" && r !== "professional_pending").map(r => (
-                  <option key={r} value={r}>{
-                    {nurse:"Enfermeiro(a)",technician:"Técnico(a)",nursing_assistant:"Auxiliar",caregiver:"Cuidador(a)"}[r] || r
-                  }</option>
+                  <option key={r} value={r}>{t(`profile_menu.role_options.${r}`, { defaultValue: r })}</option>
                 ))}
               </select>
             </div>
@@ -282,12 +278,12 @@ const ProfileMenu = () => {
             {!isAdmin && (
               <button onClick={() => { setShowDeleteConfirm(true); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-50 transition-colors">
-                <Trash2 size={15} /> Excluir minha conta
+                <Trash2 size={15} /> {t("profile_menu.delete_account")}
               </button>
             )}
             <button onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">
-              <LogOut size={15} /> Sair
+              <LogOut size={15} /> {t("profile_menu.logout")}
             </button>
           </div>
         </div>
@@ -298,17 +294,17 @@ const ProfileMenu = () => {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowSOS(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-navy text-lg flex items-center gap-2"><Shield size={20} className="text-red-500"/> Assistência de Emergência</h3>
+              <h3 className="font-bold text-navy text-lg flex items-center gap-2"><Shield size={20} className="text-red-500"/> {t("profile_menu.sos_title")}</h3>
             </div>
-            <p className="text-sm text-slate-600 mb-4">Se esta é uma emergência com risco de vida, entre em contato imediatamente.</p>
+            <p className="text-sm text-slate-600 mb-4">{t("profile_menu.sos_description")}</p>
             <div className="space-y-2 mb-4">
-              {[{n:"192",l:"SAMU",e:"🚑"},{n:"193",l:"Bombeiros",e:"🚒"},{n:"190",l:"Polícia Militar",e:"👮"}].map(e=>(
+              {[{n:"192",l:"SAMU",e:"🚑"},{n:"193",l:t("profile_menu.sos_fire_dept"),e:"🚒"},{n:"190",l:t("profile_menu.sos_police"),e:"👮"}].map(e=>(
                 <a key={e.n} href={`tel:${e.n}`} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-red-300 hover:bg-red-50 transition-colors">
                   <span className="flex items-center gap-3"><span className="text-xl">{e.e}</span><span className="text-sm font-semibold text-navy">{e.l} — {e.n}</span></span>
                 </a>
               ))}
             </div>
-            <button onClick={() => setShowSOS(false)} className="btn-outline w-full">Fechar</button>
+            <button onClick={() => setShowSOS(false)} className="btn-outline w-full">{t("profile_menu.close")}</button>
           </div>
         </div>
       )}
@@ -322,19 +318,19 @@ const ProfileMenu = () => {
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
                 <AlertTriangle size={20} className="text-red-500" />
               </div>
-              <h3 className="font-bold text-navy text-lg">Excluir conta</h3>
+              <h3 className="font-bold text-navy text-lg">{t("profile_menu.delete_title")}</h3>
             </div>
             <p className="text-sm text-slate-600 mb-2">
-              Esta ação irá desativar sua conta permanentemente. Você não poderá mais acessar a plataforma.
+              {t("profile_menu.delete_warning")}
             </p>
             <p className="text-sm text-slate-600 mb-4">
-              Para confirmar, digite <strong className="text-red-600">EXCLUIR</strong> abaixo:
+              {t("profile_menu.delete_confirm_instruction")}
             </p>
             <input
               type="text"
               value={deleteConfirmText}
               onChange={e => setDeleteConfirmText(e.target.value)}
-              placeholder="Digite EXCLUIR"
+              placeholder={t("profile_menu.delete_placeholder")}
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm mb-4 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-200"
               autoFocus
             />
@@ -342,7 +338,7 @@ const ProfileMenu = () => {
               <button
                 onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(""); }}
                 className="flex-1 btn-outline text-sm py-2.5">
-                Cancelar
+                {t("profile_menu.cancel")}
               </button>
               <button
                 onClick={handleDeleteAccount}
@@ -351,7 +347,7 @@ const ProfileMenu = () => {
                   ${deleteConfirmText === "EXCLUIR" && !deleting
                     ? "bg-red-500 text-white hover:bg-red-600"
                     : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}>
-                <Trash2 size={14} /> {deleting ? "Excluindo..." : "Excluir conta"}
+                <Trash2 size={14} /> {deleting ? t("profile_menu.deleting") : t("profile_menu.delete_account_btn")}
               </button>
             </div>
           </div>

@@ -1,15 +1,23 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, Clock, RefreshCw, Calendar } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
 
 const API     = process.env.REACT_APP_API_URL || "http://localhost:8000";
-const DAYS    = ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
 const TIMES   = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2);const m=i%2===0?"00":"30";return `${String(h).padStart(2,"0")}:${m}`;});
 
 const AvailabilityCalendar = ({ userId }) => {
+  const { t } = useTranslation();
   const token   = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
+
+  const DAYS = [
+    t("availability_calendar.days.mon"), t("availability_calendar.days.tue"),
+    t("availability_calendar.days.wed"), t("availability_calendar.days.thu"),
+    t("availability_calendar.days.fri"), t("availability_calendar.days.sat"),
+    t("availability_calendar.days.sun"),
+  ];
 
   const [slots,     setSlots]     = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -34,9 +42,9 @@ const AvailabilityCalendar = ({ userId }) => {
       const { data } = await axios.post(`${API}/api/availability/professional/${userId}`, body, { headers });
       setSlots(prev => [...prev, data]);
       setShowForm(false);
-      toast.success("Horário adicionado!");
+      toast.success(t("availability_calendar.slot_added"));
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao adicionar horário.");
+      toast.error(err.response?.data?.detail || t("availability_calendar.slot_add_error"));
     }
   };
 
@@ -44,9 +52,9 @@ const AvailabilityCalendar = ({ userId }) => {
     try {
       await axios.delete(`${API}/api/availability/slots/${slotId}`, { headers });
       setSlots(prev => prev.filter(s => s.id !== slotId));
-      toast.success("Horário removido.");
+      toast.success(t("availability_calendar.slot_removed"));
     } catch {
-      toast.error("Erro ao remover horário.");
+      toast.error(t("availability_calendar.slot_remove_error"));
     }
   };
 
@@ -57,12 +65,12 @@ const AvailabilityCalendar = ({ userId }) => {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-navy">Calendário de disponibilidade</h3>
-          <p className="text-xs text-slate-500 mt-0.5">Defina seus horários disponíveis. Clientes só verão você nos horários cadastrados.</p>
+          <h3 className="font-semibold text-navy">{t("availability_calendar.title")}</h3>
+          <p className="text-xs text-slate-500 mt-0.5">{t("availability_calendar.subtitle")}</p>
         </div>
         <button onClick={() => setShowForm(s => !s)}
           className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-          <Plus size={15} /> Adicionar horário
+          <Plus size={15} /> {t("availability_calendar.add_slot")}
         </button>
       </div>
 
@@ -73,41 +81,41 @@ const AvailabilityCalendar = ({ userId }) => {
             <button onClick={() => setForm(f => ({...f, is_recurring: true}))}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                 form.is_recurring ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600"}`}>
-              <RefreshCw size={13} /> Recorrente (semanal)
+              <RefreshCw size={13} /> {t("availability_calendar.recurring")}
             </button>
             <button onClick={() => setForm(f => ({...f, is_recurring: false}))}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                 !form.is_recurring ? "bg-blue-500 text-white border-blue-500" : "border-slate-200 text-slate-600"}`}>
-              <Calendar size={13} /> Data específica
+              <Calendar size={13} /> {t("availability_calendar.specific_date")}
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {form.is_recurring ? (
               <div>
-                <label className="form-label">Dia da semana</label>
+                <label className="form-label">{t("availability_calendar.day_of_week")}</label>
                 <select className="form-input" value={form.day_of_week} onChange={e => setForm(f => ({...f, day_of_week: parseInt(e.target.value)}))}>
                   {DAYS.map((d,i) => <option key={i} value={i}>{d}</option>)}
                 </select>
               </div>
             ) : (
               <div>
-                <label className="form-label">Data</label>
+                <label className="form-label">{t("availability_calendar.date")}</label>
                 <input className="form-input" type="date" value={form.specific_date}
                   min={new Date().toISOString().split("T")[0]}
                   onChange={e => setForm(f => ({...f, specific_date: e.target.value}))} />
               </div>
             )}
             <div>
-              <label className="form-label">Início</label>
+              <label className="form-label">{t("availability_calendar.start")}</label>
               <select className="form-input" value={form.start_time} onChange={e => setForm(f => ({...f, start_time: e.target.value}))}>
-                {TIMES.map(t => <option key={t}>{t}</option>)}
+                {TIMES.map(tm => <option key={tm}>{tm}</option>)}
               </select>
             </div>
             <div>
-              <label className="form-label">Fim</label>
+              <label className="form-label">{t("availability_calendar.end")}</label>
               <select className="form-input" value={form.end_time} onChange={e => setForm(f => ({...f, end_time: e.target.value}))}>
-                {TIMES.map(t => <option key={t}>{t}</option>)}
+                {TIMES.map(tm => <option key={tm}>{tm}</option>)}
               </select>
             </div>
           </div>
@@ -115,28 +123,28 @@ const AvailabilityCalendar = ({ userId }) => {
           <div className="flex gap-2">
             <button onClick={() => setForm(f => ({...f, type: "available"}))}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${form.type === "available" ? "bg-green-500 text-white border-green-500" : "border-slate-200 text-slate-600"}`}>
-              ✓ Disponível
+              ✓ {t("availability_calendar.available")}
             </button>
             <button onClick={() => setForm(f => ({...f, type: "blocked"}))}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${form.type === "blocked" ? "bg-red-500 text-white border-red-500" : "border-slate-200 text-slate-600"}`}>
-              ✗ Bloqueado
+              ✗ {t("availability_calendar.blocked")}
             </button>
           </div>
 
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="btn-primary text-sm px-4 py-2">Salvar horário</button>
-            <button onClick={() => setShowForm(false)} className="btn-outline text-sm px-4 py-2">Cancelar</button>
+            <button onClick={handleAdd} className="btn-primary text-sm px-4 py-2">{t("availability_calendar.save_slot")}</button>
+            <button onClick={() => setShowForm(false)} className="btn-outline text-sm px-4 py-2">{t("availability_calendar.cancel")}</button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <p className="text-slate-400 text-sm">Carregando horários...</p>
+        <p className="text-slate-400 text-sm">{t("availability_calendar.loading")}</p>
       ) : slots.length === 0 ? (
         <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
           <Clock size={32} className="mx-auto text-slate-300 mb-2" />
-          <p className="text-slate-500 text-sm font-medium">Nenhum horário cadastrado</p>
-          <p className="text-slate-400 text-xs mt-1">Adicione seus horários disponíveis para aparecer nas buscas</p>
+          <p className="text-slate-500 text-sm font-medium">{t("availability_calendar.no_slots")}</p>
+          <p className="text-slate-400 text-xs mt-1">{t("availability_calendar.no_slots_subtitle")}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -144,7 +152,7 @@ const AvailabilityCalendar = ({ userId }) => {
           {recurring.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <RefreshCw size={12} /> Horários recorrentes (semanais)
+                <RefreshCw size={12} /> {t("availability_calendar.recurring_slots")}
               </p>
               <div className="space-y-2">
                 {[0,1,2,3,4,5,6].map(dow => {
@@ -176,7 +184,7 @@ const AvailabilityCalendar = ({ userId }) => {
           {specific.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <Calendar size={12} /> Datas específicas
+                <Calendar size={12} /> {t("availability_calendar.specific_dates")}
               </p>
               <div className="space-y-2">
                 {specific.map(slot => (
@@ -186,7 +194,7 @@ const AvailabilityCalendar = ({ userId }) => {
                       <Calendar size={11} />
                       {new Date(slot.specific_date + "T12:00:00").toLocaleDateString("pt-BR")}
                       · {slot.start_time} – {slot.end_time}{slot.start_time > slot.end_time ? " 🌙" : ""}
-                      · {slot.type === "available" ? "Disponível" : "Bloqueado"}{slot.start_time > slot.end_time ? " (noturno)" : ""}
+                      · {slot.type === "available" ? t("availability_calendar.available") : t("availability_calendar.blocked")}{slot.start_time > slot.end_time ? ` (${t("availability_calendar.overnight")})` : ""}
                     </span>
                     <button onClick={() => handleDelete(slot.id)} className="hover:text-red-500 transition-colors">
                       <Trash2 size={13} />

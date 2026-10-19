@@ -1,20 +1,15 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { MessageCircle, X, Send, Bot, User, ExternalLink } from "lucide-react";
 import axios from "axios";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const QUICK_TOPICS = [
-  { label: "Termos de Uso", query: "Quais são os termos de uso?" },
-  { label: "Privacidade", query: "Como meus dados são protegidos?" },
-  { label: "Cancelamento", query: "Qual a política de cancelamento?" },
-  { label: "Pagamentos", query: "Como funciona o pagamento?" },
-];
-
 const AliceChatWidget = () => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { role: "alice", text: "Olá! Sou a Alice, assistente virtual da CuidaU. 😊\n\nPosso ajudar com dúvidas sobre Termos de Uso, Privacidade, LGPD e Pagamentos.\n\nSobre o que gostaria de saber?" }
+    { role: "alice", text: t("alice_chat.initial_message") }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,6 +18,13 @@ const AliceChatWidget = () => {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const quickTopics = [
+    { label: t("alice_chat.topics.terms"), query: t("alice_chat.queries.terms") },
+    { label: t("alice_chat.topics.privacy"), query: t("alice_chat.queries.privacy") },
+    { label: t("alice_chat.topics.cancellation"), query: t("alice_chat.queries.cancellation") },
+    { label: t("alice_chat.topics.payments"), query: t("alice_chat.queries.payments") },
+  ];
 
   const sendMessage = async (text) => {
     if (!text.trim()) return;
@@ -36,7 +38,7 @@ const AliceChatWidget = () => {
       const aliceMsg = { role: "alice", text: data.response, sources: data.sources, escalate: data.escalate };
       setMessages(prev => [...prev, aliceMsg]);
     } catch {
-      setMessages(prev => [...prev, { role: "alice", text: "Desculpe, estou com dificuldades no momento. Tente novamente em alguns instantes." }]);
+      setMessages(prev => [...prev, { role: "alice", text: t("alice_chat.error_message") }]);
     } finally {
       setLoading(false);
     }
@@ -61,7 +63,7 @@ const AliceChatWidget = () => {
               <Bot size={20} />
               <div>
                 <p className="font-semibold text-sm">Alice</p>
-                <p className="text-xs text-blue-200">Assistente CuidaU</p>
+                <p className="text-xs text-blue-200">{t("alice_chat.subtitle")}</p>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="p-1 rounded-lg hover:bg-blue-500 transition-colors">
@@ -81,7 +83,7 @@ const AliceChatWidget = () => {
                   <p className="whitespace-pre-line">{msg.text}</p>
                   {msg.sources?.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-slate-100">
-                      <p className="text-xs text-slate-400 mb-1">Fontes:</p>
+                      <p className="text-xs text-slate-400 mb-1">{t("alice_chat.sources")}</p>
                       {msg.sources.map((s, j) => (
                         <span key={j} className="text-xs text-blue-500 mr-2">{s.title}</span>
                       ))}
@@ -90,7 +92,7 @@ const AliceChatWidget = () => {
                   {msg.escalate && (
                     <div className="mt-2 pt-2 border-t border-slate-100">
                       <a href="mailto:suporte@cuidau.com.br" className="text-xs text-blue-500 flex items-center gap-1 hover:underline">
-                        <ExternalLink size={10} /> Contactar suporte
+                        <ExternalLink size={10} /> {t("alice_chat.contact_support")}
                       </a>
                     </div>
                   )}
@@ -114,10 +116,10 @@ const AliceChatWidget = () => {
           {/* Quick topics (shown only when few messages) */}
           {messages.length <= 2 && (
             <div className="px-4 py-2 bg-white border-t border-slate-100 flex gap-2 overflow-x-auto flex-shrink-0">
-              {QUICK_TOPICS.map(t => (
-                <button key={t.label} onClick={() => sendMessage(t.query)}
+              {quickTopics.map(topic => (
+                <button key={topic.label} onClick={() => sendMessage(topic.query)}
                   className="text-xs px-3 py-1.5 rounded-full bg-blue-50 text-blue-600 font-medium hover:bg-blue-100 whitespace-nowrap flex-shrink-0 transition-colors">
-                  {t.label}
+                  {topic.label}
                 </button>
               ))}
             </div>
@@ -128,7 +130,7 @@ const AliceChatWidget = () => {
             <div className="flex gap-2">
               <input type="text" value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !loading && sendMessage(input)}
-                placeholder="Pergunte à Alice..."
+                placeholder={t("alice_chat.input_placeholder")}
                 className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400 transition-colors"
                 disabled={loading} />
               <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()}
@@ -137,7 +139,7 @@ const AliceChatWidget = () => {
               </button>
             </div>
             <p className="text-[10px] text-slate-400 mt-1.5 text-center">
-              Alice responde apenas sobre Termos, Privacidade e LGPD
+              {t("alice_chat.footer")}
             </p>
           </div>
         </div>

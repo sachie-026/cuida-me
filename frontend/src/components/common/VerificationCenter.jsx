@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircle, Clock, AlertTriangle, Shield, PartyPopper, X } from "lucide-react";
 import axios from "axios";
 
@@ -10,12 +11,6 @@ const STATUS_ICON = {
   rejected: <AlertTriangle size={16} className="text-amber-500" />,
 };
 
-const STATUS_LABEL = {
-  verified: "Verificado",
-  pending:  "Pendente",
-  rejected: "Requer atualização",
-};
-
 const STATUS_COLOR = {
   verified: "text-green-600",
   pending:  "text-slate-500",
@@ -23,6 +18,7 @@ const STATUS_COLOR = {
 };
 
 const VerificationCenter = ({ role, userId }) => {
+  const { t } = useTranslation();
   const token   = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
   const [docs, setDocs]         = useState([]);
@@ -45,17 +41,17 @@ const VerificationCenter = ({ role, userId }) => {
 
   // Define verification steps based on role
   const steps = isClient ? [
-    { key: "client_id",     label: "Documento de identidade (RG/CNH)",  docType: "client_id" },
-    { key: "client_selfie", label: "Selfie com documento",              docType: "client_selfie" },
-    { key: "phone",         label: "Telefone celular verificado",       manual: true, check: () => !!user?.phone },
+    { key: "client_id",     label: t("verification_center.steps.client_id"),     docType: "client_id" },
+    { key: "client_selfie", label: t("verification_center.steps.client_selfie"), docType: "client_selfie" },
+    { key: "phone",         label: t("verification_center.steps.phone"),         manual: true, check: () => !!user?.phone },
   ] : [
-    { key: "photo_id",       label: "Documento de identidade",           docType: "photo_id" },
-    { key: "phone",          label: "Telefone celular verificado",       manual: true, check: () => !!user?.phone },
-    { key: "diploma",        label: "Diploma / Certificado profissional",docType: "diploma" },
-    { key: "selfie",         label: "Verificação facial (selfie)",       docType: "selfie" },
-    { key: "criminal",       label: "Antecedentes criminais",            docType: "criminal" },
+    { key: "photo_id",       label: t("verification_center.steps.photo_id"),       docType: "photo_id" },
+    { key: "phone",          label: t("verification_center.steps.phone"),          manual: true, check: () => !!user?.phone },
+    { key: "diploma",        label: t("verification_center.steps.diploma"),        docType: "diploma" },
+    { key: "selfie",         label: t("verification_center.steps.selfie"),         docType: "selfie" },
+    { key: "criminal",       label: t("verification_center.steps.criminal"),       docType: "criminal" },
     ...(isNursing ? [
-      { key: "coren_negative", label: "Certidão Negativa COREN",         docType: "coren_negative" },
+      { key: "coren_negative", label: t("verification_center.steps.coren_negative"), docType: "coren_negative" },
     ] : []),
   ];
 
@@ -73,7 +69,7 @@ const VerificationCenter = ({ role, userId }) => {
   const progressPct    = Math.round((completedCount / totalCount) * 100);
   const allDone        = completedCount === totalCount;
 
-  if (loading) return <div className="text-sm text-slate-400 text-center py-4">Carregando verificação...</div>;
+  if (loading) return <div className="text-sm text-slate-400 text-center py-4">{t("verification_center.loading")}</div>;
 
   return (
     <>
@@ -81,11 +77,11 @@ const VerificationCenter = ({ role, userId }) => {
         <div className="flex items-center gap-3 mb-4">
           <Shield size={20} className="text-blue-500" />
           <div>
-            <h3 className="font-semibold text-navy">Centro de Verificação</h3>
+            <h3 className="font-semibold text-navy">{t("verification_center.title")}</h3>
             <p className="text-xs text-slate-500">
               {allDone
-                ? "Todas as verificações concluídas!"
-                : `${completedCount} de ${totalCount} verificações concluídas`}
+                ? t("verification_center.all_complete")
+                : t("verification_center.completion_count", { completed: completedCount, total: totalCount })}
             </p>
           </div>
         </div>
@@ -101,7 +97,6 @@ const VerificationCenter = ({ role, userId }) => {
         <div className="space-y-2">
           {steps.map(step => {
             const status = getStepStatus(step);
-            const doc = docs.find(d => d.doc_type === step.docType);
             return (
               <div key={step.key} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
                 <div className="flex items-center gap-3">
@@ -111,7 +106,7 @@ const VerificationCenter = ({ role, userId }) => {
                   </span>
                 </div>
                 <span className={`text-xs font-semibold ${STATUS_COLOR[status]}`}>
-                  {STATUS_LABEL[status]}
+                  {t(`verification_center.status.${status}`)}
                 </span>
               </div>
             );
@@ -124,9 +119,9 @@ const VerificationCenter = ({ role, userId }) => {
             <CheckCircle size={20} className="text-green-500" />
             <div>
               <p className="text-sm font-bold text-green-700">
-                {isClient ? "✓ Identidade Verificada" : "✓ Profissional Verificado"}
+                {isClient ? t("verification_center.badge_client") : t("verification_center.badge_pro")}
               </p>
-              <p className="text-xs text-green-600">Seu perfil exibe o selo de verificação da CuidaNow</p>
+              <p className="text-xs text-green-600">{t("verification_center.badge_description")}</p>
             </div>
           </div>
         )}
@@ -137,14 +132,14 @@ const VerificationCenter = ({ role, userId }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm text-center p-8">
             <PartyPopper size={48} className="text-amber-400 mx-auto mb-4" />
-            <h3 className="font-display text-xl font-bold text-navy mb-2">🎉 Perfil verificado!</h3>
+            <h3 className="font-display text-xl font-bold text-navy mb-2">🎉 {t("verification_center.modal_title")}</h3>
             <p className="text-sm text-slate-600 mb-2">
-              Parabéns! Sua identidade e documentação foram verificados pela CuidaNow.
+              {t("verification_center.modal_congrats")}
             </p>
             <p className="text-xs text-slate-500 mb-6">
-              Seu perfil agora exibe o selo de verificação, ajudando outros usuários a reconhecer que suas informações foram revisadas e validadas.
+              {t("verification_center.modal_description")}
             </p>
-            <button onClick={() => setShowModal(false)} className="btn-primary w-full">Ver meu perfil</button>
+            <button onClick={() => setShowModal(false)} className="btn-primary w-full">{t("verification_center.view_profile")}</button>
           </div>
         </div>
       )}

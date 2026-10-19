@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Phone, X, AlertTriangle } from "lucide-react";
-
-const EMERGENCY_NUMBERS = [
-  { label: "SAMU", number: "192", emoji: "🚑", desc: "Serviço de Atendimento Móvel de Urgência" },
-  { label: "Bombeiros", number: "193", emoji: "🚒", desc: "Corpo de Bombeiros" },
-  { label: "Polícia Militar", number: "190", emoji: "👮", desc: "Emergências policiais" },
-];
+import { useTranslation } from "react-i18next";
 
 const SOSButton = ({ emergencyContact }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+
+  const EMERGENCY_NUMBERS = [
+    { label: "SAMU", number: "192", emoji: "🚑", desc: t("sos_button.samu_desc") },
+    { label: t("sos_button.fire_dept"), number: "193", emoji: "🚒", desc: t("sos_button.fire_dept_desc") },
+    { label: t("sos_button.police"), number: "190", emoji: "👮", desc: t("sos_button.police_desc") },
+  ];
 
   return (
     <>
@@ -23,7 +25,7 @@ const SOSButton = ({ emergencyContact }) => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={22} className="text-red-500" />
-                <h3 className="font-bold text-navy text-lg">Assistência de Emergência</h3>
+                <h3 className="font-bold text-navy text-lg">{t("sos_button.title")}</h3>
               </div>
               <button onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100">
                 <X size={16} className="text-slate-400" />
@@ -31,7 +33,7 @@ const SOSButton = ({ emergencyContact }) => {
             </div>
 
             <p className="text-sm text-slate-600 mb-4">
-              Se esta é uma emergência com risco de vida, entre em contato com os serviços de emergência imediatamente.
+              {t("sos_button.emergency_message")}
             </p>
 
             <div className="space-y-2 mb-4">
@@ -52,7 +54,7 @@ const SOSButton = ({ emergencyContact }) => {
 
             {emergencyContact?.name && emergencyContact?.phone && (
               <div className="pt-3 border-t border-slate-100">
-                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Contato de confiança</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">{t("sos_button.trusted_contact")}</p>
                 <a href={`tel:${emergencyContact.phone}`}
                   className="flex items-center justify-between p-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors">
                   <div className="flex items-center gap-3">
@@ -68,7 +70,7 @@ const SOSButton = ({ emergencyContact }) => {
             )}
 
             <p className="text-[10px] text-slate-400 mt-4 text-center">
-              A CuidaU não recebe alertas de emergência. Este botão é apenas um atalho para ligar para serviços de emergência.
+              {t("sos_button.disclaimer")}
             </p>
           </div>
         </div>

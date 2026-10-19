@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircle, X, Shield } from "lucide-react";
 
 /**
@@ -8,11 +9,12 @@ import { CheckCircle, X, Shield } from "lucide-react";
  * @param {string} size - "sm" | "md" | "lg"
  */
 const VerifiedBadge = ({ type = "professional", verified = false, size = "sm" }) => {
+  const { t } = useTranslation();
   const [showInfo, setShowInfo] = useState(false);
 
   if (!verified) return null;
 
-  const label = type === "client" ? "Identidade Verificada" : "Profissional Verificado";
+  const label = type === "client" ? t("verified_badge.client_label") : t("verified_badge.pro_label");
   const sizeClass = {
     sm: "text-xs gap-1 px-1.5 py-0.5",
     md: "text-xs gap-1.5 px-2 py-1",
@@ -43,20 +45,20 @@ const VerifiedBadge = ({ type = "professional", verified = false, size = "sm" })
             {type === "client" ? (
               <div>
                 <p className="text-sm text-slate-600 mb-3">
-                  Este usuário completou o processo de verificação de identidade da CuidaNow.
+                  {t("verified_badge.client_desc1")}
                 </p>
                 <p className="text-sm text-slate-600">
-                  Sua identidade e informações de contato foram validadas para melhorar a segurança e confiança na plataforma.
+                  {t("verified_badge.client_desc2")}
                 </p>
               </div>
             ) : (
               <div>
                 <p className="text-sm text-slate-600 mb-3">
-                  Este profissional de saúde completou o processo de verificação profissional da CuidaNow.
+                  {t("verified_badge.pro_desc")}
                 </p>
-                <p className="text-sm text-slate-600 mb-3">A plataforma verificou:</p>
+                <p className="text-sm text-slate-600 mb-3">{t("verified_badge.verified_items_intro")}</p>
                 <div className="space-y-2">
-                  {["Identidade", "Informações de contato", "Registro profissional", "Status do registro ativo", "Qualificações profissionais"].map(item => (
+                  {(t("verified_badge.verified_items", { returnObjects: true }) || []).map(item => (
                     <div key={item} className="flex items-center gap-2">
                       <CheckCircle size={13} className="text-green-500 flex-shrink-0" />
                       <span className="text-sm text-slate-600">{item}</span>
@@ -64,7 +66,7 @@ const VerifiedBadge = ({ type = "professional", verified = false, size = "sm" })
                   ))}
                 </div>
                 <p className="text-xs text-slate-400 mt-4">
-                  Este selo indica que o profissional atendeu aos requisitos de verificação da CuidaNow.
+                  {t("verified_badge.seal_note")}
                 </p>
               </div>
             )}

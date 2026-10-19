@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Phone, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allowSkip = true }) => {
+  const { t } = useTranslation();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -23,12 +25,12 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
   // Resend countdown
   useEffect(() => {
     if (countdown <= 0) return;
-    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
   }, [countdown]);
 
   const handleSendCode = async () => {
-    if (!phone || phone.length < 10) { setError("Informe um número válido."); return; }
+    if (!phone || phone.length < 10) { setError(t("phone_verify_modal.invalid_number")); return; }
     setSending(true); setError("");
     try {
       const { data } = await axios.post(`${API}/api/auth/phone/send-code`, { phone, channel }, { headers });
@@ -38,10 +40,10 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
         setChannelLabel(data.channel || "SMS");
         toast.success(data.message);
       } else {
-        setError(data.error || "Falha ao enviar SMS.");
+        setError(data.error || t("phone_verify_modal.send_failed"));
       }
     } catch (err) {
-      setError(err.response?.data?.detail || "Erro ao enviar código.");
+      setError(err.response?.data?.detail || t("phone_verify_modal.send_error"));
     } finally { setSending(false); }
   };
 
@@ -68,17 +70,17 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
 
   const handleVerify = async (fullCode) => {
     const codeStr = fullCode || code.join("");
-    if (codeStr.length !== 6) { setError("Digite os 6 dígitos."); return; }
+    if (codeStr.length !== 6) { setError(t("phone_verify_modal.enter_6_digits")); return; }
     setVerifying(true); setError("");
     try {
       const { data } = await axios.post(`${API}/api/auth/phone/verify-code`, { phone, code: codeStr }, { headers });
       if (data.verified) {
         setStep("success");
-        toast.success("Telefone verificado!");
+        toast.success(t("phone_verify_modal.verified"));
         setTimeout(() => { onVerified?.(); onClose?.(); }, 1500);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || "Código incorreto.");
+      setError(err.response?.data?.detail || t("phone_verify_modal.wrong_code"));
       setCode(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
     } finally { setVerifying(false); }
@@ -89,7 +91,7 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold text-navy flex items-center gap-2">
-            <Phone size={20} className="text-blue-500" /> Verificar telefone
+            <Phone size={20} className="text-blue-500" /> {t("phone_verify_modal.title")}
           </h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
             <X size={16} className="text-slate-400" />
@@ -99,9 +101,9 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
         {/* Step 1: Enter phone number */}
         {step === "phone" && (
           <div>
-            <p className="text-sm text-slate-600 mb-4">Informe seu número de celular. Enviaremos um código de 6 dígitos via SMS.</p>
+            <p className="text-sm text-slate-600 mb-4">{t("phone_verify_modal.enter_phone_desc")}</p>
             <div className="mb-4">
-              <label className="form-label">Telefone</label>
+              <label className="form-label">{t("phone_verify_modal.phone_label")}</label>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">+55</span>
                 <input type="tel" className="form-input flex-1" placeholder="(11) 99999-9999"
@@ -110,7 +112,7 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
             </div>
             {/* 10.2-4: Channel selection */}
             <div className="mb-4">
-              <label className="form-label">Enviar código via</label>
+              <label className="form-label">{t("phone_verify_modal.send_via")}</label>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setChannel("sms")}
                   className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${
@@ -132,11 +134,11 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
             )}
             <button onClick={handleSendCode} disabled={sending || !phone}
               className="btn-primary w-full disabled:opacity-50">
-              {sending ? "Enviando..." : "Enviar código SMS"}
+              {sending ? t("phone_verify_modal.sending") : t("phone_verify_modal.send_code")}
             </button>
             {allowSkip && (
               <button onClick={onClose} className="w-full text-center text-xs text-slate-400 hover:text-slate-600 mt-2 py-1">
-                Pular por enquanto →
+                {t("phone_verify_modal.skip")}
               </button>
             )}
           </div>
@@ -145,8 +147,8 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
         {/* Step 2: Enter verification code */}
         {step === "code" && (
           <div>
-            <p className="text-sm text-slate-600 mb-1">Código enviado via <strong>{channelLabel}</strong> para <strong>{phone}</strong></p>
-            <p className="text-xs text-slate-400 mb-4">Digite os 6 dígitos recebidos por SMS.</p>
+            <p className="text-sm text-slate-600 mb-1">{t("phone_verify_modal.code_sent_via", { channel: channelLabel, phone })}</p>
+            <p className="text-xs text-slate-400 mb-4">{t("phone_verify_modal.enter_6_digits_desc")}</p>
 
             <div className="flex justify-center gap-2 mb-4">
               {code.map((digit, i) => (
@@ -170,29 +172,29 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
 
             <button onClick={() => handleVerify()} disabled={verifying || code.join("").length !== 6}
               className="btn-primary w-full mb-3 disabled:opacity-50">
-              {verifying ? "Verificando..." : "Verificar código"}
+              {verifying ? t("phone_verify_modal.verifying") : t("phone_verify_modal.verify_code")}
             </button>
 
             <div className="text-center">
               {countdown > 0 ? (
-                <p className="text-xs text-slate-400">Reenviar em {countdown}s</p>
+                <p className="text-xs text-slate-400">{t("phone_verify_modal.resend_in", { seconds: countdown })}</p>
               ) : (
                 <div className="flex flex-col items-center gap-1">
                   <button onClick={() => { setChannel("sms"); handleSendCode(); }} disabled={sending}
                     className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1">
-                    <RefreshCw size={11} /> Reenviar via SMS
+                    <RefreshCw size={11} /> {t("phone_verify_modal.resend_sms")}
                   </button>
                   <button onClick={() => { setChannel("whatsapp"); handleSendCode(); }} disabled={sending}
                     className="text-xs text-green-600 hover:underline font-medium flex items-center gap-1">
-                    💬 Receber via WhatsApp
+                    💬 {t("phone_verify_modal.resend_whatsapp")}
                   </button>
                 </div>
               )}
               <button onClick={() => { setStep("phone"); setCode(["","","","","",""]); setError(""); }}
-                className="text-xs text-slate-400 hover:underline mt-2 block mx-auto">Alterar número</button>
+                className="text-xs text-slate-400 hover:underline mt-2 block mx-auto">{t("phone_verify_modal.change_number")}</button>
               {allowSkip && (
                 <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 mt-1 block mx-auto">
-                  Pular verificação →
+                  {t("phone_verify_modal.skip_verification")}
                 </button>
               )}
             </div>
@@ -203,7 +205,7 @@ const PhoneVerificationModal = ({ phone: initialPhone, onClose, onVerified, allo
         {step === "success" && (
           <div className="text-center py-4">
             <CheckCircle size={48} className="text-green-500 mx-auto mb-3" />
-            <p className="text-lg font-bold text-navy mb-1">Telefone verificado!</p>
+            <p className="text-lg font-bold text-navy mb-1">{t("phone_verify_modal.verified")}</p>
             <p className="text-sm text-slate-500">{phone}</p>
           </div>
         )}

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { CreditCard, QrCode, CheckCircle, Loader, Copy, Wallet } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
 
@@ -39,6 +40,7 @@ const CARD_ELEMENT_OPTIONS = {
 const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedMethods }) => {
   const stripe = useStripe();
   const elements = useElements();
+  const { t } = useTranslation();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -57,7 +59,7 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
       const { data } = await axios.post(`${API}/api/payments/initiate`, payload, { headers });
 
       if (data.mock) {
-        toast.success("Pagamento simulado (modo desenvolvimento).");
+        toast.success(t("payment_form.mock_payment"));
         setTimeout(async () => {
           try {
             await axios.post(`${API}/api/payments/confirm/${data.payment_id}`, {}, { headers });
@@ -69,18 +71,18 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
 
       // If paid with saved card and already confirmed
       if (data.status === "confirmed") {
-        toast.success(method === "credit_card" ? "Pagamento pré-autorizado!" : "Pagamento confirmado!");
+        toast.success(method === "credit_card" ? t("payment_form.pre_authorized") : t("payment_form.confirmed"));
         onPaymentComplete?.();
         return;
       }
 
       // 2. Confirm with Stripe Elements (new card)
       if (!stripe || !elements) {
-        toast.error("Stripe não carregado."); return;
+        toast.error(t("payment_form.stripe_not_loaded")); return;
       }
       const cardElement = elements.getElement(CardElement);
       if (!cardElement && useNewCard) {
-        toast.error("Preencha os dados do cartão."); return;
+        toast.error(t("payment_form.fill_card_data")); return;
       }
 
       const { error, paymentIntent } = await stripe.confirmCardPayment(data.client_secret, {
@@ -90,15 +92,15 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
       });
 
       if (error) {
-        toast.error(error.message || "Erro no pagamento.");
+        toast.error(error.message || t("payment_form.payment_error"));
       } else if (paymentIntent.status === "succeeded" || paymentIntent.status === "requires_capture") {
         // Confirm on backend
         await axios.post(`${API}/api/payments/confirm/${data.payment_id}`, {}, { headers });
-        toast.success(method === "credit_card" ? "Pagamento pré-autorizado!" : "Pagamento confirmado!");
+        toast.success(method === "credit_card" ? t("payment_form.pre_authorized") : t("payment_form.confirmed"));
         onPaymentComplete?.();
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao processar pagamento.");
+      toast.error(err.response?.data?.detail || t("payment_form.process_error"));
     } finally { setLoading(false); }
   };
 
@@ -107,7 +109,7 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
       {/* Saved cards */}
       {savedMethods.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-500">Cartões salvos</p>
+          <p className="text-xs font-semibold text-slate-500">{t("payment_form.saved_cards")}</p>
           {savedMethods.map(m => (
             <label key={m.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
               selectedSaved === m.id && !useNewCard ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
@@ -123,7 +125,7 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
             <input type="radio" name="saved_card" checked={useNewCard}
               onChange={() => { setUseNewCard(true); setSelectedSaved(null); }} className="accent-blue-500" />
             <Wallet size={16} className="text-blue-500" />
-            <span className="text-sm text-navy">Usar novo cartão</span>
+            <span className="text-sm text-navy">{t("payment_form.use_new_card")}</span>
           </label>
         </div>
       )}
@@ -131,18 +133,18 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
       {/* Stripe CardElement — only for new card */}
       {useNewCard && (
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-          <p className="text-xs font-semibold text-slate-500">Dados do cartão</p>
+          <p className="text-xs font-semibold text-slate-500">{t("payment_form.card_data")}</p>
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <CardElement options={CARD_ELEMENT_OPTIONS} />
           </div>
-          <p className="text-[10px] text-slate-400">Dados processados com segurança via Stripe. A CuidaU nunca armazena dados do cartão.</p>
+          <p className="text-[10px] text-slate-400">{t("payment_form.stripe_security_notice")}</p>
         </div>
       )}
 
       <button onClick={handlePay} disabled={loading || (!useNewCard && !selectedSaved)}
         className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 py-3">
-        {loading ? <><Loader size={16} className="animate-spin" /> Processando...</> :
-          `Confirmar e pagar · R$ ${Number(amount).toFixed(2)}`}
+        {loading ? <><Loader size={16} className="animate-spin" /> {t("payment_form.processing")}</> :
+          t("payment_form.confirm_pay", { amount: Number(amount).toFixed(2) })}
       </button>
     </div>
   );
@@ -151,6 +153,7 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
 // ── Main PaymentForm ─────────────────────────────────────────────────────────
 
 const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
+  const { t } = useTranslation();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -169,9 +172,9 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
   }, []);
 
   const methods = [
-    { id: "pix", label: "PIX", icon: <QrCode size={20} />, desc: "Pagamento instantâneo" },
-    { id: "credit_card", label: "Cartão de Crédito", icon: <CreditCard size={20} />, desc: "Pré-autorização" },
-    { id: "debit_card", label: "Cartão de Débito", icon: <CreditCard size={20} />, desc: "Débito direto" },
+    { id: "pix", label: "PIX", icon: <QrCode size={20} />, desc: t("payment_form.pix_desc") },
+    { id: "credit_card", label: t("payment_form.credit_card"), icon: <CreditCard size={20} />, desc: t("payment_form.credit_card_desc") },
+    { id: "debit_card", label: t("payment_form.debit_card"), icon: <CreditCard size={20} />, desc: t("payment_form.debit_card_desc") },
   ];
 
   const initiatePix = async () => {
@@ -182,7 +185,7 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
       }, { headers });
       setPixResult(data);
       if (data.mock) {
-        toast.success("Pagamento PIX simulado (modo desenvolvimento).");
+        toast.success(t("payment_form.mock_pix"));
         setTimeout(async () => {
           try {
             await axios.post(`${API}/api/payments/confirm/${data.payment_id}`, {}, { headers });
@@ -191,18 +194,18 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
         }, 2000);
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao gerar PIX.");
+      toast.error(err.response?.data?.detail || t("payment_form.pix_error"));
     } finally { setLoading(false); }
   };
 
   const copyPix = (code) => {
     navigator.clipboard.writeText(code);
-    toast.success("Código PIX copiado!");
+    toast.success(t("payment_form.pix_copied"));
   };
 
   return (
     <div className="space-y-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase">Método de pagamento</p>
+      <p className="text-xs font-semibold text-slate-500 uppercase">{t("payment_form.payment_method")}</p>
 
       {/* Method selection */}
       <div className="space-y-2">
@@ -238,8 +241,8 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
           /* Dev mode — no Stripe key */
           <div className="space-y-3">
             <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <p className="text-xs text-amber-700 font-medium">Modo desenvolvimento: Stripe não configurado.</p>
-              <p className="text-xs text-amber-600 mt-1">O pagamento será simulado.</p>
+              <p className="text-xs text-amber-700 font-medium">{t("payment_form.dev_mode")}</p>
+              <p className="text-xs text-amber-600 mt-1">{t("payment_form.dev_mode_simulated")}</p>
             </div>
             <button onClick={async () => {
               setLoading(true);
@@ -248,7 +251,7 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
                   booking_id: bookingId, method,
                 }, { headers });
                 if (data.mock) {
-                  toast.success("Pagamento simulado (modo desenvolvimento).");
+                  toast.success(t("payment_form.mock_payment"));
                   setTimeout(async () => {
                     try {
                       await axios.post(`${API}/api/payments/confirm/${data.payment_id}`, {}, { headers });
@@ -257,12 +260,12 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
                   }, 2000);
                 }
               } catch (err) {
-                toast.error(err.response?.data?.detail || "Erro.");
+                toast.error(err.response?.data?.detail || t("payment_form.error_generic"));
               } finally { setLoading(false); }
             }} disabled={loading}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 py-3">
-              {loading ? <><Loader size={16} className="animate-spin" /> Processando...</> :
-                `Confirmar e pagar · R$ ${Number(amount).toFixed(2)}`}
+              {loading ? <><Loader size={16} className="animate-spin" /> {t("payment_form.processing")}</> :
+                t("payment_form.confirm_pay", { amount: Number(amount).toFixed(2) })}
             </button>
           </div>
         ) : (
@@ -274,26 +277,26 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
       {method === "pix" && !pixResult && (
         <button onClick={initiatePix} disabled={loading}
           className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 py-3">
-          {loading ? <><Loader size={16} className="animate-spin" /> Gerando PIX...</> :
-            `Gerar PIX · R$ ${Number(amount).toFixed(2)}`}
+          {loading ? <><Loader size={16} className="animate-spin" /> {t("payment_form.generating_pix")}</> :
+            t("payment_form.generate_pix", { amount: Number(amount).toFixed(2) })}
         </button>
       )}
 
       {method === "pix" && pixResult && (
         <div className="p-4 bg-green-50 rounded-xl border border-green-200 text-center">
           <QrCode size={32} className="text-green-600 mx-auto mb-2" />
-          <p className="text-sm font-semibold text-navy mb-2">PIX gerado!</p>
+          <p className="text-sm font-semibold text-navy mb-2">{t("payment_form.pix_generated")}</p>
           {pixResult.pix_code && (
             <div className="bg-white p-3 rounded-lg border border-slate-200 mb-3">
               <p className="text-xs font-mono text-slate-600 break-all mb-2">{pixResult.pix_code.substring(0, 60)}...</p>
               <button onClick={() => copyPix(pixResult.pix_code)}
                 className="flex items-center gap-1.5 mx-auto text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg">
-                <Copy size={12} /> Copiar código PIX
+                <Copy size={12} /> {t("payment_form.copy_pix")}
               </button>
             </div>
           )}
-          <p className="text-xs text-slate-500">Escaneie o QR Code ou copie o código PIX e cole no seu app bancário.</p>
-          <p className="text-xs text-green-600 mt-2 font-medium">Aguardando confirmação do pagamento...</p>
+          <p className="text-xs text-slate-500">{t("payment_form.pix_instructions")}</p>
+          <p className="text-xs text-green-600 mt-2 font-medium">{t("payment_form.awaiting_confirmation")}</p>
         </div>
       )}
     </div>

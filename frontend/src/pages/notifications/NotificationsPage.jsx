@@ -5,6 +5,7 @@ import {
   Calendar, CreditCard, MessageSquare, Star, Mail, Phone, Smartphone,
   Filter, Check, Shield, UserCheck, Clock, FileText,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -32,25 +33,6 @@ const ICON_MAP = {
   document_feedback:     <FileText size={16} className="text-orange-500" />,
 };
 
-const TYPE_LABELS = {
-  booking: "Agendamento",
-  payment: "Pagamento",
-  cancel: "Cancelamento",
-  checkin: "Check-in",
-  message: "Mensagem",
-  admin_message: "Mensagem da equipe",
-  rating: "Avaliação",
-  system: "Sistema",
-  account: "Conta",
-  admin: "Administração",
-  reminder: "Lembrete",
-  service: "Serviço",
-  penalty: "Penalidade",
-  alert: "Alerta",
-  verification_complete: "Verificação concluída",
-  document_feedback: "Documento",
-};
-
 const DELIVERY_ICON = {
   sent: <Check size={10} className="text-green-500" />,
   failed: <AlertTriangle size={10} className="text-red-500" />,
@@ -59,6 +41,7 @@ const DELIVERY_ICON = {
 };
 
 const NotificationsPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const role = localStorage.getItem("role");
@@ -77,7 +60,7 @@ const NotificationsPage = () => {
         const items = r.data?.items ?? (Array.isArray(r.data) ? r.data : []);
         setNotifications(items);
       })
-      .catch(() => toast.error("Erro ao carregar notificações."))
+      .catch(() => toast.error(t("notifications_page.load_error")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -92,22 +75,31 @@ const NotificationsPage = () => {
     try {
       await axios.patch(`${API}/api/notifications/read-all`, {}, { headers });
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      toast.success("Todas marcadas como lidas.");
-    } catch { toast.error("Erro."); }
+      toast.success(t("notifications_page.all_marked_read"));
+    } catch { toast.error(t("notifications_page.error_generic")); }
   };
 
   const deleteNotif = async (id) => {
     try {
       await axios.delete(`${API}/api/notifications/${id}`, { headers });
       setNotifications(prev => prev.filter(n => n.id !== id));
-      toast.success("Notificação removida.");
-    } catch { toast.error("Erro ao remover."); }
+      toast.success(t("notifications_page.removed"));
+    } catch { toast.error(t("notifications_page.remove_error")); }
   };
 
   const filtered = filter === "unread"
     ? notifications.filter(n => !n.read)
     : notifications;
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const getTypeLabel = (n) => {
+    const key = n.category || n.type;
+    if (key) {
+      const translated = t(`notifications_page.type_labels.${key}`, { defaultValue: "" });
+      if (translated) return translated;
+    }
+    return key || "";
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -122,9 +114,9 @@ const NotificationsPage = () => {
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="font-display text-2xl font-bold text-navy">Notificações</h1>
+            <h1 className="font-display text-2xl font-bold text-navy">{t("notifications_page.title")}</h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              {unreadCount > 0 ? `${unreadCount} não lida(s)` : "Tudo em dia"}
+              {unreadCount > 0 ? t("notifications_page.unread_count", { count: unreadCount }) : t("notifications_page.all_caught_up")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -135,35 +127,35 @@ const NotificationsPage = () => {
                 filter === "unread" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
               }`}
             >
-              <Filter size={13} /> {filter === "unread" ? "Não lidas" : "Todas"}
+              <Filter size={13} /> {filter === "unread" ? t("notifications_page.filter_unread") : t("notifications_page.filter_all")}
             </button>
             {unreadCount > 0 && (
               <button onClick={markAllRead} className="text-xs text-blue-500 hover:underline whitespace-nowrap">
-                Marcar todas como lidas
+                {t("notifications_page.mark_all_read")}
               </button>
             )}
           </div>
         </div>
 
         {loading ? (
-          <p className="text-slate-400 text-sm text-center py-8">Carregando...</p>
+          <p className="text-slate-400 text-sm text-center py-8">{t("notifications_page.loading")}</p>
         ) : filtered.length === 0 ? (
           <div className="card p-8 text-center">
             <Bell size={40} className="mx-auto mb-3 text-slate-300" />
             <p className="text-navy font-semibold mb-1">
-              {filter === "unread" ? "Nenhuma notificação não lida" : "Nenhuma notificação"}
+              {filter === "unread" ? t("notifications_page.no_unread") : t("notifications_page.no_notifications")}
             </p>
             <p className="text-sm text-slate-500">
               {filter === "unread"
-                ? "Todas as notificações foram lidas."
-                : "Você receberá notificações sobre agendamentos, verificações e mensagens da equipe aqui."}
+                ? t("notifications_page.all_read_desc")
+                : t("notifications_page.empty_desc")}
             </p>
           </div>
         ) : (
           <div className="space-y-2">
             {filtered.map(n => {
               const icon = ICON_MAP[n.category] || ICON_MAP[n.type] || ICON_MAP.system;
-              const typeLabel = TYPE_LABELS[n.category] || TYPE_LABELS[n.type] || n.category || n.type;
+              const typeLabel = getTypeLabel(n);
               return (
                 <div
                   key={n.id}
@@ -185,10 +177,10 @@ const NotificationsPage = () => {
                       {/* Document link */}
                       {n.doc_type && (
                         <p className="text-xs text-blue-500 mt-1">
-                          📄 Documento: {n.doc_type}
+                          📄 {t("notifications_page.document_label")} {n.doc_type}
                           {isPro && (
                             <button onClick={(e) => { e.stopPropagation(); navigate("/profile/professional"); }}
-                              className="ml-2 text-blue-600 hover:underline font-semibold">Ver meus documentos →</button>
+                              className="ml-2 text-blue-600 hover:underline font-semibold">{t("notifications_page.view_documents")}</button>
                           )}
                         </p>
                       )}
@@ -213,7 +205,7 @@ const NotificationsPage = () => {
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteNotif(n.id); }}
                       className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-400 flex-shrink-0"
-                      title="Excluir"
+                      title={t("notifications_page.delete_title")}
                     >
                       <Trash2 size={14} />
                     </button>

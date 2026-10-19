@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { MapPin, Clock, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -6,6 +7,7 @@ import toast from "react-hot-toast";
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const GPSCheckInOut = ({ booking, onUpdate }) => {
+  const { t } = useTranslation();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -28,10 +30,10 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
   }, [isCheckedIn, booking.arrival_timer_start]);
 
   const getGPS = () => new Promise((resolve, reject) => {
-    if (!navigator.geolocation) { reject("GPS não disponível neste dispositivo"); return; }
+    if (!navigator.geolocation) { reject(t("gps_checkin.gps_unavailable")); return; }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      err => reject(err.code === 1 ? "Permita o acesso à localização" : "Erro ao obter localização"),
+      err => reject(err.code === 1 ? t("gps_checkin.allow_location") : t("gps_checkin.location_error")),
       { enableHighAccuracy: true, timeout: 10000 }
     );
   });
@@ -42,10 +44,10 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
       const gps = await getGPS();
       const { data } = await axios.post(`${API}/api/bookings/${booking.id}/checkin`, gps, { headers });
       toast.success(data.message);
-      if (data.flagged) toast("⚠️ Localização fora do raio esperado", { icon: "📍" });
+      if (data.flagged) toast(t("gps_checkin.out_of_range"), { icon: "📍" });
       onUpdate?.();
     } catch (err) {
-      const msg = typeof err === "string" ? err : err.response?.data?.detail || "Erro no check-in";
+      const msg = typeof err === "string" ? err : err.response?.data?.detail || t("gps_checkin.checkin_error");
       setGpsError(msg); toast.error(msg);
     } finally { setLoading(false); }
   };
@@ -58,7 +60,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
       toast.success(data.message);
       onUpdate?.();
     } catch (err) {
-      const msg = typeof err === "string" ? err : err.response?.data?.detail || "Erro no checkout";
+      const msg = typeof err === "string" ? err : err.response?.data?.detail || t("gps_checkin.checkout_error");
       setGpsError(msg); toast.error(msg);
     } finally { setLoading(false); }
   };
@@ -70,7 +72,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
       toast.success(data.message);
       onUpdate?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao reportar no-show");
+      toast.error(err.response?.data?.detail || t("gps_checkin.noshow_error"));
     } finally { setLoading(false); }
   };
 
@@ -85,7 +87,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
       toast.success(data.message);
       onUpdate?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao encerrar");
+      toast.error(err.response?.data?.detail || t("gps_checkin.terminate_error"));
     } finally { setLoading(false); }
   };
 
@@ -97,8 +99,8 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
         booking_id: booking.id,
         content: text,
       }, { headers });
-      toast.success("Mensagem enviada!");
-    } catch { toast.error("Erro ao enviar mensagem."); }
+      toast.success(t("gps_checkin.message_sent"));
+    } catch { toast.error(t("gps_checkin.message_error")); }
   };
 
   return (
@@ -106,15 +108,15 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
       <div className="flex items-center gap-2">
         <MapPin size={16} className="text-blue-500" />
         <p className="text-sm font-semibold text-navy">
-          {isAccepted ? "Check-in" : "Atendimento em andamento"}
+          {isAccepted ? t("gps_checkin.checkin_title") : t("gps_checkin.in_progress")}
         </p>
       </div>
 
       {/* Quick messages */}
       {isAccepted && (
-        <button onClick={() => sendQuickMessage("🚗 Estou a caminho!")}
+        <button onClick={() => sendQuickMessage(t("gps_checkin.on_my_way_message"))}
           className="w-full text-xs py-2 rounded-lg bg-green-100 text-green-700 font-semibold hover:bg-green-200 transition-colors">
-          🚗 Estou a caminho
+          🚗 {t("gps_checkin.on_my_way")}
         </button>
       )}
 
@@ -129,7 +131,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
       {isAccepted && (
         <button onClick={handleCheckIn} disabled={loading}
           className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
-          <MapPin size={14} /> {loading ? "Obtendo localização..." : "📍 Fazer Check-in (GPS)"}
+          <MapPin size={14} /> {loading ? t("gps_checkin.getting_location") : t("gps_checkin.do_checkin")}
         </button>
       )}
 
@@ -138,7 +140,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
         <>
           <div className="flex items-center gap-2 text-xs text-green-600">
             <CheckCircle size={13} />
-            <span>Check-in realizado às {booking.actual_checkin && new Date(booking.actual_checkin).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+            <span>{t("gps_checkin.checked_in_at")} {booking.actual_checkin && new Date(booking.actual_checkin).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
 
           {/* Arrival waiting timer */}
@@ -146,7 +148,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
             <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
               <Clock size={13} className="text-amber-500" />
               <p className="text-xs text-amber-700">
-                Aguardando cliente: {Math.floor(waitingTimer)} min restantes
+                {t("gps_checkin.waiting_client", { minutes: Math.floor(waitingTimer) })}
               </p>
             </div>
           )}
@@ -155,7 +157,7 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
           <div className="flex gap-2">
             <button onClick={handleCheckOut} disabled={loading}
               className="btn-primary flex-1 flex items-center justify-center gap-1.5 disabled:opacity-50">
-              <CheckCircle size={13} /> {loading ? "..." : "Checkout (GPS)"}
+              <CheckCircle size={13} /> {loading ? "..." : t("gps_checkin.checkout")}
             </button>
             {waitingTimer !== null && waitingTimer <= 0 && (
               <button onClick={handleNoShow} disabled={loading}
@@ -167,10 +169,10 @@ const GPSCheckInOut = ({ booking, onUpdate }) => {
 
           {/* Early termination */}
           <button onClick={() => {
-            const reason = prompt("Motivo do encerramento antecipado:");
+            const reason = prompt(t("gps_checkin.early_termination_prompt"));
             if (reason) handleTerminateEarly(reason);
           }} className="w-full text-xs text-slate-500 hover:text-red-500 py-1 transition-colors">
-            Encerrar atendimento antecipadamente
+            {t("gps_checkin.early_termination")}
           </button>
         </>
       )}
