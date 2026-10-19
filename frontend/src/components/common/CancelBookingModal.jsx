@@ -1,26 +1,29 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const REASONS = [
-  "Mudança de planos",
-  "Problema de saúde",
-  "Profissional indisponível",
-  "Encontrei outro profissional",
-  "Erro no agendamento",
-  "Problema financeiro",
-  "Emergência pessoal",
-  "Outro",
+// Keys for reasons — Portuguese values sent to API, display via t()
+const REASON_KEYS = [
+  { key: "change_of_plans", api: "Mudança de planos" },
+  { key: "health_issue", api: "Problema de saúde" },
+  { key: "pro_unavailable", api: "Profissional indisponível" },
+  { key: "found_another", api: "Encontrei outro profissional" },
+  { key: "booking_error", api: "Erro no agendamento" },
+  { key: "financial", api: "Problema financeiro" },
+  { key: "personal_emergency", api: "Emergência pessoal" },
+  { key: "other", api: "Outro" },
 ];
 
 const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancelled }) => {
+  const { t } = useTranslation();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
-  const [reason, setReason] = useState("");
+  const [selectedKey, setSelectedKey] = useState("");
   const [detail, setDetail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -34,24 +37,25 @@ const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancel
   const isGrace = minutesSinceCreation <= 10 && booking.status === "pending" && hoursUntil > 7;
 
   let refundPct = 0;
-  let policyText = "";
-  if (isGrace) { refundPct = 100; policyText = "Período de graça (10 min): reembolso total"; }
-  else if (hoursUntil > 7) { refundPct = 100; policyText = "Mais de 7h antes: reembolso de 100%"; }
-  else if (hoursUntil >= 2) { refundPct = 50; policyText = "Entre 2-7h antes: reembolso de 50%"; }
-  else { refundPct = 0; policyText = "Menos de 2h antes: sem reembolso"; }
+  let policyKey = "";
+  if (isGrace) { refundPct = 100; policyKey = "grace"; }
+  else if (hoursUntil > 7) { refundPct = 100; policyKey = "over_7h"; }
+  else if (hoursUntil >= 2) { refundPct = 50; policyKey = "2_to_7h"; }
+  else { refundPct = 0; policyKey = "under_2h"; }
 
   const handleCancel = async () => {
-    if (!reason) { toast.error("Selecione um motivo."); return; }
+    if (!selectedKey) { toast.error(t("cancel_booking.select_reason")); return; }
+    const reasonObj = REASON_KEYS.find(r => r.key === selectedKey);
     setSubmitting(true);
     try {
       const { data } = await axios.post(`${API}/api/bookings/${booking.id}/cancel`, {
-        reason, detail: detail.trim() || null, cancelled_by: cancelledBy,
+        reason: reasonObj.api, detail: detail.trim() || null, cancelled_by: cancelledBy,
       }, { headers });
       setResult(data);
-      toast.success("Agendamento cancelado.");
+      toast.success(t("cancel_booking.cancelled_success"));
       onCancelled?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao cancelar.");
+      toast.error(err.response?.data?.detail || t("cancel_booking.cancel_error"));
     } finally { setSubmitting(false); }
   };
 
@@ -61,7 +65,7 @@ const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancel
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <AlertTriangle size={20} className="text-red-500" />
-            <h3 className="font-display text-lg font-bold text-navy">Cancelar agendamento</h3>
+            <h3 className="font-display text-lg font-bold text-navy">{t("cancel_booking.title")}</h3>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
             <X size={16} className="text-slate-400" />
@@ -71,57 +75,57 @@ const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancel
         {result ? (
           <div>
             <div className={`p-4 rounded-xl mb-4 ${result.refund?.refund_pct > 0 ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-              <p className="text-sm font-semibold text-navy mb-1">Agendamento cancelado</p>
+              <p className="text-sm font-semibold text-navy mb-1">{t("cancel_booking.booking_cancelled")}</p>
               <p className="text-xs text-slate-600">{result.policy}</p>
               {result.refund && result.refund.refund_amount > 0 && (
                 <p className="text-sm font-bold text-green-700 mt-2">
-                  Reembolso: R$ {result.refund.refund_amount.toFixed(2)} ({result.refund.refund_pct}%)
+                  {t("cancel_booking.refund_label")} R$ {result.refund.refund_amount.toFixed(2)} ({result.refund.refund_pct}%)
                 </p>
               )}
             </div>
-            <button onClick={onClose} className="btn-primary w-full">Fechar</button>
+            <button onClick={onClose} className="btn-primary w-full">{t("cancel_booking.close")}</button>
           </div>
         ) : (
           <>
             {/* Refund policy preview */}
             <div className={`p-3 rounded-xl mb-4 ${refundPct === 100 ? "bg-green-50 border border-green-200" : refundPct === 50 ? "bg-amber-50 border border-amber-200" : "bg-red-50 border border-red-200"}`}>
-              <p className="text-xs font-semibold text-slate-600 uppercase mb-1">Política de reembolso</p>
-              <p className="text-sm font-medium text-navy">{policyText}</p>
+              <p className="text-xs font-semibold text-slate-600 uppercase mb-1">{t("cancel_booking.refund_policy")}</p>
+              <p className="text-sm font-medium text-navy">{t(`cancel_booking.policy.${policyKey}`)}</p>
               {booking.total_price && refundPct > 0 && (
                 <p className="text-xs text-slate-500 mt-1">
-                  Reembolso estimado: R$ {(booking.total_price * refundPct / 100).toFixed(2)}
+                  {t("cancel_booking.estimated_refund")} R$ {(booking.total_price * refundPct / 100).toFixed(2)}
                 </p>
               )}
             </div>
 
             {/* Reason selection */}
             <div className="mb-4">
-              <p className="form-label">Motivo do cancelamento *</p>
+              <p className="form-label">{t("cancel_booking.reason_label")}</p>
               <div className="space-y-2">
-                {REASONS.map(r => (
-                  <label key={r} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                    reason === r ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
-                    <input type="radio" name="reason" checked={reason === r} onChange={() => setReason(r)} className="accent-blue-500" />
-                    <span className="text-sm text-slate-700">{r}</span>
+                {REASON_KEYS.map(r => (
+                  <label key={r.key} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                    selectedKey === r.key ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
+                    <input type="radio" name="reason" checked={selectedKey === r.key} onChange={() => setSelectedKey(r.key)} className="accent-blue-500" />
+                    <span className="text-sm text-slate-700">{t(`cancel_booking.reasons.${r.key}`)}</span>
                   </label>
                 ))}
               </div>
             </div>
 
-            {/* Detail for "Outro" */}
-            {reason === "Outro" && (
+            {/* Detail for "other" */}
+            {selectedKey === "other" && (
               <div className="mb-4">
-                <label className="form-label">Detalhes</label>
+                <label className="form-label">{t("cancel_booking.details")}</label>
                 <textarea className="form-input min-h-[60px]" value={detail} onChange={e => setDetail(e.target.value)}
-                  placeholder="Descreva o motivo..." />
+                  placeholder={t("cancel_booking.describe_reason")} />
               </div>
             )}
 
             <div className="flex gap-2">
-              <button onClick={onClose} className="btn-outline flex-1">Voltar</button>
-              <button onClick={handleCancel} disabled={!reason || submitting}
+              <button onClick={onClose} className="btn-outline flex-1">{t("cancel_booking.back")}</button>
+              <button onClick={handleCancel} disabled={!selectedKey || submitting}
                 className="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors">
-                {submitting ? "Cancelando..." : "Confirmar cancelamento"}
+                {submitting ? t("cancel_booking.cancelling") : t("cancel_booking.confirm_cancel")}
               </button>
             </div>
           </>

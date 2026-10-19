@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, BellOff, Trash2, Play, Pause, ChevronLeft, CheckCircle, Clock, Search } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -9,18 +10,19 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const STATUS_CONFIG = {
-  active:  { label: "Ativo",    color: "bg-green-100 text-green-700", icon: <Bell size={13} /> },
-  paused:  { label: "Pausado",  color: "bg-slate-100 text-slate-500", icon: <BellOff size={13} /> },
-  matched: { label: "Encontrado", color: "bg-blue-100 text-blue-700", icon: <CheckCircle size={13} /> },
-  expired: { label: "Expirado", color: "bg-red-100 text-red-500",   icon: <Clock size={13} /> },
-};
-
 const AlertsPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const token    = localStorage.getItem("token");
   const role     = localStorage.getItem("role");
   const headers  = { Authorization: `Bearer ${token}` };
+
+  const STATUS_CONFIG = {
+    active:  { label: t("alerts.status.active"),  color: "bg-green-100 text-green-700", icon: <Bell size={13} /> },
+    paused:  { label: t("alerts.status.paused"),  color: "bg-slate-100 text-slate-500", icon: <BellOff size={13} /> },
+    matched: { label: t("alerts.status.matched"), color: "bg-blue-100 text-blue-700",  icon: <CheckCircle size={13} /> },
+    expired: { label: t("alerts.status.expired"), color: "bg-red-100 text-red-500",    icon: <Clock size={13} /> },
+  };
 
   const [alerts, setAlerts]     = useState([]);
   const [matches, setMatches]   = useState([]);
@@ -43,36 +45,36 @@ const AlertsPage = () => {
       const { data } = await axios.get(`${API}/api/alerts/match/check`, { headers });
       setMatches(data.alerts_with_matches || []);
       if (data.total_matches > 0) {
-        toast.success(`${data.total_matches} oportunidade(s) encontrada(s)!`);
+        toast.success(t("alerts.matches_found", { count: data.total_matches }));
       } else {
-        toast("Nenhuma oportunidade compatível no momento.", { icon: "🔍" });
+        toast(t("alerts.no_matches"), { icon: "🔍" });
       }
-    } catch { toast.error("Erro ao buscar oportunidades."); }
+    } catch { toast.error(t("alerts.check_error")); }
     finally { setChecking(false); }
   };
 
   const pauseAlert = async (id) => {
     await axios.patch(`${API}/api/alerts/${id}/pause`, {}, { headers });
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: "paused" } : a));
-    toast.success("Alerta pausado.");
+    toast.success(t("alerts.paused"));
   };
 
   const resumeAlert = async (id) => {
     await axios.patch(`${API}/api/alerts/${id}/resume`, {}, { headers });
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: "active" } : a));
-    toast.success("Alerta reativado.");
+    toast.success(t("alerts.resumed"));
   };
 
   const deleteAlert = async (id) => {
     await axios.delete(`${API}/api/alerts/${id}`, { headers });
     setAlerts(prev => prev.filter(a => a.id !== id));
-    toast.success("Alerta removido.");
+    toast.success(t("alerts.deleted"));
   };
 
   const confirmMatch = async (id) => {
     await axios.patch(`${API}/api/alerts/match/${id}/confirm`, {}, { headers });
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: "matched" } : a));
-    toast.success("Match confirmado!");
+    toast.success(t("alerts.match_confirmed"));
   };
 
   const activeCount = alerts.filter(a => a.status === "active").length;
@@ -90,33 +92,33 @@ const AlertsPage = () => {
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="font-display text-2xl font-bold text-navy">Alertas de disponibilidade</h1>
+            <h1 className="font-display text-2xl font-bold text-navy">{t("alerts.title")}</h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              {activeCount > 0 ? `${activeCount} alerta(s) ativo(s)` : "Nenhum alerta ativo"}
+              {activeCount > 0 ? t("alerts.active_count", { count: activeCount }) : t("alerts.no_active")}
             </p>
           </div>
           <button onClick={checkMatches} disabled={checking || activeCount === 0}
             className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50">
-            <Search size={15} /> {checking ? "Buscando..." : "Buscar agora"}
+            <Search size={15} /> {checking ? t("alerts.searching") : t("alerts.search_now")}
           </button>
         </div>
 
         {/* Matches found */}
         {matches.length > 0 && (
           <div className="mb-6 space-y-3">
-            <h3 className="font-semibold text-navy text-sm">🎉 Oportunidades encontradas</h3>
+            <h3 className="font-semibold text-navy text-sm">🎉 {t("alerts.opportunities_found")}</h3>
             {matches.map(m => (
               <div key={m.alert.id} className="card p-4 border-2 border-green-200 bg-green-50/50">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-semibold text-navy">
-                    {m.alert.alert_type === "patient" ? "Profissionais disponíveis" : "Solicitações compatíveis"}
+                    {m.alert.alert_type === "patient" ? t("alerts.available_professionals") : t("alerts.compatible_requests")}
                   </p>
-                  <span className="text-xs font-semibold text-green-600">{m.match_count} encontrado(s)</span>
+                  <span className="text-xs font-semibold text-green-600">{t("alerts.found_count", { count: m.match_count })}</span>
                 </div>
                 <div className="space-y-2 mb-3">
                   {m.matches.slice(0, 3).map((match, i) => (
                     <div key={i} className="text-xs text-slate-600 bg-white p-2 rounded-lg border border-slate-100">
-                      {match.full_name || match.service_type || "Oportunidade"} 
+                      {match.full_name || match.service_type || t("alerts.opportunity")}
                       {match.role && ` · ${match.role}`}
                       {match.rating_avg && ` · ⭐ ${match.rating_avg}`}
                       {match.scheduled_start && ` · ${new Date(match.scheduled_start).toLocaleDateString("pt-BR")}`}
@@ -126,10 +128,10 @@ const AlertsPage = () => {
                 <div className="flex gap-2">
                   <button onClick={() => { confirmMatch(m.alert.id); navigate(isPro ? "/dashboard/professional" : "/booking/new"); }}
                     className="btn-primary text-xs px-3 py-1.5">
-                    {m.alert.alert_type === "patient" ? "Agendar agora" : "Ver solicitações"}
+                    {m.alert.alert_type === "patient" ? t("alerts.schedule_now") : t("alerts.view_requests")}
                   </button>
                   <button onClick={() => confirmMatch(m.alert.id)} className="btn-outline text-xs px-3 py-1.5">
-                    Marcar como resolvido
+                    {t("alerts.mark_resolved")}
                   </button>
                 </div>
               </div>
@@ -139,18 +141,16 @@ const AlertsPage = () => {
 
         {/* Alert list */}
         {loading ? (
-          <p className="text-slate-400 text-sm text-center py-8">Carregando...</p>
+          <p className="text-slate-400 text-sm text-center py-8">{t("alerts.loading")}</p>
         ) : alerts.length === 0 ? (
           <div className="card p-8 text-center">
             <Bell size={40} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-navy font-semibold mb-1">Nenhum alerta criado</p>
+            <p className="text-navy font-semibold mb-1">{t("alerts.no_alerts")}</p>
             <p className="text-sm text-slate-500 mb-4">
-              {isPro
-                ? "Crie um alerta para ser notificado quando surgirem solicitações de cuidado compatíveis."
-                : "Ao buscar profissionais, se nenhum estiver disponível, você pode criar um alerta para ser notificado."}
+              {isPro ? t("alerts.empty_desc_pro") : t("alerts.empty_desc_client")}
             </p>
             <button onClick={() => navigate(isPro ? "/availability" : "/booking/new")} className="btn-primary">
-              {isPro ? "Gerenciar disponibilidade" : "Buscar profissional"}
+              {isPro ? t("alerts.manage_availability") : t("alerts.search_professional")}
             </button>
           </div>
         ) : (
@@ -170,7 +170,7 @@ const AlertsPage = () => {
                         </span>
                       </div>
                       <p className="text-sm font-semibold text-navy">
-                        {alert.alert_type === "patient" ? "Busca por profissional" : "Busca por solicitações"}
+                        {alert.alert_type === "patient" ? t("alerts.search_professional_label") : t("alerts.search_requests_label")}
                       </p>
                       <div className="flex flex-wrap gap-2 mt-1">
                         {alert.preferred_date && (
@@ -186,22 +186,22 @@ const AlertsPage = () => {
                           <span className="text-xs text-slate-500">👩‍⚕️ {alert.professional_category}</span>
                         )}
                         {alert.services?.length > 0 && (
-                          <span className="text-xs text-slate-500">📋 {alert.services.length} serviço(s)</span>
+                          <span className="text-xs text-slate-500">📋 {t("alerts.services_count", { count: alert.services.length })}</span>
                         )}
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       {alert.status === "active" && (
-                        <button onClick={() => pauseAlert(alert.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400" title="Pausar">
+                        <button onClick={() => pauseAlert(alert.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400" title={t("alerts.pause_title")}>
                           <Pause size={14} />
                         </button>
                       )}
                       {alert.status === "paused" && (
-                        <button onClick={() => resumeAlert(alert.id)} className="p-1.5 rounded-lg hover:bg-green-50 text-green-500" title="Reativar">
+                        <button onClick={() => resumeAlert(alert.id)} className="p-1.5 rounded-lg hover:bg-green-50 text-green-500" title={t("alerts.resume_title")}>
                           <Play size={14} />
                         </button>
                       )}
-                      <button onClick={() => deleteAlert(alert.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Excluir">
+                      <button onClick={() => deleteAlert(alert.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title={t("alerts.delete_title")}>
                         <Trash2 size={14} />
                       </button>
                     </div>

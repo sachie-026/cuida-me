@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   ChevronLeft, Plus, Trash2, Star, CreditCard, Building2,
   Smartphone, CheckCircle, AlertTriangle, X, Loader2,
@@ -12,23 +13,10 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
-const METHOD_LABELS = {
-  bank_account: "Conta bancária",
-  pix: "Chave PIX",
-  card: "Cartão",
-};
-
 const METHOD_ICONS = {
   bank_account: <Building2 size={18} className="text-blue-500" />,
   pix: <Smartphone size={18} className="text-green-500" />,
   card: <CreditCard size={18} className="text-purple-500" />,
-};
-
-const PIX_TYPE_LABELS = {
-  cpf: "CPF",
-  email: "E-mail",
-  phone: "Telefone",
-  random: "Chave aleatória",
 };
 
 const BANKS = [
@@ -38,6 +26,7 @@ const BANKS = [
 
 const PayoutMethodsPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -62,7 +51,7 @@ const PayoutMethodsPage = () => {
   const fetchMethods = () => {
     axios.get(`${API}/api/payout-methods`, { headers })
       .then(r => setMethods(Array.isArray(r.data) ? r.data : []))
-      .catch(() => toast.error("Erro ao carregar métodos de pagamento."))
+      .catch(() => toast.error(t("pro_payout.toast_load_error")))
       .finally(() => setLoading(false));
   };
 
@@ -82,46 +71,46 @@ const PayoutMethodsPage = () => {
 
     if (formType === "bank_account") {
       if (!bankForm.bank_name || !bankForm.agency || !bankForm.account_number || !bankForm.holder_cpf) {
-        toast.error("Preencha todos os campos obrigatórios."); setSaving(false); return;
+        toast.error(t("pro_payout.toast_fill_required")); setSaving(false); return;
       }
       payload = { ...payload, ...bankForm };
     } else if (formType === "pix") {
       if (!pixForm.pix_key) {
-        toast.error("Informe a chave PIX."); setSaving(false); return;
+        toast.error(t("pro_payout.toast_pix_required")); setSaving(false); return;
       }
       payload = { ...payload, ...pixForm };
     } else if (formType === "card") {
       if (!cardForm.card_brand || !cardForm.card_last4) {
-        toast.error("Informe a bandeira e os últimos 4 dígitos."); setSaving(false); return;
+        toast.error(t("pro_payout.toast_card_required")); setSaving(false); return;
       }
       payload = { ...payload, ...cardForm };
     }
 
     try {
       await axios.post(`${API}/api/payout-methods`, payload, { headers });
-      toast.success("Método de pagamento adicionado!");
+      toast.success(t("pro_payout.toast_added"));
       resetForms();
       fetchMethods();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erro ao salvar.");
+      toast.error(err.response?.data?.detail || t("pro_payout.toast_save_error"));
     } finally { setSaving(false); }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Tem certeza que deseja remover este método de pagamento?")) return;
+    if (!window.confirm(t("pro_payout.confirm_delete"))) return;
     try {
       await axios.delete(`${API}/api/payout-methods/${id}`, { headers });
-      toast.success("Removido.");
+      toast.success(t("pro_payout.toast_removed"));
       fetchMethods();
-    } catch { toast.error("Erro ao remover."); }
+    } catch { toast.error(t("pro_payout.toast_remove_error")); }
   };
 
   const handleSetPrimary = async (id) => {
     try {
       await axios.patch(`${API}/api/payout-methods/${id}/primary`, {}, { headers });
-      toast.success("Definido como principal!");
+      toast.success(t("pro_payout.toast_set_primary"));
       fetchMethods();
-    } catch { toast.error("Erro."); }
+    } catch { toast.error(t("pro_payout.toast_error")); }
   };
 
   const methodSummary = (m) => {
@@ -129,10 +118,10 @@ const PayoutMethodsPage = () => {
       return `${m.bank_name} · Ag ${m.agency} · Cc ${m.account_number}`;
     }
     if (m.method_type === "pix") {
-      return `${PIX_TYPE_LABELS[m.pix_key_type] || m.pix_key_type}: ${m.pix_key}`;
+      return `${t(`pro_payout.pix_type_${m.pix_key_type}`)}: ${m.pix_key}`;
     }
     if (m.method_type === "card") {
-      return `${m.card_brand} final ${m.card_last4}`;
+      return `${m.card_brand} ${t("pro_payout.card_ending")} ${m.card_last4}`;
     }
     return "";
   };
@@ -151,18 +140,15 @@ const PayoutMethodsPage = () => {
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="font-display text-2xl font-bold text-navy">Conta bancária</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Gerencie como você recebe seus pagamentos</p>
+            <h1 className="font-display text-2xl font-bold text-navy">{t("pro_payout.title")}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">{t("pro_payout.subtitle")}</p>
           </div>
         </div>
 
         {/* Info banner */}
         <div className="flex items-start gap-3 p-4 mb-6 bg-blue-50 border border-blue-200 rounded-xl">
           <AlertTriangle size={16} className="text-blue-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-blue-700">
-            Os pagamentos são transferidos para o método principal após o checkout confirmado pelo cliente.
-            A conta ou chave PIX deve estar no mesmo CPF do seu cadastro.
-          </p>
+          <p className="text-xs text-blue-700">{t("pro_payout.info_banner")}</p>
         </div>
 
         {/* Existing methods */}
@@ -175,10 +161,10 @@ const PayoutMethodsPage = () => {
             {methods.length === 0 && !showForm ? (
               <div className="card p-8 text-center mb-6">
                 <CreditCard size={40} className="mx-auto mb-3 text-slate-300" />
-                <p className="text-navy font-semibold mb-1">Nenhum método cadastrado</p>
-                <p className="text-sm text-slate-500 mb-4">Adicione uma conta bancária, chave PIX ou cartão para receber seus pagamentos.</p>
+                <p className="text-navy font-semibold mb-1">{t("pro_payout.empty_title")}</p>
+                <p className="text-sm text-slate-500 mb-4">{t("pro_payout.empty_desc")}</p>
                 <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-2">
-                  <Plus size={16} /> Adicionar método
+                  <Plus size={16} /> {t("pro_payout.add_method")}
                 </button>
               </div>
             ) : (
@@ -189,10 +175,10 @@ const PayoutMethodsPage = () => {
                       <span className="mt-0.5 flex-shrink-0">{METHOD_ICONS[m.method_type]}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm font-semibold text-navy">{METHOD_LABELS[m.method_type]}</span>
+                          <span className="text-sm font-semibold text-navy">{t(`pro_payout.method_${m.method_type}`)}</span>
                           {m.is_primary && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                              <Star size={10} /> Principal
+                              <Star size={10} /> {t("pro_payout.primary")}
                             </span>
                           )}
                         </div>
@@ -204,13 +190,13 @@ const PayoutMethodsPage = () => {
                       <div className="flex items-center gap-1">
                         {!m.is_primary && (
                           <button onClick={() => handleSetPrimary(m.id)}
-                            title="Definir como principal"
+                            title={t("pro_payout.set_primary_title")}
                             className="p-1.5 rounded-lg hover:bg-green-50 text-slate-300 hover:text-green-500 transition-colors">
                             <Star size={14} />
                           </button>
                         )}
                         <button onClick={() => handleDelete(m.id)}
-                          title="Remover"
+                          title={t("pro_payout.remove_title")}
                           className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
                           <Trash2 size={14} />
                         </button>
@@ -225,7 +211,7 @@ const PayoutMethodsPage = () => {
             {methods.length > 0 && !showForm && (
               <button onClick={() => setShowForm(true)}
                 className="w-full card p-3 text-center text-sm font-semibold text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
-                <Plus size={16} /> Adicionar outro método
+                <Plus size={16} /> {t("pro_payout.add_another")}
               </button>
             )}
           </>
@@ -235,22 +221,22 @@ const PayoutMethodsPage = () => {
         {showForm && (
           <div className="card p-6 mt-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-navy">Novo método de pagamento</h2>
+              <h2 className="font-semibold text-navy">{t("pro_payout.new_method")}</h2>
               <button onClick={resetForms} className="p-1 rounded hover:bg-slate-100"><X size={16} className="text-slate-400" /></button>
             </div>
 
             {/* Type selector */}
             <div className="flex gap-2 mb-6">
               {[
-                { type: "bank_account", label: "Conta bancária", icon: <Building2 size={14} /> },
-                { type: "pix", label: "Chave PIX", icon: <Smartphone size={14} /> },
-                { type: "card", label: "Cartão", icon: <CreditCard size={14} /> },
-              ].map(t => (
-                <button key={t.type} onClick={() => setFormType(t.type)}
+                { type: "bank_account", icon: <Building2 size={14} /> },
+                { type: "pix", icon: <Smartphone size={14} /> },
+                { type: "card", icon: <CreditCard size={14} /> },
+              ].map(item => (
+                <button key={item.type} onClick={() => setFormType(item.type)}
                   className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors ${
-                    formType === t.type ? "bg-blue-100 text-blue-700 ring-2 ring-blue-300" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    formType === item.type ? "bg-blue-100 text-blue-700 ring-2 ring-blue-300" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                   }`}>
-                  {t.icon} {t.label}
+                  {item.icon} {t(`pro_payout.method_${item.type}`)}
                 </button>
               ))}
             </div>
@@ -259,43 +245,43 @@ const PayoutMethodsPage = () => {
             {formType === "bank_account" && (
               <div className="space-y-3">
                 <div>
-                  <label className="form-label">Banco *</label>
+                  <label className="form-label">{t("pro_payout.bank_label")}</label>
                   <select className="form-input" value={bankForm.bank_name}
                     onChange={e => setBankForm(p => ({ ...p, bank_name: e.target.value }))}>
-                    <option value="">Selecione o banco</option>
+                    <option value="">{t("pro_payout.select_bank")}</option>
                     {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="form-label">Agência *</label>
+                    <label className="form-label">{t("pro_payout.agency_label")}</label>
                     <input className="form-input" value={bankForm.agency} placeholder="0001"
                       onChange={e => setBankForm(p => ({ ...p, agency: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="form-label">Conta *</label>
+                    <label className="form-label">{t("pro_payout.account_label")}</label>
                     <input className="form-input" value={bankForm.account_number} placeholder="12345-6"
                       onChange={e => setBankForm(p => ({ ...p, account_number: e.target.value }))} />
                   </div>
                 </div>
                 <div>
-                  <label className="form-label">Tipo de conta</label>
+                  <label className="form-label">{t("pro_payout.account_type_label")}</label>
                   <select className="form-input" value={bankForm.account_type}
                     onChange={e => setBankForm(p => ({ ...p, account_type: e.target.value }))}>
-                    <option value="corrente">Corrente</option>
-                    <option value="poupanca">Poupança</option>
+                    <option value="corrente">{t("pro_payout.account_checking")}</option>
+                    <option value="poupanca">{t("pro_payout.account_savings")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="form-label">Nome do titular *</label>
-                  <input className="form-input" value={bankForm.holder_name} placeholder="Nome completo"
+                  <label className="form-label">{t("pro_payout.holder_name_label")}</label>
+                  <input className="form-input" value={bankForm.holder_name} placeholder={t("pro_payout.holder_name_placeholder")}
                     onChange={e => setBankForm(p => ({ ...p, holder_name: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="form-label">CPF do titular *</label>
+                  <label className="form-label">{t("pro_payout.holder_cpf_label")}</label>
                   <input className="form-input" value={bankForm.holder_cpf} placeholder="000.000.000-00"
                     onChange={e => setBankForm(p => ({ ...p, holder_cpf: e.target.value }))} />
-                  <p className="text-[10px] text-slate-400 mt-1">Deve ser o mesmo CPF do seu cadastro profissional.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">{t("pro_payout.cpf_note")}</p>
                 </div>
               </div>
             )}
@@ -304,17 +290,17 @@ const PayoutMethodsPage = () => {
             {formType === "pix" && (
               <div className="space-y-3">
                 <div>
-                  <label className="form-label">Tipo de chave *</label>
+                  <label className="form-label">{t("pro_payout.pix_key_type_label")}</label>
                   <select className="form-input" value={pixForm.pix_key_type}
                     onChange={e => setPixForm(p => ({ ...p, pix_key_type: e.target.value, pix_key: "" }))}>
                     <option value="cpf">CPF</option>
                     <option value="email">E-mail</option>
-                    <option value="phone">Telefone</option>
-                    <option value="random">Chave aleatória</option>
+                    <option value="phone">{t("pro_payout.pix_type_phone")}</option>
+                    <option value="random">{t("pro_payout.pix_type_random")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="form-label">Chave PIX *</label>
+                  <label className="form-label">{t("pro_payout.pix_key_label")}</label>
                   <input className="form-input" value={pixForm.pix_key}
                     placeholder={
                       pixForm.pix_key_type === "cpf" ? "00000000000" :
@@ -324,7 +310,7 @@ const PayoutMethodsPage = () => {
                     }
                     onChange={e => setPixForm(p => ({ ...p, pix_key: e.target.value }))} />
                   {pixForm.pix_key_type === "cpf" && (
-                    <p className="text-[10px] text-slate-400 mt-1">Deve ser o mesmo CPF do seu cadastro.</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{t("pro_payout.cpf_note_pix")}</p>
                   )}
                 </div>
               </div>
@@ -335,16 +321,13 @@ const PayoutMethodsPage = () => {
               <div className="space-y-3">
                 <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-2">
                   <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700">
-                    O número completo do cartão é processado diretamente pelo gateway de pagamento.
-                    A CuidaU nunca armazena o número completo ou o código de segurança.
-                  </p>
+                  <p className="text-xs text-amber-700">{t("pro_payout.card_security_note")}</p>
                 </div>
                 <div>
-                  <label className="form-label">Bandeira *</label>
+                  <label className="form-label">{t("pro_payout.card_brand_label")}</label>
                   <select className="form-input" value={cardForm.card_brand}
                     onChange={e => setCardForm(p => ({ ...p, card_brand: e.target.value }))}>
-                    <option value="">Selecione</option>
+                    <option value="">{t("pro_payout.select")}</option>
                     <option value="Visa">Visa</option>
                     <option value="Mastercard">Mastercard</option>
                     <option value="Elo">Elo</option>
@@ -353,20 +336,18 @@ const PayoutMethodsPage = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="form-label">Últimos 4 dígitos *</label>
+                  <label className="form-label">{t("pro_payout.card_last4_label")}</label>
                   <input className="form-input" value={cardForm.card_last4} placeholder="0000" maxLength={4}
                     onChange={e => setCardForm(p => ({ ...p, card_last4: e.target.value.replace(/\D/g, "").slice(0, 4) }))} />
                 </div>
-                <p className="text-[10px] text-slate-400">
-                  Em produção, a tokenização do cartão será feita pelo Stripe. Apenas a bandeira e últimos 4 dígitos são armazenados.
-                </p>
+                <p className="text-[10px] text-slate-400">{t("pro_payout.card_tokenization_note")}</p>
               </div>
             )}
 
             <button onClick={handleCreate} disabled={saving}
               className="btn-primary w-full mt-6 disabled:opacity-50 flex items-center justify-center gap-2">
-              {saving ? <><Loader2 size={16} className="animate-spin" /> Salvando...</> :
-                <><CheckCircle size={16} /> Salvar método de pagamento</>}
+              {saving ? <><Loader2 size={16} className="animate-spin" /> {t("pro_payout.saving")}</> :
+                <><CheckCircle size={16} /> {t("pro_payout.save_method")}</>}
             </button>
           </div>
         )}
