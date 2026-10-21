@@ -120,16 +120,21 @@ async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
-    # Fix 4 — enforce uniqueness, return 409
-    if db.query(User).filter(User.email == body.email).first():
-        raise HTTPException(status_code=409, detail="E-mail já cadastrado. Faça login ou use outro e-mail.")
-    # 45a: CPF uniqueness check
+    # Fix 4 — enforce uniqueness, return 409 (skip deactivated/deleted accounts)
+    existing_email = db.query(User).filter(User.email == body.email).first()
+    if existing_email:
+        if existing_email.is_active:
+            raise HTTPException(status_code=409, detail="E-mail já cadastrado. Faça login ou use outro e-mail.")
+        # Deactivated account — allow re-registration (email was anonymized on delete)
+    # 45a: CPF uniqueness check (skip deactivated/deleted accounts)
     if body.cpf:
-        existing_cpf = db.query(User).filter(User.cpf == body.cpf).first()
+        existing_cpf = db.query(User).filter(User.cpf == body.cpf, User.is_active == True).first()
         if existing_cpf:
-            if not existing_cpf.is_active:
-                raise HTTPException(status_code=403, detail="Este CPF pertence a uma conta suspensa ou banida. Entre em contato com o suporte.")
             raise HTTPException(status_code=409, detail="Este CPF já possui uma conta. Faça login em sua conta existente ou recupere seu acesso.")
+        # Check suspended/banned accounts separately
+        blocked_cpf = db.query(User).filter(User.cpf == body.cpf, User.is_active == False, User.account_status.in_(["suspended", "banned"])).first()
+        if blocked_cpf:
+            raise HTTPException(status_code=403, detail="Este CPF pertence a uma conta suspensa ou banida. Entre em contato com o suporte.")
     is_pro = body.role in PRO_ROLES
 
     # Block 1.3: COREN mandatory for nurse/technician/nursing_assistant at registration
