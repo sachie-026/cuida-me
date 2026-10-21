@@ -135,7 +135,12 @@ def admin_delete_user(user_id: str, db: Session = Depends(get_db), current: User
         raise HTTPException(404, "Usuário não encontrado")
     if user.role == UserRole.admin:
         raise HTTPException(400, "Não é possível excluir contas de administrador")
+    # Soft-delete: deactivate and release email/CPF for re-registration
     user.is_active = False
+    user.account_status = "deleted"
+    # Anonymize email and clear CPF so unique constraints don't block re-registration
+    user.email = f"deleted_{user.id}@removed.local"
+    user.cpf = None
     # Mark professional as unavailable
     role = user.role.value if hasattr(user.role, 'value') else str(user.role)
     if role not in ("client", "admin"):
@@ -143,7 +148,7 @@ def admin_delete_user(user_id: str, db: Session = Depends(get_db), current: User
         if prof:
             prof.is_available = False
     db.commit()
-    return {"id": user_id, "is_active": False, "message": f"Conta de {user.full_name} desativada."}
+    return {"id": user_id, "is_active": False, "message": "Conta desativada com sucesso."}
 
 
 @router.get("/professionals")

@@ -166,8 +166,13 @@ def delete_user(user_id: str, db: Session = Depends(get_db), current: User = Dep
     target_role = user.role.value if hasattr(user.role, 'value') else str(user.role)
     if target_role == "admin" and current.id != user_id:
         raise HTTPException(400, "Não é possível excluir contas de administrador")
-    # Soft-delete: deactivate
+    # Soft-delete: deactivate and release email/CPF for re-registration
     user.is_active = False
+    user.account_status = "deleted"
+    # Anonymize email and clear CPF so unique constraints don't block re-registration
+    original_email = user.email
+    user.email = f"deleted_{user.id}@removed.local"
+    user.cpf = None
     # Also mark professional as unavailable if applicable
     if target_role not in ("client", "admin"):
         prof = db.query(Professional).filter(Professional.user_id == user_id).first()
