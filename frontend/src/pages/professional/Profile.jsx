@@ -9,6 +9,7 @@ import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
 import VerificationCenter from "../../components/common/VerificationCenter";
 import AvailabilityCalendar from "../../components/professional/AvailabilityCalendar";
+import ProfilePhotoUpload from "../../components/common/ProfilePhotoUpload";
 
 const API    = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const STATES = ["SP","RJ","MG","RS","PR","BA","CE","GO","DF","SC","PE","Outro"];
@@ -522,6 +523,13 @@ const ProfessionalProfile = () => {
             {/* Personal info */}
             <div className="card p-6">
               <h3 className="font-semibold text-navy mb-4">{t("pro_profile.personal_info")}</h3>
+              <div className="mb-4">
+                <ProfilePhotoUpload
+                  userId={userId}
+                  currentPhotoUrl={user.profile_photo_url}
+                  onPhotoChange={(url) => setUser(prev => ({ ...prev, profile_photo_url: url }))}
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div><label className="form-label">{t("pro_profile.full_name")}</label><input className="form-input" value={user.full_name} onChange={setU("full_name")}/></div>
                 <div><label className="form-label">{t("pro_profile.cpf")}</label><input className="form-input" value={user.cpf||""} onChange={setU("cpf")}/></div>

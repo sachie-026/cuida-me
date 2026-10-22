@@ -9,6 +9,7 @@ import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
 import PhoneVerificationModal from "../../components/common/PhoneVerificationModal";
 import VerificationCenter from "../../components/common/VerificationCenter";
+import ProfilePhotoUpload from "../../components/common/ProfilePhotoUpload";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -75,6 +76,13 @@ const ClientProfile = () => {
             {/* Personal info */}
             <div className="card p-6">
               <h3 className="font-semibold text-navy mb-4">{t("client_profile.personal_info")}</h3>
+              <div className="mb-4">
+                <ProfilePhotoUpload
+                  userId={userId}
+                  currentPhotoUrl={user.profile_photo_url}
+                  onPhotoChange={(url) => setUser(prev => ({ ...prev, profile_photo_url: url }))}
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div><label className="form-label">{t("client_profile.full_name")}</label><input className="form-input" value={user.full_name} onChange={setU("full_name")} /></div>
                 <div><label className="form-label">{t("client_profile.cpf")}</label><input className="form-input" value={user.cpf || ""} onChange={setU("cpf")} /></div>

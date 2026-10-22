@@ -72,6 +72,7 @@ class User(Base):
     admin_role   = Column(String, nullable=True)  # super_admin, finance, support, operations
     stripe_customer_id = Column(String, nullable=True)  # Stripe Customer ID for saved payment methods
     is_test       = Column(Boolean, default=False)   # Block 5: test accounts hidden from real users
+    profile_photo_url = Column(String, nullable=True)  # Cloudinary URL for profile photo
     country_code  = Column(String, default="BR")
     language      = Column(String, default="pt-BR")
     reliability_score = Column(Integer, default=100)

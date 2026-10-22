@@ -2222,5 +2222,18 @@
       "Professional qualifications"
     ],
     "seal_note": "The CuidaU verification seal ensures that the professional meets our quality and safety standards."
+  },
+  "profile_photo": {
+    "add": "Add photo",
+    "change": "Change photo",
+    "remove": "Remove",
+    "uploading": "Uploading...",
+    "upload_success": "Photo updated!",
+    "upload_error": "Error uploading photo.",
+    "delete_success": "Photo removed.",
+    "delete_error": "Error removing photo.",
+    "confirm_delete": "Remove your profile photo?",
+    "invalid_type": "Only JPG and PNG are allowed.",
+    "too_large": "File too large. Maximum: 5MB."
   }
 }

@@ -2223,5 +2223,18 @@
       "Qualificações profissionais"
     ],
     "seal_note": "O selo de verificação CuidaU garante que o profissional atende aos nossos padrões de qualidade e segurança."
+  },
+  "profile_photo": {
+    "add": "Adicionar foto",
+    "change": "Alterar foto",
+    "remove": "Remover",
+    "uploading": "Enviando...",
+    "upload_success": "Foto atualizada!",
+    "upload_error": "Erro ao enviar foto.",
+    "delete_success": "Foto removida.",
+    "delete_error": "Erro ao remover foto.",
+    "confirm_delete": "Remover sua foto de perfil?",
+    "invalid_type": "Apenas JPG e PNG são permitidos.",
+    "too_large": "Arquivo muito grande. Máximo: 5MB."
   }
 }
