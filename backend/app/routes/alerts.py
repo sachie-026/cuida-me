@@ -43,7 +43,7 @@ class AlertUpdate(BaseModel):
 
 # ── CRUD ───────────────────────────────────────────────────────────────────────
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def create_alert(body: AlertCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     if body.alert_type not in ("patient", "professional"):
         raise HTTPException(400, "alert_type must be 'patient' or 'professional'")
@@ -77,7 +77,7 @@ def create_alert(body: AlertCreate, db: Session = Depends(get_db), current: User
     db.refresh(alert)
     return _serialize(alert)
 
-@router.get("/")
+@router.get("")
 def list_my_alerts(status: Optional[str] = None, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """List all alerts for the current user."""
     _expire_stale(current.id, db)
