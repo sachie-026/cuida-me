@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -50,6 +50,7 @@ def _safe_user(u: User) -> dict:
         "is_active":    u.is_active,
         "is_verified":  u.is_verified,
         "country_code": u.country_code,
+        "profile_photo_url": u.profile_photo_url,
         "language":     u.language,
         "created_at":   u.created_at,
         "updated_at":   u.updated_at,
@@ -149,6 +150,72 @@ def update_patient(user_id: str, body: PatientUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(patient)
     return patient
+
+
+@router.post("/{user_id}/profile-photo")
+async def upload_profile_photo(
+    user_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Upload or replace profile photo using Cloudinary (same approach as document uploads)."""
+    _check_own_or_admin(current, user_id)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/jpg"}
+    if file.content_type not in ALLOWED_PHOTO_TYPES:
+        raise HTTPException(400, "Apenas JPG e PNG são permitidos.")
+
+    contents = await file.read()
+    MAX_SIZE_MB = 5
+    if len(contents) > MAX_SIZE_MB * 1024 * 1024:
+        raise HTTPException(400, f"Arquivo muito grande. Máximo: {MAX_SIZE_MB}MB.")
+
+    try:
+        from app.utils.cloudinary_helper import upload_document
+        url = upload_document(
+            file_bytes=contents,
+            filename=file.filename,
+            user_id=user_id,
+            doc_type="profile_photo",
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erro no upload: {str(e)}")
+
+    user.profile_photo_url = url
+    db.commit()
+    db.refresh(user)
+    return {"profile_photo_url": url}
+
+
+@router.delete("/{user_id}/profile-photo")
+def delete_profile_photo(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Remove profile photo."""
+    _check_own_or_admin(current, user_id)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    if user.profile_photo_url:
+        try:
+            from app.utils.cloudinary_helper import extract_public_id
+            import cloudinary.uploader
+            public_id = extract_public_id(user.profile_photo_url)
+            if public_id:
+                cloudinary.uploader.destroy(public_id)
+        except Exception as e:
+            print(f"[PHOTO] Cloudinary delete failed: {e}")
+
+    user.profile_photo_url = None
+    db.commit()
+    return {"profile_photo_url": None, "message": "Foto removida."}
 
 
 @router.delete("/{user_id}")
