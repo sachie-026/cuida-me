@@ -739,6 +739,7 @@
     "date": "Date",
     "start_time": "Start time",
     "end_time": "End time",
+    "select_time": "Select",
     "duration": "Duration",
     "overnight": "Overnight",
     "min_2h": "Minimum duration of 2 hours",
