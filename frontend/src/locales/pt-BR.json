@@ -740,6 +740,7 @@
     "date": "Data",
     "start_time": "Horário de início",
     "end_time": "Horário de término",
+    "select_time": "Selecione",
     "duration": "Duração",
     "overnight": "Pernoite",
     "min_2h": "Duração mínima de 2 horas",

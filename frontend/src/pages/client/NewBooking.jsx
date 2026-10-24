@@ -11,6 +11,13 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
+// 24h time slots in 30-min intervals (same as professional availability)
+const TIMES = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
+  const m = i % 2 === 0 ? "00" : "30";
+  return `${String(h).padStart(2, "0")}:${m}`;
+});
+
 // v2: No fixed durations — Start Time + End Time with minute precision
 
 const CATEGORY_KEYS = ["caregiver","nursing_assistant","technician","nurse"];
@@ -453,11 +460,17 @@ const NewBooking = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="form-label">{t("client_booking.start_time")} *</label>
-                <input className="form-input" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)}/>
+                <select className="form-input" value={startTime} onChange={e=>setStartTime(e.target.value)}>
+                  <option value="">{t("client_booking.select_time")}</option>
+                  {TIMES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
+                </select>
               </div>
               <div>
                 <label className="form-label">{t("client_booking.end_time")} *</label>
-                <input className="form-input" type="time" value={endTime} onChange={e=>setEndTime(e.target.value)}/>
+                <select className="form-input" value={endTime} onChange={e=>setEndTime(e.target.value)}>
+                  <option value="">{t("client_booking.select_time")}</option>
+                  {TIMES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
+                </select>
               </div>
             </div>
 
