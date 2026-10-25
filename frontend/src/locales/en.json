@@ -1995,7 +1995,10 @@
       "caregiver": "Caregiver",
       "admin": "Admin",
       "professional_pending": "Professional (Pending)"
-    }
+    },
+    "section_professional": "PROFESSIONAL",
+    "pro_profile": "Professional Profile",
+    "pro_dashboard": "Professional Dashboard"
   },
   "booking_detail": {
     "expired": "Expired",

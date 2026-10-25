@@ -1088,10 +1088,17 @@ const UsersPanel = () => {
                   <td className="px-4 py-3 font-medium text-navy text-sm">{u.full_name}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{u.email}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-                      ${u.role === "client" ? "bg-blue-100 text-blue-700" : u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
-                      {u.role}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {(u.roles && u.roles.length > 0 ? u.roles : [u.role]).map(r => (
+                        <span key={r} className={`text-xs font-semibold px-2 py-0.5 rounded-full
+                          ${r === "client" ? "bg-blue-100 text-blue-700" : r === "admin" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
+                          {r}
+                        </span>
+                      ))}
+                      {u.has_professional_profile && !(u.roles || []).some(r => ["nurse","technician","nursing_assistant","caregiver"].includes(r)) && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">pro</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{[u.city, u.state].filter(Boolean).join(", ") || "—"}</td>
                   <td className="px-4 py-3">

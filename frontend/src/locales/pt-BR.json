@@ -1996,7 +1996,10 @@
       "caregiver": "Cuidador(a)",
       "admin": "Admin",
       "professional_pending": "Profissional (Pendente)"
-    }
+    },
+    "section_professional": "PROFISSIONAL",
+    "pro_profile": "Perfil Profissional",
+    "pro_dashboard": "Painel Profissional"
   },
   "booking_detail": {
     "expired": "Expirado",
