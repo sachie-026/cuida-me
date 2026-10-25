@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, Shield, CheckCircle } from "lucide-react";
@@ -16,6 +16,8 @@ const CATEGORY_KEYS = [
   { value: "caregiver", requiresCoren: false },
 ];
 
+const PRO_ROLES = ["nurse", "technician", "nursing_assistant", "caregiver"];
+
 const BecomeProfessional = () => {
   const { t }    = useTranslation();
   const navigate = useNavigate();
@@ -24,11 +26,21 @@ const BecomeProfessional = () => {
   const email = localStorage.getItem("email") || "";
   const headers = { Authorization: `Bearer ${token}` };
 
+  // Guard: redirect if user already has a professional profile
+  const hasPro = localStorage.getItem("has_pro") === "true";
+  const roles = JSON.parse(localStorage.getItem("roles") || "[]");
+  const alreadyPro = hasPro || roles.some(r => PRO_ROLES.includes(r));
+
   const [selectedRole, setSelectedRole] = useState(null);
   const [corenNumber, setCorenNumber] = useState("");
   const [corenState, setCorenState] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Guard: if already a professional, redirect to professional profile
+  useEffect(() => {
+    if (alreadyPro) navigate("/profile/professional", { replace: true });
+  }, [alreadyPro, navigate]);
 
   const handleSubmit = async () => {
     if (!selectedRole) { toast.error(t("become_pro.error_select_category")); return; }
@@ -48,11 +60,14 @@ const BecomeProfessional = () => {
 
       toast.success(data.message);
 
-      // Update localStorage with new roles
+      // Update localStorage with new roles and token from backend
       const currentRoles = JSON.parse(localStorage.getItem("roles") || "[]");
       if (!currentRoles.includes(selectedRole)) currentRoles.push(selectedRole);
       localStorage.setItem("roles", JSON.stringify(currentRoles));
       localStorage.setItem("has_pro", "true");
+      localStorage.setItem("has_professional_profile", "true");
+      if (data.role) localStorage.setItem("role", data.role);
+      if (data.access_token) localStorage.setItem("token", data.access_token);
 
       setDone(true);
     } catch (err) {

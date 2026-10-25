@@ -116,9 +116,36 @@ const ProfileMenu = () => {
     ]},
   ];
 
+  // Dual-role: client with pro profile sees both client links + professional shortcuts
+  const dualRoleSections = [
+    { label: t("profile_menu.section_my_account"), items: [
+      { icon: <User size={15}/>, text: t("profile_menu.my_profile"), path: "/profile/client" },
+      { icon: <History size={15}/>, text: t("profile_menu.my_activity"), path: "/activity" },
+      { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
+    ]},
+    { label: t("profile_menu.section_professional"), items: [
+      { icon: <User size={15}/>, text: t("profile_menu.pro_profile"), path: "/profile/professional" },
+      { icon: <Calendar size={15}/>, text: t("profile_menu.my_schedule"), path: "/availability" },
+      { icon: <LayoutDashboard size={15}/>, text: t("profile_menu.pro_dashboard"), path: "/dashboard/professional" },
+      { icon: <Wallet size={15}/>, text: t("profile_menu.earnings"), path: "/earnings" },
+    ]},
+    { label: t("profile_menu.section_payments"), items: [
+      { icon: <CreditCard size={15}/>, text: t("profile_menu.payment_methods"), path: "/payment-methods" },
+    ]},
+    { label: t("profile_menu.section_share"), items: [
+      { icon: <Share2 size={15}/>, text: t("profile_menu.invite_friends"), path: "/invite" },
+    ]},
+    { label: t("profile_menu.section_settings"), items: [
+      { icon: <Bell size={15}/>, text: t("profile_menu.notifications"), path: "/notifications" },
+      { icon: <HelpCircle size={15}/>, text: t("profile_menu.help_center"), path: "/help" },
+      { icon: <FileText size={15}/>, text: t("profile_menu.terms_privacy"), path: "/terms" },
+      { icon: <Shield size={15}/>, text: t("profile_menu.sos_emergency"), action: "sos" },
+    ]},
+  ];
+
   const sections = isAdmin ? [{ label: "ADMIN", items: [
     { icon: <LayoutDashboard size={15}/>, text: t("profile_menu.admin_panel"), path: "/admin" },
-  ]}] : isPro ? proSections : clientSections;
+  ]}] : isPro ? proSections : (hasPro && !isPro) ? dualRoleSections : clientSections;
 
   return (
     <div className="relative" ref={ref}>

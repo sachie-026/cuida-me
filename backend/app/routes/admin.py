@@ -38,13 +38,19 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 def _ser_user(u: User) -> dict:
     """Serialize user safely — no password_hash, enum as string value."""
     prof = None
-    if u.role.value not in ("client", "admin"):
+    has_pro = getattr(u, 'has_professional_profile', False)
+    user_roles = u.roles if u.roles and len(u.roles) > 0 else [u.role.value if hasattr(u.role, 'value') else str(u.role)]
+    # Dual-role fix: look up Professional record if user has pro profile OR a pro role in roles array
+    pro_roles = {"nurse", "technician", "nursing_assistant", "caregiver"}
+    needs_prof_lookup = has_pro or any(r in pro_roles for r in user_roles) or u.role.value not in ("client", "admin")
+    if needs_prof_lookup:
         from app.models.models import Professional
         from app.core.database import SessionLocal
-        # Try to get professional data for city/state
         session = SessionLocal()
         try:
             prof = session.query(Professional).filter(Professional.user_id == u.id).first()
+            if prof:
+                has_pro = True
         finally:
             session.close()
     return {
@@ -53,6 +59,8 @@ def _ser_user(u: User) -> dict:
         "full_name":  u.full_name,
         "phone":      u.phone,
         "role":       u.role.value if hasattr(u.role, 'value') else str(u.role),
+        "roles":      user_roles,
+        "has_professional_profile": has_pro,
         "is_active":  u.is_active,
         "is_verified":u.is_verified,
         "created_at": u.created_at,

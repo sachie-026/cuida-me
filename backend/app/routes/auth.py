@@ -566,6 +566,11 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
             roles.append(body.professional_role)
         current.roles = roles
         current.has_professional_profile = True
+        # Dual-role fix: also switch active role to the professional role
+        try:
+            current.role = UserRole(body.professional_role)
+        except ValueError:
+            pass
 
         try:
             db.commit()
@@ -573,10 +578,13 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
             db.rollback()
             raise HTTPException(500, f"Erro ao atualizar perfil: {str(e)}")
 
+        token = create_access_token({"sub": current.id, "role": current.role})
         return {
             "message": f"Perfil profissional atualizado. Categoria: {body.professional_role}. Envie seus documentos para verificação.",
             "professional_id": existing.id,
             "roles": current.roles,
+            "role": body.professional_role,
+            "access_token": token,
             "existing": True,
         }
 
@@ -596,6 +604,11 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
         roles.append(body.professional_role)
     current.roles = roles
     current.has_professional_profile = True
+    # Dual-role fix: also switch active role to the professional role
+    try:
+        current.role = UserRole(body.professional_role)
+    except ValueError:
+        pass
 
     try:
         db.commit()
@@ -604,10 +617,13 @@ def become_professional(body: BecomeProfessionalRequest, db: Session = Depends(g
         db.rollback()
         raise HTTPException(500, f"Erro ao criar perfil profissional: {str(e)}")
 
+    token = create_access_token({"sub": current.id, "role": current.role})
     return {
         "message": f"Perfil profissional criado como {body.professional_role}. Envie seus documentos para verificação.",
         "professional_id": prof.id,
         "roles": current.roles,
+        "role": body.professional_role,
+        "access_token": token,
     }
 
 # ── 45a: Switch active role (dual-role users) ──────────────────────────────────
