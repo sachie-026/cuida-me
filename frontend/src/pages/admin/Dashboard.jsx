@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings } from "lucide-react";
+import { Users, CalendarDays, DollarSign, ShieldCheck, ShieldOff, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -1050,7 +1050,9 @@ const UsersPanel = () => {
     axios.get(`${API}/api/admin/users`, { headers }).then(r => setUsers(r.data)).catch(() => {});
   }, []);
 
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [modalTarget, setModalTarget] = useState(null);   // { user, action: "deactivate"|"delete" }
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const toggleBlock = async (userId, isActive) => {
     await axios.patch(`${API}/api/admin/users/${userId}/block`, {}, { headers });
@@ -1058,15 +1060,41 @@ const UsersPanel = () => {
     toast(isActive ? t("admin_dashboard.users.blocked") : t("admin_dashboard.users.unblocked"), { icon: isActive ? "🔒" : "🔓" });
   };
 
-  const handleDeleteUser = async (userId) => {
+  const handleDeactivate = async (userId) => {
+    if (!reason.trim()) { toast.error(t("admin_dashboard.users.reason_required")); return; }
+    setSubmitting(true);
     try {
-      await axios.delete(`${API}/api/admin/users/${userId}`, { headers });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: false } : u));
+      await axios.post(`${API}/api/admin/users/${userId}/deactivate`, { reason: reason.trim() }, { headers });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: false, account_status: "suspended" } : u));
       toast.success(t("admin_dashboard.users.deactivated"));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("admin_dashboard.users.deactivate_error"));
+    }
+    setSubmitting(false);
+    setModalTarget(null);
+    setReason("");
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!reason.trim()) { toast.error(t("admin_dashboard.users.reason_required")); return; }
+    setSubmitting(true);
+    try {
+      await axios.delete(`${API}/api/admin/users/${userId}?reason=${encodeURIComponent(reason.trim())}`, { headers });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: false, account_status: "deleted", full_name: "Usuário Removido" } : u));
+      toast.success(t("admin_dashboard.users.deleted_lgpd"));
     } catch (err) {
       toast.error(err.response?.data?.detail || t("admin_dashboard.users.delete_error"));
     }
-    setDeleteTarget(null);
+    setSubmitting(false);
+    setModalTarget(null);
+    setReason("");
+  };
+
+  const getStatusBadge = (u) => {
+    if (u.account_status === "deleted") return { cls: "bg-gray-200 text-gray-600", label: t("admin_dashboard.users.status_deleted") };
+    if (u.account_status === "suspended") return { cls: "bg-amber-100 text-amber-700", label: t("admin_dashboard.users.status_suspended") };
+    if (u.is_active) return { cls: "bg-green-100 text-green-700", label: t("admin_dashboard.users.active") };
+    return { cls: "bg-red-100 text-red-600", label: t("admin_dashboard.users.blocked_status") };
   };
 
   return (
@@ -1083,7 +1111,10 @@ const UsersPanel = () => {
               </tr>
             </thead>
             <tbody>
-              {users.map(u => (
+              {users.map(u => {
+                const badge = getStatusBadge(u);
+                const isDeleted = u.account_status === "deleted";
+                return (
                 <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-navy text-sm">{u.full_name}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{u.email}</td>
@@ -1102,20 +1133,25 @@ const UsersPanel = () => {
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{[u.city, u.state].filter(Boolean).join(", ") || "—"}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-                      ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                      {u.is_active ? t("admin_dashboard.users.active") : t("admin_dashboard.users.blocked_status")}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>
+                      {badge.label}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {u.role !== "admin" && (
-                      <div className="flex items-center gap-2">
+                    {u.role !== "admin" && !isDeleted && (
+                      <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => toggleBlock(u.id, u.is_active)}
                           className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors
                             ${u.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
                           <Ban size={12} /> {u.is_active ? t("admin_dashboard.users.block") : t("admin_dashboard.users.unblock")}
                         </button>
-                        <button onClick={() => setDeleteTarget(u)}
+                        {u.account_status !== "suspended" && (
+                          <button onClick={() => { setModalTarget({ user: u, action: "deactivate" }); setReason(""); }}
+                            className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
+                            <ShieldOff size={12} /> {t("admin_dashboard.users.deactivate")}
+                          </button>
+                        )}
+                        <button onClick={() => { setModalTarget({ user: u, action: "delete" }); setReason(""); }}
                           className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
                           <Trash2 size={12} /> {t("admin_dashboard.users.delete")}
                         </button>
@@ -1123,27 +1159,53 @@ const UsersPanel = () => {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Delete confirmation modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-navy text-lg mb-2">{t("admin_dashboard.users.confirm_delete")}</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              {t("admin_dashboard.users.confirm_delete_desc", { name: deleteTarget.full_name, email: deleteTarget.email })}
+      {/* Deactivate / Delete confirmation modal with reason */}
+      {modalTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => { setModalTarget(null); setReason(""); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-navy text-lg mb-2">
+              {modalTarget.action === "deactivate" ? t("admin_dashboard.users.confirm_deactivate") : t("admin_dashboard.users.confirm_delete")}
+            </h3>
+            <p className="text-sm text-slate-600 mb-1">
+              {modalTarget.action === "deactivate"
+                ? t("admin_dashboard.users.confirm_deactivate_desc", { name: modalTarget.user.full_name, email: modalTarget.user.email })
+                : t("admin_dashboard.users.confirm_delete_desc", { name: modalTarget.user.full_name, email: modalTarget.user.email })
+              }
             </p>
+            {modalTarget.action === "delete" && (
+              <p className="text-xs text-red-500 font-semibold mb-3">{t("admin_dashboard.users.delete_lgpd_warning")}</p>
+            )}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-slate-600 mb-1">{t("admin_dashboard.users.reason_label")}</label>
+              <textarea
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder={t("admin_dashboard.users.reason_placeholder")}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                rows={3}
+              />
+            </div>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteTarget(null)}
+              <button onClick={() => { setModalTarget(null); setReason(""); }} disabled={submitting}
                 className="flex-1 btn-outline text-sm py-2.5">{t("admin_dashboard.common.cancel")}</button>
-              <button onClick={() => handleDeleteUser(deleteTarget.id)}
-                className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors">
-                <Trash2 size={14} /> {t("admin_dashboard.users.delete")}
-              </button>
+              {modalTarget.action === "deactivate" ? (
+                <button onClick={() => handleDeactivate(modalTarget.user.id)} disabled={submitting || !reason.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50">
+                  <ShieldOff size={14} /> {submitting ? "..." : t("admin_dashboard.users.deactivate")}
+                </button>
+              ) : (
+                <button onClick={() => handleDeleteUser(modalTarget.user.id)} disabled={submitting || !reason.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
+                  <Trash2 size={14} /> {submitting ? "..." : t("admin_dashboard.users.delete")}
+                </button>
+              )}
             </div>
           </div>
         </div>

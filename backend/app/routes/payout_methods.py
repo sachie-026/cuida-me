@@ -1,5 +1,5 @@
 """
-Payout methods CRUD — bank account, PIX key, or card.
+Payout methods CRUD — bank account or PIX key.
 
 VERSION 12 Block 6: Professional can save multiple payout methods
 and choose a primary one. PIX keys validated by type. Card data
@@ -48,7 +48,7 @@ def mask_cpf(cpf: str) -> str:
 # ─── Pydantic schemas ───────────────────────────────────────────
 
 class PayoutMethodCreate(BaseModel):
-    method_type: str  # "bank_account" | "pix" | "card"
+    method_type: str  # "bank_account" | "pix"
     is_primary: bool = False
     # Bank account
     bank_name: Optional[str] = None
@@ -61,16 +61,12 @@ class PayoutMethodCreate(BaseModel):
     # PIX
     pix_key_type: Optional[str] = None  # "cpf" | "email" | "phone" | "random"
     pix_key: Optional[str] = None
-    # Card (tokenized)
-    card_brand: Optional[str] = None
-    card_last4: Optional[str] = None
-    card_token: Optional[str] = None
 
     @field_validator("method_type")
     @classmethod
     def valid_type(cls, v):
-        if v not in ("bank_account", "pix", "card"):
-            raise ValueError("method_type deve ser bank_account, pix ou card")
+        if v not in ("bank_account", "pix"):
+            raise ValueError("method_type deve ser bank_account ou pix")
         return v
 
 
@@ -85,9 +81,6 @@ class PayoutMethodUpdate(BaseModel):
     holder_cpf: Optional[str] = None
     pix_key_type: Optional[str] = None
     pix_key: Optional[str] = None
-    card_brand: Optional[str] = None
-    card_last4: Optional[str] = None
-    card_token: Optional[str] = None
 
 
 def _serialize(pm: PayoutMethod) -> dict:
@@ -104,9 +97,6 @@ def _serialize(pm: PayoutMethod) -> dict:
         "holder_cpf": mask_cpf(pm.holder_cpf) if pm.holder_cpf else None,
         "pix_key_type": pm.pix_key_type,
         "pix_key": pm.pix_key,
-        "card_brand": pm.card_brand,
-        "card_last4": pm.card_last4,
-        # card_token is NEVER exposed to frontend
         "verified": pm.verified,
         "created_at": pm.created_at.isoformat() if pm.created_at else None,
     }
@@ -179,14 +169,6 @@ def create_payout_method(
                     "Para evitar fraude, a chave deve pertencer ao mesmo titular."
                 )
 
-    elif body.method_type == "card":
-        if not body.card_last4 or not body.card_brand:
-            raise HTTPException(400, "Bandeira e últimos 4 dígitos são obrigatórios.")
-        if len(body.card_last4) != 4 or not body.card_last4.isdigit():
-            raise HTTPException(400, "Últimos 4 dígitos devem ser exatamente 4 números.")
-        # card_token comes from payment gateway tokenization on frontend
-        # We never receive or store the full card number
-
     # If marking as primary, unset others
     if body.is_primary:
         db.query(PayoutMethod).filter(
@@ -212,9 +194,6 @@ def create_payout_method(
         holder_cpf=clean_cpf(body.holder_cpf) if body.holder_cpf else None,
         pix_key_type=body.pix_key_type,
         pix_key=body.pix_key,
-        card_brand=body.card_brand,
-        card_last4=body.card_last4,
-        card_token=body.card_token,
     )
     db.add(pm)
     db.commit()

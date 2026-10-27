@@ -1,12 +1,12 @@
 from typing import Optional
 from datetime import datetime, timezone
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.auth_deps import require_admin
-from pydantic import BaseModel
-from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole, DocumentAuditLog
+from app.models.models import User, Professional, Booking, Payment, Document, DocStatus, UserRole, DocumentAuditLog, AccountDeletionLog, Patient
 from app.utils.pricing import MINIMUM_PRICES, HOUR_RATES, INITIAL_SERVICE_FEE
 from app.utils.notification_engine import fire_event
 
@@ -135,28 +135,196 @@ def block_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_ad
     return {"id": user.id, "is_active": user.is_active}
 
 
-@router.delete("/users/{user_id}")
-def admin_delete_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
-    """Admin soft-deletes a user account (sets is_active=False, marks professional unavailable)."""
+class DeactivateRequest(BaseModel):
+    reason: str
+
+
+def _count_active_bookings(db: Session, user_id: str) -> dict:
+    """Check if user has active (non-terminal) bookings or payments in progress."""
+    from app.models.models import BookingStatus, PaymentStatus
+    # Active booking statuses: pending, accepted, professional_arrived, checked_in
+    active_statuses = [BookingStatus.pending, BookingStatus.accepted,
+                       BookingStatus.professional_arrived, BookingStatus.checked_in]
+
+    # Check as client (via user_id on booking) or via patient
+    patient_ids = [p.id for p in db.query(Patient).filter(Patient.user_id == user_id).all()]
+    from sqlalchemy import or_
+    q = db.query(Booking).filter(
+        or_(
+            Booking.user_id == user_id,
+            Booking.professional_id.in_(
+                db.query(Professional.id).filter(Professional.user_id == user_id)
+            ),
+            Booking.patient_id.in_(patient_ids) if patient_ids else False,
+        ),
+        Booking.status.in_(active_statuses),
+    )
+    active_bookings = q.count()
+
+    # Payments in progress (pending, authorized, held, on_hold)
+    progress_statuses = [PaymentStatus.pending, PaymentStatus.authorized,
+                         PaymentStatus.held, PaymentStatus.on_hold]
+    active_payments = db.query(Payment).join(Booking).filter(
+        or_(
+            Booking.user_id == user_id,
+            Booking.professional_id.in_(
+                db.query(Professional.id).filter(Professional.user_id == user_id)
+            ),
+        ),
+        Payment.status.in_(progress_statuses),
+    ).count()
+
+    return {"active_bookings": active_bookings, "active_payments": active_payments}
+
+
+@router.post("/users/{user_id}/deactivate")
+def admin_deactivate_user(user_id: str, body: DeactivateRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """Step 1: Deactivate/suspend a user — can't log in, hidden from search. Reversible."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "Usuário não encontrado")
     if user.role == UserRole.admin:
-        raise HTTPException(400, "Não é possível excluir contas de administrador")
-    # Soft-delete: deactivate and release email/CPF for re-registration
+        raise HTTPException(400, "Não é possível desativar contas de administrador")
+    if user.account_status == "deleted":
+        raise HTTPException(400, "Conta já foi excluída permanentemente")
+    if not body.reason or not body.reason.strip():
+        raise HTTPException(400, "Motivo é obrigatório")
+
+    # Check active bookings
+    active = _count_active_bookings(db, user_id)
+    if active["active_bookings"] > 0 or active["active_payments"] > 0:
+        raise HTTPException(
+            409,
+            f"Usuário possui {active['active_bookings']} agendamento(s) ativo(s) e "
+            f"{active['active_payments']} pagamento(s) em andamento. "
+            "Resolva antes de desativar."
+        )
+
+    # Deactivate
     user.is_active = False
-    user.account_status = "deleted"
-    # Anonymize email and clear CPF so unique constraints don't block re-registration
-    user.email = f"deleted_{user.id}@removed.local"
-    user.cpf = None
+    user.account_status = "suspended"
+
     # Mark professional as unavailable
     role = user.role.value if hasattr(user.role, 'value') else str(user.role)
     if role not in ("client", "admin"):
         prof = db.query(Professional).filter(Professional.user_id == user_id).first()
         if prof:
             prof.is_available = False
+
+    # Audit log
+    email_hash = hashlib.sha256(user.email.encode()).hexdigest() if user.email else None
+    total_bookings = db.query(Booking).filter(
+        (Booking.user_id == user_id) |
+        Booking.professional_id.in_(db.query(Professional.id).filter(Professional.user_id == user_id))
+    ).count()
+    total_payments = db.query(Payment).join(Booking).filter(
+        (Booking.user_id == user_id) |
+        Booking.professional_id.in_(db.query(Professional.id).filter(Professional.user_id == user_id))
+    ).count()
+
+    log = AccountDeletionLog(
+        user_id=user_id, admin_id=current.id, admin_name=current.full_name,
+        action="deactivated", reason=body.reason.strip(),
+        user_email_hash=email_hash,
+        had_bookings=total_bookings, had_payments=total_payments,
+    )
+    db.add(log)
     db.commit()
-    return {"id": user_id, "is_active": False, "message": "Conta desativada com sucesso."}
+    return {"id": user_id, "account_status": "suspended", "message": "Conta suspensa com sucesso."}
+
+
+@router.delete("/users/{user_id}")
+def admin_delete_user(user_id: str, reason: str = "", db: Session = Depends(get_db), current: User = Depends(require_admin)):
+    """Step 2: Permanent LGPD-compliant deletion — anonymize PII, keep booking/payment history."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Usuário não encontrado")
+    if user.role == UserRole.admin:
+        raise HTTPException(400, "Não é possível excluir contas de administrador")
+    if not reason or not reason.strip():
+        raise HTTPException(400, "Motivo é obrigatório para exclusão permanente")
+
+    # Check active bookings
+    active = _count_active_bookings(db, user_id)
+    if active["active_bookings"] > 0 or active["active_payments"] > 0:
+        raise HTTPException(
+            409,
+            f"Usuário possui {active['active_bookings']} agendamento(s) ativo(s) e "
+            f"{active['active_payments']} pagamento(s) em andamento. "
+            "Resolva antes de excluir."
+        )
+
+    # Audit log BEFORE anonymization
+    email_hash = hashlib.sha256(user.email.encode()).hexdigest() if user.email and "@removed.local" not in user.email else None
+    total_bookings = db.query(Booking).filter(
+        (Booking.user_id == user_id) |
+        Booking.professional_id.in_(db.query(Professional.id).filter(Professional.user_id == user_id))
+    ).count()
+    total_payments = db.query(Payment).join(Booking).filter(
+        (Booking.user_id == user_id) |
+        Booking.professional_id.in_(db.query(Professional.id).filter(Professional.user_id == user_id))
+    ).count()
+
+    log = AccountDeletionLog(
+        user_id=user_id, admin_id=current.id, admin_name=current.full_name,
+        action="deleted", reason=reason.strip(),
+        user_email_hash=email_hash,
+        had_bookings=total_bookings, had_payments=total_payments,
+    )
+    db.add(log)
+
+    # LGPD Anonymization — remove PII but keep booking/payment records
+    user.is_active = False
+    user.account_status = "deleted"
+    user.email = f"deleted_{user.id}@removed.local"
+    user.cpf = None
+    user.full_name = "Usuário Removido"
+    user.phone = None
+    user.profile_photo_url = None
+    user.password_hash = "DELETED"
+
+    # Anonymize professional profile
+    prof = db.query(Professional).filter(Professional.user_id == user_id).first()
+    if prof:
+        prof.is_available = False
+        prof.council_number = None
+        prof.bio = None
+
+    # Anonymize patient records (names, addresses, clinical data)
+    patients = db.query(Patient).filter(Patient.user_id == user_id).all()
+    for patient in patients:
+        patient.patient_name = "Paciente Removido"
+        patient.phone = None
+        patient.address = None
+        patient.clinical_conditions = None
+        patient.allergies = None
+        patient.medications = None
+        if hasattr(patient, 'representative_name'):
+            patient.representative_name = None
+        if hasattr(patient, 'representative_phone'):
+            patient.representative_phone = None
+        if hasattr(patient, 'emergency_contact_name'):
+            patient.emergency_contact_name = None
+        if hasattr(patient, 'emergency_contact_phone'):
+            patient.emergency_contact_phone = None
+        if hasattr(patient, 'communication_needs'):
+            patient.communication_needs = None
+        if hasattr(patient, 'additional_notes'):
+            patient.additional_notes = None
+
+    # Delete payout methods (financial PII)
+    from app.models.models import PayoutMethod
+    db.query(PayoutMethod).filter(PayoutMethod.user_id == user_id).delete()
+
+    # Delete notifications (contain personal messages)
+    from app.models.models import Notification
+    db.query(Notification).filter(Notification.user_id == user_id).delete()
+
+    # Booking and Payment records are KEPT (anonymized via user name change)
+    # This is LGPD compliant — legal obligation to keep financial/tax records
+
+    db.commit()
+    return {"id": user_id, "account_status": "deleted", "message": "Conta excluída permanentemente (LGPD)."}
 
 
 @router.get("/professionals")

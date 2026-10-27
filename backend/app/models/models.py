@@ -205,6 +205,7 @@ class Booking(Base):
     id              = Column(String, primary_key=True, default=gen_uuid)
     patient_id      = Column(String, ForeignKey("patients.id"))
     professional_id = Column(String, ForeignKey("professionals.id"))
+    user_id         = Column(String, ForeignKey("users.id"), nullable=True)  # client who created the booking
     service_type    = Column(String)
     services        = Column(JSON, default=list)
     care_level      = Column(Integer, nullable=True)   # 1-4
@@ -281,6 +282,7 @@ class Booking(Base):
 
     patient      = relationship("Patient",      back_populates="bookings")
     professional = relationship("Professional", back_populates="bookings")
+    user         = relationship("User",         foreign_keys=[user_id])
     payment      = relationship("Payment",      back_populates="booking", uselist=False)
     assessments  = relationship("Assessment",   back_populates="booking")
 
@@ -530,6 +532,21 @@ class NotificationDelivery(Base):
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
     notification = relationship("Notification", backref="deliveries")
+
+
+class AccountDeletionLog(Base):
+    """LGPD-compliant audit log for account deactivations and deletions."""
+    __tablename__ = "account_deletion_log"
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    user_id     = Column(String, nullable=False)
+    admin_id    = Column(String, nullable=False)
+    admin_name  = Column(String, nullable=False)
+    action      = Column(String, nullable=False)    # deactivated, deleted
+    reason      = Column(Text, nullable=False)
+    user_email_hash = Column(String, nullable=True) # SHA-256 hash for audit without PII
+    had_bookings    = Column(Integer, default=0)
+    had_payments    = Column(Integer, default=0)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class PayoutMethod(Base):
