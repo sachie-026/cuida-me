@@ -46,6 +46,28 @@ def _check_booking_access(booking: Booking, current: User, db: Session):
         return
     raise HTTPException(403, "Access denied")
 
+def _get_booking_client_user(booking: Booking, db: Session) -> "User | None":
+    """Resolve the client User for a booking.
+    Fast path: booking.user_id (set on creation).
+    Fallback: patient_id → Patient → user_id (for old bookings before migration).
+    """
+    if booking.user_id:
+        u = db.query(User).filter(User.id == booking.user_id).first()
+        if u:
+            return u
+    # Fallback via patient chain
+    patient = db.query(Patient).filter(Patient.id == booking.patient_id).first()
+    if patient and patient.user_id:
+        return db.query(User).filter(User.id == patient.user_id).first()
+    return None
+
+def _get_booking_client_id(booking: Booking, db: Session) -> "str | None":
+    """Return the client user_id for a booking (for access checks and queries)."""
+    if booking.user_id:
+        return booking.user_id
+    patient = db.query(Patient).filter(Patient.id == booking.patient_id).first()
+    return patient.user_id if patient else None
+
 def _compute_price(body: BookingCreate, db: Session):
     """Compute price using v2 engine: Initial Fee + Hour Rate × minutes."""
     prof = db.query(Professional).filter(Professional.id == body.professional_id).first()
@@ -175,6 +197,7 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
         pass
 
     booking = Booking(**booking_data)
+    booking.user_id = current.id  # 1-fix: store client who created the booking
     db.add(booking)
     db.commit()
     db.refresh(booking)
@@ -267,7 +290,7 @@ def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Se
     try:
         _prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
         pro_user = db.query(User).filter(User.id == _prof.user_id).first() if _prof else None
-        client_user = db.query(User).filter(User.id == b.user_id).first()
+        client_user = _get_booking_client_user(b, db)
         booking_code = f"#{b.id[:6].upper()}"
         if client_user:
             fire_event(db, "booking.accepted", {
@@ -375,7 +398,7 @@ def cancel_booking(
     # ── Notify: booking.cancelled_by_client or booking.cancelled_by_professional ──
     try:
         pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
-        client_user = db.query(User).filter(User.id == b.user_id).first()
+        client_user = _get_booking_client_user(b, db)
         booking_code = f"#{b.id[:6].upper()}"
         cancel_vars = {
             "service": b.service_type or "Cuidado",
@@ -411,7 +434,7 @@ def request_reschedule(booking_id: str, body: RescheduleRequest, db: Session = D
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
-    if booking.user_id != current.id:
+    if _get_booking_client_id(booking, db) != current.id:
         raise HTTPException(403, "Only the client can request a reschedule")
     if booking.status.value not in ("pending", "accepted"):
         raise HTTPException(400, "Só é possível reagendar atendimentos pendentes ou aceitos")
@@ -470,7 +493,7 @@ def confirm_checkin(booking_id: str, db: Session = Depends(get_db), current: Use
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
-    if booking.user_id != current.id:
+    if _get_booking_client_id(booking, db) != current.id:
         raise HTTPException(403, "Only the client can confirm")
     if booking.status.value != "checked_in":
         raise HTTPException(400, "Professional hasn't checked in yet")
@@ -485,7 +508,7 @@ def confirm_checkout(booking_id: str, db: Session = Depends(get_db), current: Us
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
-    if booking.user_id != current.id:
+    if _get_booking_client_id(booking, db) != current.id:
         raise HTTPException(403, "Only the client can confirm")
 
     booking.client_confirmed_end = True
@@ -498,7 +521,7 @@ def report_issue(booking_id: str, reason: str = "Problema com o atendimento", db
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
-    if booking.user_id != current.id:
+    if _get_booking_client_id(booking, db) != current.id:
         raise HTTPException(403, "Only the client can report issues")
 
     booking.has_dispute = True
@@ -560,7 +583,7 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
 
     # ── Notify: service.professional_arrived → client ──
     try:
-        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        client_user = _get_booking_client_user(booking, db)
         if client_user:
             fire_event(db, "service.professional_arrived", {
                 "professional_name": current.full_name or "Profissional",
@@ -597,7 +620,7 @@ def start_service(booking_id: str, db: Session = Depends(get_db), current: User 
 
     # ── Notify: service.checked_in → client ──
     try:
-        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        client_user = _get_booking_client_user(booking, db)
         if client_user:
             fire_event(db, "service.checked_in", {
                 "professional_name": current.full_name or "Profissional",
@@ -645,7 +668,7 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
 
     # ── Notify: service.completed → client ──
     try:
-        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        client_user = _get_booking_client_user(booking, db)
         if client_user:
             duration_str = f"{booking.actual_duration_minutes or 0} min"
             total_amount = f"{booking.total_price:.2f}" if booking.total_price else "0.00"
@@ -696,7 +719,7 @@ def report_client_no_show(booking_id: str, db: Session = Depends(get_db), curren
     booking.cancelled_at = datetime.now(timezone.utc)
 
     # Update client reliability
-    client = db.query(User).filter(User.id == booking.user_id).first()
+    client = _get_booking_client_user(booking, db)
     if client:
         client.client_no_shows = (client.client_no_shows or 0) + 1
         client.reliability_score = max(0, (client.reliability_score or 100) - 10)
@@ -705,7 +728,7 @@ def report_client_no_show(booking_id: str, db: Session = Depends(get_db), curren
 
     # ── Notify: service.no_show_client → professional + client ──
     try:
-        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        client_user = _get_booking_client_user(booking, db)
         booking_code = f"#{booking.id[:6].upper()}"
         recipients = {}
         if client_user:
@@ -966,8 +989,9 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
     if is_grace:
         from datetime import timedelta as td
         thirty_days_ago = now - td(days=30)
+        _client_id = _get_booking_client_id(booking, db)
         grace_count = db.query(Booking).filter(
-            Booking.user_id == booking.user_id,
+            Booking.user_id == _client_id,
             Booking.cancel_reason != None,
             Booking.cancel_reason.contains("grace"),
             Booking.cancelled_at > thirty_days_ago,
@@ -1022,14 +1046,15 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
 
     # #4: Progressive client penalties
     else:
-        client = db.query(User).filter(User.id == booking.user_id).first()
+        client = _get_booking_client_user(booking, db)
         if client and not is_grace:
             client.reliability_score = max(0, (client.reliability_score or 100) - 3)
             # Check no-show count in 90 days
             from datetime import timedelta as td
             ninety_days_ago = now - td(days=90)
+            _cid = _get_booking_client_id(booking, db)
             no_show_count = db.query(Booking).filter(
-                Booking.user_id == booking.user_id,
+                Booking.user_id == _cid,
                 Booking.cancel_reason.contains("no_show"),
                 Booking.cancelled_at > ninety_days_ago,
             ).count()
@@ -1054,7 +1079,7 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
     try:
         _prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
         pro_user = db.query(User).filter(User.id == _prof.user_id).first() if _prof else None
-        client_user = db.query(User).filter(User.id == booking.user_id).first()
+        client_user = _get_booking_client_user(booking, db)
         booking_code = f"#{booking.id[:6].upper()}"
         cancel_vars = {
             "service": booking.service_type or "Cuidado",
@@ -1267,14 +1292,14 @@ def get_booking_audit(booking_id: str, db: Session = Depends(get_db), current: U
     # Only admin or booking participants can view
     if current.role.value != "admin":
         prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
-        if booking.user_id != current.id and (not prof or prof.user_id != current.id):
+        if _get_booking_client_id(booking, db) != current.id and (not prof or prof.user_id != current.id):
             raise HTTPException(403, "Access denied")
 
     payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
 
     return {
         "booking_id": booking.id,
-        "client_id": booking.user_id,
+        "client_id": booking.user_id or _get_booking_client_id(booking, db),
         "professional_id": booking.professional_id,
         "status": booking.status.value if hasattr(booking.status, 'value') else str(booking.status),
         "no_show_who": booking.no_show_who,

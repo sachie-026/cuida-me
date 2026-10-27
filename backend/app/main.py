@@ -345,6 +345,23 @@ def run_migrations():
             created_at TIMESTAMPTZ DEFAULT NOW()
         )""",
         "CREATE INDEX IF NOT EXISTS idx_notification_deliveries_notif ON notification_deliveries(notification_id)",
+        # 1-fix: Add user_id to bookings (the client who created the booking)
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id)",
+        # 1-fix: Backfill user_id from patient → user chain for existing bookings
+        "UPDATE bookings SET user_id = p.user_id FROM patients p WHERE bookings.patient_id = p.id AND bookings.user_id IS NULL",
+        # LGPD: Account deletion audit log
+        """CREATE TABLE IF NOT EXISTS account_deletion_log (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            admin_id VARCHAR NOT NULL,
+            admin_name VARCHAR NOT NULL,
+            action VARCHAR NOT NULL,
+            reason TEXT NOT NULL,
+            user_email_hash VARCHAR,
+            had_bookings INTEGER DEFAULT 0,
+            had_payments INTEGER DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:

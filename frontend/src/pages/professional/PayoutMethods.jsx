@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronLeft, Plus, Trash2, Star, CreditCard, Building2,
+  ChevronLeft, Plus, Trash2, Star, Building2,
   Smartphone, CheckCircle, AlertTriangle, X, Loader2,
 } from "lucide-react";
 import axios from "axios";
@@ -16,7 +16,6 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const METHOD_ICONS = {
   bank_account: <Building2 size={18} className="text-blue-500" />,
   pix: <Smartphone size={18} className="text-green-500" />,
-  card: <CreditCard size={18} className="text-purple-500" />,
 };
 
 const BANKS = [
@@ -45,8 +44,6 @@ const PayoutMethodsPage = () => {
   // PIX form
   const [pixForm, setPixForm] = useState({ pix_key_type: "cpf", pix_key: "" });
 
-  // Card form
-  const [cardForm, setCardForm] = useState({ card_brand: "", card_last4: "" });
 
   const fetchMethods = () => {
     axios.get(`${API}/api/payout-methods`, { headers })
@@ -60,7 +57,6 @@ const PayoutMethodsPage = () => {
   const resetForms = () => {
     setBankForm({ bank_name: "", agency: "", account_number: "", account_type: "corrente", holder_name: "", holder_cpf: "" });
     setPixForm({ pix_key_type: "cpf", pix_key: "" });
-    setCardForm({ card_brand: "", card_last4: "" });
     setShowForm(false);
     setFormType("bank_account");
   };
@@ -79,11 +75,6 @@ const PayoutMethodsPage = () => {
         toast.error(t("pro_payout.toast_pix_required")); setSaving(false); return;
       }
       payload = { ...payload, ...pixForm };
-    } else if (formType === "card") {
-      if (!cardForm.card_brand || !cardForm.card_last4) {
-        toast.error(t("pro_payout.toast_card_required")); setSaving(false); return;
-      }
-      payload = { ...payload, ...cardForm };
     }
 
     try {
@@ -119,9 +110,6 @@ const PayoutMethodsPage = () => {
     }
     if (m.method_type === "pix") {
       return `${t(`pro_payout.pix_type_${m.pix_key_type}`)}: ${m.pix_key}`;
-    }
-    if (m.method_type === "card") {
-      return `${m.card_brand} ${t("pro_payout.card_ending")} ${m.card_last4}`;
     }
     return "";
   };
@@ -160,7 +148,7 @@ const PayoutMethodsPage = () => {
           <>
             {methods.length === 0 && !showForm ? (
               <div className="card p-8 text-center mb-6">
-                <CreditCard size={40} className="mx-auto mb-3 text-slate-300" />
+                <Building2 size={40} className="mx-auto mb-3 text-slate-300" />
                 <p className="text-navy font-semibold mb-1">{t("pro_payout.empty_title")}</p>
                 <p className="text-sm text-slate-500 mb-4">{t("pro_payout.empty_desc")}</p>
                 <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-2">
@@ -230,7 +218,6 @@ const PayoutMethodsPage = () => {
               {[
                 { type: "bank_account", icon: <Building2 size={14} /> },
                 { type: "pix", icon: <Smartphone size={14} /> },
-                { type: "card", icon: <CreditCard size={14} /> },
               ].map(item => (
                 <button key={item.type} onClick={() => setFormType(item.type)}
                   className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors ${
@@ -313,34 +300,6 @@ const PayoutMethodsPage = () => {
                     <p className="text-[10px] text-slate-400 mt-1">{t("pro_payout.cpf_note_pix")}</p>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Card form */}
-            {formType === "card" && (
-              <div className="space-y-3">
-                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-2">
-                  <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700">{t("pro_payout.card_security_note")}</p>
-                </div>
-                <div>
-                  <label className="form-label">{t("pro_payout.card_brand_label")}</label>
-                  <select className="form-input" value={cardForm.card_brand}
-                    onChange={e => setCardForm(p => ({ ...p, card_brand: e.target.value }))}>
-                    <option value="">{t("pro_payout.select")}</option>
-                    <option value="Visa">Visa</option>
-                    <option value="Mastercard">Mastercard</option>
-                    <option value="Elo">Elo</option>
-                    <option value="Hipercard">Hipercard</option>
-                    <option value="American Express">American Express</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">{t("pro_payout.card_last4_label")}</label>
-                  <input className="form-input" value={cardForm.card_last4} placeholder="0000" maxLength={4}
-                    onChange={e => setCardForm(p => ({ ...p, card_last4: e.target.value.replace(/\D/g, "").slice(0, 4) }))} />
-                </div>
-                <p className="text-[10px] text-slate-400">{t("pro_payout.card_tokenization_note")}</p>
               </div>
             )}
 

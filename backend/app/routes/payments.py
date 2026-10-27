@@ -77,8 +77,12 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
         raise HTTPException(403, "Access denied")
 
     existing = db.query(Payment).filter(Payment.booking_id == body.booking_id).first()
-    if existing and existing.status.value not in ("failed", "refunded"):
+    if existing and existing.status.value not in ("failed", "refunded", "pending"):
         raise HTTPException(400, "Pagamento já existe para este agendamento")
+    # If a previous attempt failed/stuck, remove it so a fresh one can be created
+    if existing and existing.status.value in ("failed", "refunded", "pending"):
+        db.delete(existing)
+        db.flush()
 
     if body.method not in ("pix", "credit_card", "debit_card"):
         raise HTTPException(400, "Método inválido. Use: pix, credit_card, debit_card")
@@ -154,9 +158,12 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
                 pass
             raise HTTPException(400, f"Erro Stripe: {str(e)}")
     else:
-        # No Stripe configured — dev/mock mode
-        result["message"] = "Modo desenvolvimento: Stripe não configurado. Pagamento simulado."
+        # No Stripe configured — dev/mock mode: auto-confirm as held (escrow)
+        payment.status = PaymentStatus.held
+        payment.held_at = datetime.now(timezone.utc)
+        result["message"] = "Modo desenvolvimento: Stripe não configurado. Pagamento simulado e confirmado."
         result["mock"] = True
+        result["status"] = "held"
         if body.method == "pix":
             result["pix_code"] = f"00020126360014BR.GOV.BCB.PIX0114+5511999990000{payment.id[:6]}5204000053039865802BR"
 
