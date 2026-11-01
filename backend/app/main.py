@@ -349,6 +349,9 @@ def run_migrations():
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id)",
         # 1-fix: Backfill user_id from patient → user chain for existing bookings
         "UPDATE bookings SET user_id = p.user_id FROM patients p WHERE bookings.patient_id = p.id AND bookings.user_id IS NULL",
+        # Stripe Connect: professional connected accounts
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS stripe_connect_id VARCHAR",
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS stripe_onboarding_complete BOOLEAN DEFAULT FALSE",
         # LGPD: Account deletion audit log
         """CREATE TABLE IF NOT EXISTS account_deletion_log (
             id VARCHAR PRIMARY KEY,

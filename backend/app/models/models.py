@@ -125,6 +125,8 @@ class Professional(Base):
     completed_count  = Column(Integer, default=0)
     suspended_until  = Column(DateTime(timezone=True), nullable=True)
     rest_until       = Column(DateTime(timezone=True), nullable=True)
+    stripe_connect_id = Column(String, nullable=True)   # Stripe Connect Express account ID
+    stripe_onboarding_complete = Column(Boolean, default=False)  # True when onboarding is done
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     user          = relationship("User",         back_populates="professional")
