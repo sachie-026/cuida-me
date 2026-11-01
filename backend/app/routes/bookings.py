@@ -504,7 +504,8 @@ def confirm_checkin(booking_id: str, db: Session = Depends(get_db), current: Use
 
 @router.patch("/{booking_id}/confirm-checkout")
 def confirm_checkout(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Client confirms the service was completed satisfactorily."""
+    """Client confirms the service was completed satisfactorily.
+    Triggers automatic payment release to professional via Stripe Connect."""
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
@@ -513,7 +514,26 @@ def confirm_checkout(booking_id: str, db: Session = Depends(get_db), current: Us
 
     booking.client_confirmed_end = True
     db.commit()
-    return {"booking_id": booking_id, "client_confirmed_end": True}
+
+    # Auto-release payment when client confirms checkout
+    payment_released = False
+    try:
+        payment = db.query(Payment).filter(
+            Payment.booking_id == booking_id,
+            Payment.status == PaymentStatus.held,
+        ).first()
+        if payment and booking.status == BookingStatus.completed and not booking.has_dispute:
+            from app.routes.payments import _do_release_payment
+            _do_release_payment(payment, booking, db)
+            payment_released = True
+    except Exception as e:
+        print(f"[AUTO-RELEASE] Error on confirm-checkout for booking {booking_id}: {e}")
+
+    return {
+        "booking_id": booking_id,
+        "client_confirmed_end": True,
+        "payment_released": payment_released,
+    }
 
 @router.post("/{booking_id}/report-issue")
 def report_issue(booking_id: str, reason: str = "Problema com o atendimento", db: Session = Depends(get_db), current: User = Depends(get_current_user)):

@@ -36,6 +36,7 @@ import ProfilePicker         from "./pages/auth/ProfilePicker";
 import ManageProfiles        from "./pages/ManageProfiles";
 import NotificationsPage     from "./pages/notifications/NotificationsPage";
 import PayoutMethodsPanel    from "./pages/professional/PayoutMethods";
+import StripeConnect         from "./pages/professional/StripeConnect";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
@@ -79,6 +80,7 @@ function App() {
           <Route path="/payment-methods"       element={<ProtectedRoute><PaymentMethodsPage /></ProtectedRoute>} />
           <Route path="/earnings"              element={<ProtectedRoute allowedRoles={PRO_ROLES}><EarningsPage /></ProtectedRoute>} />
           <Route path="/bank-account"           element={<ProtectedRoute allowedRoles={PRO_ROLES}><PayoutMethodsPanel /></ProtectedRoute>} />
+          <Route path="/professional/stripe-connect" element={<ProtectedRoute allowedRoles={[...PRO_ROLES, ...CLIENT_ROLES]}><StripeConnect /></ProtectedRoute>} />
           <Route path="/admin/settings"        element={<ProtectedRoute allowedRoles={["admin"]}><AdminSettings /></ProtectedRoute>} />
           <Route path="/register/professional"  element={<ProtectedRoute><BecomeProfessional /></ProtectedRoute>} />
           <Route path="/select-profile"          element={<ProtectedRoute><ProfilePicker /></ProtectedRoute>} />

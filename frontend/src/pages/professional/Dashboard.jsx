@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DollarSign, CalendarDays, Star, CheckCircle, AlertTriangle, MessageSquare, Clock } from "lucide-react";
+import { DollarSign, CalendarDays, Star, CheckCircle, AlertTriangle, MessageSquare, Clock, CreditCard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
@@ -33,6 +33,7 @@ const ProfessionalDashboard = () => {
   const [approvalStatus, setApprovalStatus] = useState("pending");
   const [hasAvailability, setHasAvailability] = useState(false);
   const [profId,         setProfId]         = useState(null);
+  const [stripeConnected, setStripeConnected] = useState(true); // assume connected to avoid flash
   const [loading,        setLoading]        = useState(true);
   const [cancellingBooking, setCancellingBooking] = useState(null);
 
@@ -45,6 +46,7 @@ const ProfessionalDashboard = () => {
         const prof = profRes.data;
         setApprovalStatus(prof.approval_status || "pending");
         setProfId(prof.id);
+        setStripeConnected(!!prof.stripe_onboarding_complete);
         setLoading(false);
         console.log(`[53a] Pro profile: ${Math.round(performance.now()-t0)}ms — dashboard interactive`);
 
@@ -122,6 +124,25 @@ const ProfessionalDashboard = () => {
             <button onClick={() => navigate("/profile/professional")}
               className="text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
               {t("pro_dashboard.send_docs")}
+            </button>
+          </div>
+        )}
+
+        {/* Stripe Connect banner */}
+        {!stripeConnected && (
+          <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-start gap-3">
+            <CreditCard size={20} className="text-purple-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-purple-700 text-sm">
+                {t("pro_dashboard.stripe_setup_title", "Configure sua conta de recebimento")}
+              </p>
+              <p className="text-xs text-purple-600 mt-0.5">
+                {t("pro_dashboard.stripe_setup_desc", "Para receber pagamentos automaticamente, configure sua conta Stripe.")}
+              </p>
+            </div>
+            <button onClick={() => navigate("/professional/stripe-connect")}
+              className="text-xs font-semibold text-purple-700 bg-purple-100 hover:bg-purple-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
+              {t("pro_dashboard.stripe_setup_btn", "Configurar")}
             </button>
           </div>
         )}

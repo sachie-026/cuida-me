@@ -1,16 +1,19 @@
 """
-Payment System — Stripe Integration
-=====================================
-Escrow model: client pays → held → released after checkout + no disputes.
+Payment System — Stripe Connect Split Payments
+================================================
+Flow: client pays full price → Stripe splits automatically →
+  88% to professional's connected account, 12% stays with CuidaU.
+Triggered by client confirmation or 24h auto-confirm after service completion.
 Supports PIX (via Stripe) and credit/debit card pre-authorization.
 Stripe keys read from environment: STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY
 """
 import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user, require_admin
 from app.models.models import Payment, PaymentStatus, Booking, BookingStatus, User, Patient, Professional
@@ -20,6 +23,7 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 def get_stripe():
     """Lazy-load stripe with API key."""
@@ -65,6 +69,134 @@ def get_config():
     """Return publishable key for frontend Stripe.js initialization."""
     return {"publishable_key": STRIPE_PUBLISHABLE_KEY}
 
+# ── Stripe Connect Onboarding ────────────────────────────────────────────────
+
+@router.post("/connect/onboard")
+def create_connect_account(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Create a Stripe Connect Express account for the professional and return onboarding link."""
+    pro = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not pro:
+        raise HTTPException(403, "Somente profissionais podem configurar conta de recebimento")
+
+    stripe = get_stripe()
+    if not stripe:
+        return {
+            "mock": True,
+            "message": "Stripe não configurado (modo desenvolvimento). Conta simulada criada.",
+            "onboarding_url": None,
+            "stripe_connect_id": "acct_mock_" + pro.id[:8],
+        }
+
+    try:
+        # If pro already has a Connect account, just create a new onboarding link
+        if pro.stripe_connect_id:
+            account_link = stripe.AccountLink.create(
+                account=pro.stripe_connect_id,
+                refresh_url=f"{FRONTEND_URL}/professional/stripe-connect?refresh=true",
+                return_url=f"{FRONTEND_URL}/professional/stripe-connect?success=true",
+                type="account_onboarding",
+            )
+            return {
+                "stripe_connect_id": pro.stripe_connect_id,
+                "onboarding_url": account_link.url,
+                "onboarding_complete": pro.stripe_onboarding_complete,
+            }
+
+        # Create new Express account for Brazil
+        account = stripe.Account.create(
+            type="express",
+            country="BR",
+            email=current.email,
+            capabilities={
+                "card_payments": {"requested": True},
+                "transfers": {"requested": True},
+            },
+            metadata={
+                "professional_id": pro.id,
+                "user_id": current.id,
+            },
+        )
+
+        pro.stripe_connect_id = account.id
+        db.commit()
+
+        # Create onboarding link
+        account_link = stripe.AccountLink.create(
+            account=account.id,
+            refresh_url=f"{FRONTEND_URL}/professional/stripe-connect?refresh=true",
+            return_url=f"{FRONTEND_URL}/professional/stripe-connect?success=true",
+            type="account_onboarding",
+        )
+
+        return {
+            "stripe_connect_id": account.id,
+            "onboarding_url": account_link.url,
+            "onboarding_complete": False,
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao criar conta Stripe Connect: {str(e)}")
+
+@router.get("/connect/status")
+def connect_status(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Check the Stripe Connect onboarding status for the professional."""
+    pro = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not pro:
+        raise HTTPException(403, "Somente profissionais podem verificar status de conta")
+
+    if not pro.stripe_connect_id:
+        return {
+            "has_account": False,
+            "onboarding_complete": False,
+            "charges_enabled": False,
+            "payouts_enabled": False,
+        }
+
+    stripe = get_stripe()
+    if not stripe:
+        return {
+            "has_account": True,
+            "onboarding_complete": True,
+            "charges_enabled": True,
+            "payouts_enabled": True,
+            "mock": True,
+        }
+
+    try:
+        account = stripe.Account.retrieve(pro.stripe_connect_id)
+
+        # Update onboarding status if it just completed
+        if account.charges_enabled and account.payouts_enabled and not pro.stripe_onboarding_complete:
+            pro.stripe_onboarding_complete = True
+            db.commit()
+
+        return {
+            "has_account": True,
+            "stripe_connect_id": pro.stripe_connect_id,
+            "onboarding_complete": pro.stripe_onboarding_complete,
+            "charges_enabled": account.charges_enabled,
+            "payouts_enabled": account.payouts_enabled,
+            "details_submitted": account.details_submitted,
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao verificar conta: {str(e)}")
+
+@router.get("/connect/dashboard-link")
+def connect_dashboard_link(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Get a link to the Stripe Express dashboard for the professional."""
+    pro = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if not pro or not pro.stripe_connect_id:
+        raise HTTPException(400, "Conta Stripe Connect não encontrada")
+
+    stripe = get_stripe()
+    if not stripe:
+        return {"mock": True, "url": None, "message": "Stripe não configurado (modo desenvolvimento)."}
+
+    try:
+        login_link = stripe.Account.create_login_link(pro.stripe_connect_id)
+        return {"url": login_link.url}
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao gerar link do painel: {str(e)}")
+
 @router.post("/initiate", status_code=201)
 def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Initiate payment — creates Stripe PaymentIntent or PIX charge."""
@@ -107,15 +239,28 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
     if stripe:
         try:
             amount_cents = int(amount_brl * 100)
+            pro_payout_cents = int(pro_payout * 100)
             customer_id = _get_or_create_stripe_customer(stripe, current, db)
+
+            # Check if professional has a Stripe Connect account for split payments
+            pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+            connect_id = pro.stripe_connect_id if pro and pro.stripe_onboarding_complete else None
+
             if body.method == "pix":
-                intent = stripe.PaymentIntent.create(
-                    amount=amount_cents,
-                    currency="brl",
-                    customer=customer_id,
-                    payment_method_types=["pix"],
-                    metadata={"booking_id": body.booking_id},
-                )
+                intent_params = {
+                    "amount": amount_cents,
+                    "currency": "brl",
+                    "customer": customer_id,
+                    "payment_method_types": ["pix"],
+                    "metadata": {"booking_id": body.booking_id},
+                }
+                # Split payment via Stripe Connect
+                if connect_id:
+                    intent_params["transfer_data"] = {
+                        "destination": connect_id,
+                        "amount": pro_payout_cents,  # 88% goes to pro
+                    }
+                intent = stripe.PaymentIntent.create(**intent_params)
                 payment.stripe_intent_id = intent.id
                 result["client_secret"] = intent.client_secret
                 result["status"] = "awaiting_pix"
@@ -129,6 +274,12 @@ def initiate_payment(body: PaymentCreate, db: Session = Depends(get_db), current
                     "capture_method": "manual",
                     "metadata": {"booking_id": body.booking_id},
                 }
+                # Split payment via Stripe Connect
+                if connect_id:
+                    intent_params["transfer_data"] = {
+                        "destination": connect_id,
+                        "amount": pro_payout_cents,  # 88% goes to pro
+                    }
                 # If using a saved payment method, attach it
                 if body.payment_method_id:
                     intent_params["payment_method"] = body.payment_method_id
@@ -245,11 +396,33 @@ def release_payment(booking_id: str, db: Session = Depends(get_db), current: Use
     if payment.status != PaymentStatus.held:
         raise HTTPException(400, f"Pagamento não está em custódia (status: {payment.status.value})")
 
-    # In production: trigger Stripe Transfer to professional's connected account
+    # Stripe Connect: transfer pro's share to their connected account
     stripe = get_stripe()
     if stripe and payment.stripe_intent_id:
-        # Stripe Connect transfer would go here
-        pass
+        pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        if pro and pro.stripe_connect_id and pro.stripe_onboarding_complete:
+            try:
+                # Check if payment already has transfer_data (split at creation)
+                intent = stripe.PaymentIntent.retrieve(payment.stripe_intent_id)
+                has_auto_split = bool(intent.get("transfer_data"))
+
+                if not has_auto_split:
+                    # Manual transfer for bookings created before Connect was set up
+                    pro_payout_cents = int(payment.pro_payout * 100)
+                    stripe.Transfer.create(
+                        amount=pro_payout_cents,
+                        currency="brl",
+                        destination=pro.stripe_connect_id,
+                        source_transaction=intent.latest_charge,
+                        metadata={
+                            "booking_id": booking.id,
+                            "payment_id": payment.id,
+                        },
+                    )
+            except Exception as e:
+                print(f"[STRIPE] Transfer error for booking {booking.id}: {e}")
+                # Don't block release — log the error and admin can retry
+                pass
 
     payment.status = PaymentStatus.released
     payment.released_at = datetime.now(timezone.utc)
@@ -477,6 +650,88 @@ def get_all_payments(status: Optional[str] = None, db: Session = Depends(get_db)
         q = q.filter(Payment.status == status)
     payments = q.order_by(Payment.created_at.desc()).all()
     return [_serialize(p) for p in payments]
+
+# ── Auto-confirm: release payments for completed bookings after 24h ──────────
+
+@router.post("/auto-confirm-releases")
+def auto_confirm_releases(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Auto-release payments for completed bookings where client hasn't confirmed
+    within 24h. Called by a scheduled task or admin manually."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Find completed bookings with held payments where service ended > 24h ago
+    held_payments = (
+        db.query(Payment)
+        .join(Booking, Payment.booking_id == Booking.id)
+        .filter(
+            Payment.status == PaymentStatus.held,
+            Booking.status == BookingStatus.completed,
+            Booking.has_dispute == False,
+            Booking.checkout_time <= cutoff,
+        )
+        .all()
+    )
+
+    released = []
+    for payment in held_payments:
+        booking = db.query(Booking).filter(Booking.id == payment.booking_id).first()
+        if not booking:
+            continue
+
+        try:
+            _do_release_payment(payment, booking, db)
+            released.append(payment.id)
+        except Exception as e:
+            print(f"[AUTO-RELEASE] Error releasing payment {payment.id}: {e}")
+
+    return {"released_count": len(released), "released_ids": released}
+
+
+def _do_release_payment(payment: Payment, booking: Booking, db: Session):
+    """Shared logic for releasing a payment — used by release_payment endpoint
+    and auto-confirm. Performs Stripe Connect transfer if applicable."""
+    stripe = get_stripe()
+    if stripe and payment.stripe_intent_id:
+        pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        if pro and pro.stripe_connect_id and pro.stripe_onboarding_complete:
+            try:
+                intent = stripe.PaymentIntent.retrieve(payment.stripe_intent_id)
+                has_auto_split = bool(intent.get("transfer_data"))
+
+                if not has_auto_split:
+                    pro_payout_cents = int(payment.pro_payout * 100)
+                    stripe.Transfer.create(
+                        amount=pro_payout_cents,
+                        currency="brl",
+                        destination=pro.stripe_connect_id,
+                        source_transaction=intent.latest_charge,
+                        metadata={
+                            "booking_id": booking.id,
+                            "payment_id": payment.id,
+                        },
+                    )
+            except Exception as e:
+                print(f"[STRIPE] Transfer error for booking {booking.id}: {e}")
+
+    payment.status = PaymentStatus.released
+    payment.released_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Notify professional
+    try:
+        pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+        pro_user = db.query(User).filter(User.id == pro.user_id).first() if pro else None
+        if pro_user:
+            fire_event(db, "payment.released_to_professional", {
+                "amount": f"{payment.pro_payout:.2f}",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "service": booking.service_type or "Cuidado",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[NOTIFY] payment.released_to_professional error: {e}")
+
 
 def _serialize(p: Payment) -> dict:
     return {
