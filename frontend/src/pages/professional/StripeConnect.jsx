@@ -46,7 +46,7 @@ const StripeConnectPage = () => {
     if (isRefresh) {
       toast.error(t("stripe_connect.onboarding_expired", "Link expirado. Clique para tentar novamente."));
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line
 
   const startOnboarding = async () => {
     setOnboarding(true);
