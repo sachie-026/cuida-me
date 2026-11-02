@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, ShieldOff, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings } from "lucide-react";
+import { Users, CalendarDays, DollarSign, ShieldCheck, ShieldOff, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings, Wallet } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -155,6 +155,7 @@ const Sidebar = ({ active, onNav, mobileOpen, setMobileOpen }) => {
     { key: "professionals", label: t("admin_dashboard.sidebar.professionals"), icon: <ShieldCheck size={18} /> },
     { key: "users",         label: t("admin_dashboard.sidebar.users"),      icon: <Users size={18} /> },
     { key: "bookings",      label: t("admin_dashboard.sidebar.bookings"),  icon: <CalendarDays size={18} /> },
+    { key: "wallet",         label: t("admin_dashboard.sidebar.wallet"),         icon: <Wallet size={18} /> },
     { key: "holidays",      label: t("admin_dashboard.sidebar.holidays"),      icon: <CalendarRange size={18} /> },
     { key: "reports",       label: t("admin_dashboard.sidebar.reports"),     icon: <FileText size={18} /> },
     { key: "alice",          label: t("admin_dashboard.sidebar.alice"),       icon: <Bot size={18} /> },
@@ -1311,6 +1312,95 @@ const CommissionPanel = () => {
   );
 };
 
+/* ── Wallet Panel ── */
+const WalletPanel = () => {
+  const { t } = useTranslation();
+  const { headers } = useAdmin();
+  const [platform, setPlatform] = useState({ balance: 0, transactions: [] });
+  const [allWallets, setAllWallets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [walletTab, setWalletTab] = useState("platform"); // platform, all
+
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API}/api/wallet/platform`, { headers }).catch(() => ({ data: { balance: 0, transactions: [] } })),
+      axios.get(`${API}/api/wallet/all`, { headers }).catch(() => ({ data: { wallets: [] } })),
+    ]).then(([platRes, allRes]) => {
+      setPlatform(platRes.data);
+      setAllWallets(allRes.data.wallets || []);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="text-sm text-slate-400 p-6">{t("admin_dashboard.common.loading")}</p>;
+
+  return (
+    <div className="max-w-3xl">
+      <h2 className="font-display text-xl font-bold text-navy mb-6">{t("admin_dashboard.wallet.title")}</h2>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-6">
+        {[{ id: "platform", label: t("admin_dashboard.wallet.tab_platform") }, { id: "all", label: t("admin_dashboard.wallet.tab_all") }].map(tb => (
+          <button key={tb.id} onClick={() => setWalletTab(tb.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${walletTab === tb.id ? "bg-blue-500 text-white" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"}`}>
+            {tb.label}
+          </button>
+        ))}
+      </div>
+
+      {walletTab === "platform" && (
+        <div className="space-y-4">
+          <div className="card p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+            <p className="text-sm opacity-80 mb-1">{t("admin_dashboard.wallet.platform_balance")}</p>
+            <p className="text-3xl font-bold">R$ {Number(platform.balance).toFixed(2)}</p>
+            <p className="text-xs opacity-60 mt-1">{t("admin_dashboard.wallet.commission_collected")}</p>
+          </div>
+          <div className="card p-6">
+            <h3 className="font-semibold text-navy mb-4">{t("admin_dashboard.wallet.recent_transactions")}</h3>
+            {(platform.transactions || []).length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">{t("admin_dashboard.wallet.no_transactions")}</p>
+            ) : (
+              <div className="space-y-3">
+                {platform.transactions.map(tx => (
+                  <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
+                    <div>
+                      <p className="text-sm font-semibold text-navy">{tx.description || t("admin_dashboard.wallet.commission_credit")}</p>
+                      <p className="text-xs text-slate-500">{tx.created_at && new Date(tx.created_at).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <span className={`text-sm font-bold ${tx.tx_type === "credit" ? "text-green-600" : "text-red-500"}`}>
+                      {tx.tx_type === "credit" ? "+" : "-"} R$ {Math.abs(tx.amount).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {walletTab === "all" && (
+        <div className="card p-6">
+          <h3 className="font-semibold text-navy mb-4">{t("admin_dashboard.wallet.all_wallets")}</h3>
+          {allWallets.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-6">{t("admin_dashboard.wallet.no_wallets")}</p>
+          ) : (
+            <div className="space-y-3">
+              {allWallets.map(w => (
+                <div key={w.wallet_id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50">
+                  <div>
+                    <p className="text-sm font-semibold text-navy">{w.owner_name}</p>
+                    <p className="text-xs text-slate-500">{w.owner_type === "platform" ? t("admin_dashboard.wallet.platform") : t("admin_dashboard.wallet.professional")}</p>
+                  </div>
+                  <span className="text-sm font-bold text-navy">R$ {Number(w.balance).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Main Admin Dashboard ── */
 /* ── Reports Panel ── */
 const STATUS_COLORS_R = { pending: "bg-amber-100 text-amber-700", under_review: "bg-blue-100 text-blue-700", resolved: "bg-green-100 text-green-700" };
@@ -1933,6 +2023,7 @@ const AdminDashboard = () => {
     users:         <UsersPanel />,
     bookings:      <BookingsPanel />,
     commission:    <CommissionPanel />,
+    wallet:        <WalletPanel />,
     holidays:      <HolidaysPanel />,
     reports:       <ReportsPanel />,
     alice:         <AlicePanel />,

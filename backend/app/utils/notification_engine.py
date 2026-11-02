@@ -128,6 +128,14 @@ def _create_notification_for_user(
     if "email" in (rule.channels or []) and email_template:
         _send_email_notification(db, notif, user, email_template, variables)
 
+    # Send WhatsApp if channel is enabled and template exists
+    whatsapp_template = None
+    for t in rule.templates:
+        if t.channel == "whatsapp":
+            whatsapp_template = t
+    if "whatsapp" in (rule.channels or []) and whatsapp_template:
+        _send_whatsapp_notification(db, notif, user, whatsapp_template, variables)
+
     return notif
 
 
@@ -157,6 +165,41 @@ def _send_email_notification(
     db.add(NotificationDelivery(
         notification_id=notif.id,
         channel="email",
+        status=status,
+        attempts=1,
+        last_attempt_at=datetime.now(timezone.utc),
+        error=error,
+    ))
+
+
+def _send_whatsapp_notification(
+    db: Session,
+    notif: Notification,
+    user: User,
+    template: NotificationTemplate,
+    variables: Dict[str, str],
+):
+    """
+    Send WhatsApp notification. Creates delivery record.
+    Uses whatsapp_sender utility (currently stubbed — actual API call commented out).
+    """
+    from app.utils.whatsapp_sender import send_whatsapp_message
+
+    subject = fill_template(template.title, variables)
+    body = fill_template(template.body, variables)
+
+    phone = getattr(user, "phone", None) or getattr(user, "phone_number", None)
+
+    result = send_whatsapp_message(to_phone=phone, message=body, subject=subject)
+
+    status = "sent" if result.get("sent") else "failed"
+    error = result.get("error") if not result.get("sent") else None
+
+    notif.delivery_whatsapp = status
+
+    db.add(NotificationDelivery(
+        notification_id=notif.id,
+        channel="whatsapp",
         status=status,
         attempts=1,
         last_attempt_at=datetime.now(timezone.utc),

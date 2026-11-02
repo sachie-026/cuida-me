@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user, require_admin
-from app.models.models import Payment, PaymentStatus, Booking, BookingStatus, User, Patient, Professional
+from app.models.models import Payment, PaymentStatus, Booking, BookingStatus, User, Patient, Professional, Wallet, WalletTransaction
 from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -35,6 +35,60 @@ def get_stripe():
         return stripe
     except ImportError:
         return None
+
+def _credit_wallets(db: Session, payment: Payment, booking: Booking):
+    """Credit professional + platform wallets after payment release."""
+    try:
+        pro_amount = payment.pro_payout or 0
+        platform_amount = payment.commission or 0
+
+        # Professional wallet
+        if booking.professional_id:
+            pro_wallet = db.query(Wallet).filter(
+                Wallet.owner_type == "professional",
+                Wallet.owner_id == booking.professional_id,
+            ).first()
+            if not pro_wallet:
+                pro_wallet = Wallet(owner_type="professional", owner_id=booking.professional_id, balance=0.0)
+                db.add(pro_wallet)
+                db.flush()
+
+            pro_wallet.balance = (pro_wallet.balance or 0) + pro_amount
+            db.add(WalletTransaction(
+                wallet_id=pro_wallet.id,
+                booking_id=booking.id,
+                payment_id=payment.id,
+                amount=pro_amount,
+                tx_type="credit",
+                description=f"Pagamento: {booking.service_type or 'Serviço'} (88%)",
+            ))
+
+        # Platform wallet (owner_id = None)
+        platform_wallet = db.query(Wallet).filter(
+            Wallet.owner_type == "platform",
+            Wallet.owner_id.is_(None),
+        ).first()
+        if not platform_wallet:
+            platform_wallet = Wallet(owner_type="platform", owner_id=None, balance=0.0)
+            db.add(platform_wallet)
+            db.flush()
+
+        platform_wallet.balance = (platform_wallet.balance or 0) + platform_amount
+        db.add(WalletTransaction(
+            wallet_id=platform_wallet.id,
+            booking_id=booking.id,
+            payment_id=payment.id,
+            amount=platform_amount,
+            tx_type="credit",
+            description=f"Comissão: {booking.service_type or 'Serviço'} (12%)",
+        ))
+
+        db.commit()
+        print(f"[WALLET] Credited pro={pro_amount:.2f} platform={platform_amount:.2f} for booking {booking.id[:8]}")
+    except Exception as e:
+        print(f"[WALLET] Error crediting wallets for booking {booking.id}: {e}")
+        db.rollback()
+
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
@@ -353,6 +407,17 @@ def confirm_payment(payment_id: str, db: Session = Depends(get_db), current: Use
                 "amount": f"{payment.amount:.2f}",
             }, recipient_users={"client": [client_user]})
             db.commit()
+
+            # ── Notify: admin.payment_received → admins ──
+            admins = db.query(User).filter(User.role == "admin").all()
+            if admins:
+                fire_event(db, "admin.payment_received", {
+                    "client_name": (client_user.full_name if client_user else "Cliente"),
+                    "amount": f"{payment.amount:.2f}",
+                    "service": booking.service_type or "Cuidado",
+                    "booking_code": f"#{booking.id[:6].upper()}",
+                }, recipient_users={"admin": admins})
+                db.commit()
     except Exception as e:
         print(f"[NOTIFY] payment.authorized error: {e}")
 
@@ -428,6 +493,9 @@ def release_payment(booking_id: str, db: Session = Depends(get_db), current: Use
     payment.released_at = datetime.now(timezone.utc)
     db.commit()
 
+    # Credit dummy wallets
+    _credit_wallets(db, payment, booking)
+
     # ── Notify: payment.released_to_professional → professional ──
     try:
         pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
@@ -439,6 +507,34 @@ def release_payment(booking_id: str, db: Session = Depends(get_db), current: Use
                 "booking_id": booking.id,
                 "service": booking.service_type or "Cuidado",
             }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+            # ── Notify: payment.wallet_credited → professional ──
+            fire_event(db, "payment.wallet_credited", {
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+        # ── Notify: admin.payment_released + admin.commission_received → admins ──
+        admins = db.query(User).filter(User.role == "admin").all()
+        if admins:
+            fire_event(db, "admin.payment_released", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "commission": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"admin": admins})
+            db.commit()
+
+            fire_event(db, "admin.commission_received", {
+                "amount": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+            }, recipient_users={"admin": admins})
             db.commit()
     except Exception as e:
         print(f"[NOTIFY] payment.released_to_professional error: {e}")
@@ -547,6 +643,17 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                         "amount": f"{payment.amount:.2f}",
                     }, recipient_users={"client": [client_user]})
                     db.commit()
+
+                    # ── Notify: admin.payment_received → admins (webhook) ──
+                    admins = db.query(User).filter(User.role == "admin").all()
+                    if admins:
+                        fire_event(db, "admin.payment_received", {
+                            "client_name": (client_user.full_name if client_user else "Cliente"),
+                            "amount": f"{payment.amount:.2f}",
+                            "service": booking.service_type or "Cuidado",
+                            "booking_code": f"#{booking.id[:6].upper()}",
+                        }, recipient_users={"admin": admins})
+                        db.commit()
             except Exception as e:
                 print(f"[NOTIFY] payment.authorized (webhook) error: {e}")
 
@@ -717,6 +824,9 @@ def _do_release_payment(payment: Payment, booking: Booking, db: Session):
     payment.released_at = datetime.now(timezone.utc)
     db.commit()
 
+    # Credit dummy wallets
+    _credit_wallets(db, payment, booking)
+
     # Notify professional
     try:
         pro = db.query(Professional).filter(Professional.id == booking.professional_id).first()
@@ -728,6 +838,34 @@ def _do_release_payment(payment: Payment, booking: Booking, db: Session):
                 "booking_id": booking.id,
                 "service": booking.service_type or "Cuidado",
             }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+            # ── Notify: payment.wallet_credited → professional ──
+            fire_event(db, "payment.wallet_credited", {
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+        # ── Notify: admin.payment_released + admin.commission_received → admins ──
+        admins = db.query(User).filter(User.role == "admin").all()
+        if admins:
+            fire_event(db, "admin.payment_released", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "commission": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"admin": admins})
+            db.commit()
+
+            fire_event(db, "admin.commission_received", {
+                "amount": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+            }, recipient_users={"admin": admins})
             db.commit()
     except Exception as e:
         print(f"[NOTIFY] payment.released_to_professional error: {e}")

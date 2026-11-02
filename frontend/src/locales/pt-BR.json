@@ -940,7 +940,11 @@
     "bank_desc": "Gerencie suas contas para recebimento",
     "manage_payout": "Gerenciar formas de recebimento",
     "toast_bank_updated": "Dados bancários atualizados!",
-    "toast_save_error": "Erro ao salvar"
+    "toast_save_error": "Erro ao salvar",
+    "wallet_balance": "Saldo da Carteira",
+    "wallet_desc": "Saldo de serviços concluídos",
+    "wallet_transactions": "Transações da Carteira",
+    "wallet_credit": "Pagamento de serviço"
   },
   "pro_payout": {
     "title": "Formas de Recebimento",
@@ -1126,6 +1130,7 @@
       "users": "Usuários",
       "bookings": "Agendamentos",
       "holidays": "Feriados",
+      "wallet": "Carteira",
       "reports": "Denúncias",
       "alice": "Alice IA",
       "validation": "Validação",
@@ -1136,7 +1141,8 @@
     "sections": {
       "overview": "Visão Geral",
       "bookings": "Agendamentos",
-      "users": "Usuários"
+      "users": "Usuários",
+      "wallet": "Carteira"
     },
     "common": {
       "loading": "Carregando...",
@@ -1374,6 +1380,20 @@
       "service_of": "Serviço de R$100",
       "platform_receives": "Plataforma recebe",
       "professional_receives": "Profissional recebe"
+    },
+    "wallet": {
+      "title": "Carteiras",
+      "tab_platform": "Plataforma",
+      "tab_all": "Todas as Carteiras",
+      "platform_balance": "Saldo da Plataforma",
+      "commission_collected": "Total de comissões coletadas dos serviços",
+      "recent_transactions": "Transações Recentes",
+      "no_transactions": "Nenhuma transação ainda",
+      "commission_credit": "Crédito de comissão",
+      "all_wallets": "Todas as Carteiras",
+      "no_wallets": "Nenhuma carteira encontrada",
+      "platform": "Plataforma",
+      "professional": "Profissional"
     },
     "reports": {
       "title": "Denúncias",
@@ -1889,7 +1909,9 @@
       "penalty": "Penalidade",
       "alert": "Alerta",
       "verification_complete": "Verificação",
-      "document_feedback": "Documento"
+      "document_feedback": "Documento",
+      "wallet": "Carteira",
+      "commission": "Comissão"
     }
   },
   "alerts": {

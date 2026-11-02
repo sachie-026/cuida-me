@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, payout_methods
+from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, payout_methods, wallet
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -365,6 +365,26 @@ def run_migrations():
             had_payments INTEGER DEFAULT 0,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )""",
+        # Wallets: dummy payment tracking for test/dev mode
+        """CREATE TABLE IF NOT EXISTS wallets (
+            id VARCHAR PRIMARY KEY,
+            owner_type VARCHAR NOT NULL,
+            owner_id VARCHAR,
+            balance FLOAT DEFAULT 0.0,
+            currency VARCHAR DEFAULT 'BRL',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        """CREATE TABLE IF NOT EXISTS wallet_transactions (
+            id VARCHAR PRIMARY KEY,
+            wallet_id VARCHAR NOT NULL REFERENCES wallets(id),
+            booking_id VARCHAR,
+            payment_id VARCHAR,
+            amount FLOAT NOT NULL,
+            tx_type VARCHAR NOT NULL,
+            description VARCHAR,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -380,7 +400,7 @@ run_migrations()
 # Seed notification events (idempotent — skips if already seeded)
 def _seed_notifications():
     from app.core.database import SessionLocal
-    from app.utils.seed_notification_events import seed_notification_events
+    from app.utils.seed_notification_events import seed_notification_events, seed_missing_events
     db = SessionLocal()
     try:
         seed_notification_events(db)
@@ -389,6 +409,16 @@ def _seed_notifications():
         db.rollback()
     finally:
         db.close()
+
+    # Seed any new events added after initial deploy
+    db2 = SessionLocal()
+    try:
+        seed_missing_events(db2)
+    except Exception as e:
+        print(f"[SEED] Error seeding missing events: {e}")
+        db2.rollback()
+    finally:
+        db2.close()
 
 _seed_notifications()
 
@@ -427,6 +457,7 @@ app.include_router(alice.router,        prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(settings.router,      prefix="/api")
 app.include_router(payout_methods.router, prefix="/api")
+app.include_router(wallet.router,         prefix="/api")
 
 @app.post("/api/seed-test-accounts")
 def seed_test_accounts(
@@ -436,8 +467,9 @@ def seed_test_accounts(
         __import__('fastapi').security.HTTPBearer(auto_error=False)
     ),
 ):
-    """Block 5: Create 12 test professionals (4 categories × 3 markups) + 1 test client.
-    All flagged is_test=True. They never appear to real users after launch and never receive real payments.
+    """Block 5: Create 4 test professionals (1 per category) + 8 test clients.
+    All flagged is_test=True, pre-verified, no document submission needed.
+    They never appear to real users after launch and never receive real payments.
     Accepts either ?dev_key=cuida-dev-2026 OR a valid admin JWT."""
     from app.core.security import hash_password, decode_token
     from app.models.models import User as _U, UserRole as _UR
@@ -469,114 +501,122 @@ def seed_test_accounts(
         {"role": "technician",        "label": "Técnico(a) de Enfermagem","coren_prefix": "9992", "services": TECHNICIAN_SERVICES},
         {"role": "nurse",             "label": "Enfermeiro(a)",           "coren_prefix": "9993", "services": NURSE_SERVICES},
     ]
-    MARKUPS = [0, 15, 30]
     created_pros = []
-    pro_index = 0
 
-    for cat in CATEGORIES:
-        for markup in MARKUPS:
-            pro_index += 1
-            user_id  = f"test-pro-{pro_index:03d}"
-            prof_id  = f"test-prof-{pro_index:03d}"
-            email    = f"test.pro{pro_index}@cuida.test"
-            cpf      = f"999.999.{pro_index:03d}-00"
-            coren    = f"{cat['coren_prefix']}{pro_index:03d}" if cat["role"] != "caregiver" else ""
+    # ── 4 Professionals (1 per category, 0% markup) ──
+    for idx, cat in enumerate(CATEGORIES, start=1):
+        user_id  = f"test-pro-{idx:03d}"
+        prof_id  = f"test-prof-{idx:03d}"
+        email    = f"test.pro{idx}@cuida.test"
+        cpf      = f"999.999.{idx:03d}-00"
+        coren    = f"{cat['coren_prefix']}{idx:03d}" if cat["role"] != "caregiver" else ""
 
-            # Skip if already exists (idempotent)
-            if db.query(User).filter(User.id == user_id).first():
-                created_pros.append({"id": user_id, "email": email, "role": cat["role"], "markup": markup, "status": "already_exists"})
-                continue
+        if db.query(User).filter(User.id == user_id).first():
+            created_pros.append({"id": user_id, "email": email, "password": "Test@2026", "role": cat["role"], "status": "already_exists"})
+            continue
 
-            user = User(
-                id=user_id, email=email,
-                password_hash=hash_password("Test@2026"),
-                full_name=f"Teste {cat['label']} {markup}%",
-                phone=f"(11) 99999-{pro_index:04d}",
-                cpf=cpf,
-                role=UserRole[cat["role"]],
-                is_active=True, is_verified=True, is_test=True,
-                roles=[cat["role"]],
-                has_professional_profile=True,
-            )
-            db.add(user)
-            db.flush()
-
-            prof = Professional(
-                id=prof_id, user_id=user_id,
-                council_number=coren,
-                council_state="SP",
-                council_type="COREN" if cat["role"] != "caregiver" else "CERTIFICADO",
-                professional_category=cat["role"],
-                active_category=cat["role"],
-                services_offered=cat["services"],
-                markup_pct=markup,
-                service_radius=25,
-                city="São Paulo", state="SP",
-                latitude=-23.5505 + (pro_index * 0.001),
-                longitude=-46.6333 + (pro_index * 0.001),
-                is_available=True,
-                approval_status=DocStatus.approved,
-                rating_avg=round(4.5 + (pro_index % 5) * 0.1, 1),
-                rating_count=pro_index * 3,
-                bio=f"Conta de teste — {cat['label']} com markup {markup}%",
-            )
-            db.add(prof)
-            db.flush()
-
-            # Add 7 days availability (08:00–20:00)
-            for dow in range(7):
-                db.add(Availability(
-                    id=f"test-avail-{pro_index:03d}-{dow}",
-                    professional_id=prof_id,
-                    type=AvailabilityType.available,
-                    is_recurring=True,
-                    day_of_week=dow,
-                    start_time="08:00",
-                    end_time="20:00",
-                ))
-
-            created_pros.append({"id": user_id, "email": email, "role": cat["role"], "markup": markup, "status": "created"})
-
-    # Create 1 test client
-    test_client_id = "test-client-001"
-    client_status = "already_exists"
-    if not db.query(User).filter(User.id == test_client_id).first():
-        test_client = User(
-            id=test_client_id, email="test.client@cuida.test",
+        user = User(
+            id=user_id, email=email,
             password_hash=hash_password("Test@2026"),
-            full_name="Teste Cliente",
-            phone="(11) 99999-0000",
-            cpf="999.999.000-00",
+            full_name=f"Teste {cat['label']}",
+            phone=f"(11) 99999-{idx:04d}",
+            cpf=cpf,
+            role=UserRole[cat["role"]],
+            is_active=True, is_verified=True, is_test=True,
+            roles=[cat["role"]],
+            has_professional_profile=True,
+        )
+        db.add(user)
+        db.flush()
+
+        prof = Professional(
+            id=prof_id, user_id=user_id,
+            council_number=coren,
+            council_state="SP",
+            council_type="COREN" if cat["role"] != "caregiver" else "CERTIFICADO",
+            professional_category=cat["role"],
+            active_category=cat["role"],
+            services_offered=cat["services"],
+            markup_pct=0,
+            service_radius=25,
+            city="São Paulo", state="SP",
+            latitude=-23.5505 + (idx * 0.001),
+            longitude=-46.6333 + (idx * 0.001),
+            is_available=True,
+            approval_status=DocStatus.approved,
+            rating_avg=round(4.5 + (idx % 5) * 0.1, 1),
+            rating_count=idx * 3,
+            bio=f"Conta de teste — {cat['label']}",
+        )
+        db.add(prof)
+        db.flush()
+
+        for dow in range(7):
+            db.add(Availability(
+                id=f"test-avail-{idx:03d}-{dow}",
+                professional_id=prof_id,
+                type=AvailabilityType.available,
+                is_recurring=True,
+                day_of_week=dow,
+                start_time="08:00",
+                end_time="20:00",
+            ))
+
+        created_pros.append({"id": user_id, "email": email, "password": "Test@2026", "role": cat["role"], "status": "created"})
+
+    # ── 8 Test Clients ──
+    CLIENT_NAMES = [
+        ("Ana Teste", "ana"), ("Bruno Teste", "bruno"), ("Carla Teste", "carla"), ("Daniel Teste", "daniel"),
+        ("Elena Teste", "elena"), ("Felipe Teste", "felipe"), ("Gabriela Teste", "gabriela"), ("Hugo Teste", "hugo"),
+    ]
+    created_clients = []
+    for ci, (name, slug) in enumerate(CLIENT_NAMES, start=1):
+        client_id = f"test-client-{ci:03d}"
+        client_email = f"test.{slug}@cuida.test"
+
+        if db.query(User).filter(User.id == client_id).first():
+            created_clients.append({"id": client_id, "email": client_email, "password": "Test@2026", "status": "already_exists"})
+            continue
+
+        client_user = User(
+            id=client_id, email=client_email,
+            password_hash=hash_password("Test@2026"),
+            full_name=name,
+            phone=f"(11) 98888-{ci:04d}",
+            cpf=f"888.888.{ci:03d}-00",
             role=UserRole.client,
             is_active=True, is_verified=True, is_test=True,
             roles=["client"],
             has_client_profile=True,
         )
-        db.add(test_client)
+        db.add(client_user)
         db.flush()
 
-        # Create patient record for test client
-        test_patient = Patient(
-            id="test-patient-001", user_id=test_client_id,
-            patient_name="Teste Cliente",
-            age=50, relation="Próprio paciente",
-            address="Rua de Teste, 123, São Paulo - SP",
-            latitude=-23.5505, longitude=-46.6333,
+        patient = Patient(
+            id=f"test-patient-{ci:03d}", user_id=client_id,
+            patient_name=name,
+            age=40 + ci,
+            relation="Próprio paciente",
+            address=f"Rua de Teste, {ci * 100}, São Paulo - SP",
+            latitude=-23.5505 + (ci * 0.002),
+            longitude=-46.6333 + (ci * 0.002),
             is_own_account=True,
             emergency_contact_name="Contato Teste",
-            emergency_contact_phone="(11) 99999-9999",
+            emergency_contact_phone=f"(11) 97777-{ci:04d}",
         )
-        db.add(test_patient)
-        client_status = "created"
+        db.add(patient)
+        created_clients.append({"id": client_id, "email": client_email, "password": "Test@2026", "status": "created"})
 
     db.commit()
 
     return {
         "status": "✅ test accounts seeded",
-        "test_client": {"id": test_client_id, "email": "test.client@cuida.test", "password": "Test@2026", "status": client_status},
+        "test_clients": created_clients,
         "test_professionals": created_pros,
-        "total": len(created_pros),
-        "note": "All test accounts have is_test=True. They will never appear in real user searches.",
+        "total_clients": len(created_clients),
+        "total_professionals": len(created_pros),
+        "password_for_all": "Test@2026",
+        "note": "All test accounts have is_test=True, is_verified=True. No document submission needed. They will never appear in real user searches.",
     }
 
 @app.get("/")

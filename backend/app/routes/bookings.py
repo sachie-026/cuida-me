@@ -219,6 +219,19 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
                 "response_deadline": "3h",
             }, recipient_users={"professional": [pro_user]})
             db.commit()
+
+            # ── Notify: admin.booking_requested → admins ──
+            admins = db.query(User).filter(User.role == "admin").all()
+            if admins:
+                fire_event(db, "admin.booking_requested", {
+                    "client_name": current.full_name or "Cliente",
+                    "professional_name": pro_user.full_name or "Profissional",
+                    "service": booking.service_type or "Cuidado",
+                    "booking_date": booking.scheduled_start.strftime("%d/%m"),
+                    "booking_time": f"{booking.scheduled_start.strftime('%Hh')}–{booking.scheduled_end.strftime('%Hh')}",
+                    "booking_code": booking_code,
+                }, recipient_users={"admin": admins})
+                db.commit()
     except Exception as e:
         print(f"[NOTIFY] booking.requested error: {e}")
 
@@ -301,6 +314,18 @@ def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Se
                 "booking_code": booking_code,
                 "booking_id": b.id,
             }, recipient_users={"client": [client_user]})
+            db.commit()
+
+        # ── Notify: admin.booking_accepted → admins ──
+        admins = db.query(User).filter(User.role == "admin").all()
+        if admins:
+            fire_event(db, "admin.booking_accepted", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "client_name": (client_user.full_name if client_user else "Cliente"),
+                "service": b.service_type or "Cuidado",
+                "booking_date": b.scheduled_start.strftime("%d/%m"),
+                "booking_code": booking_code,
+            }, recipient_users={"admin": admins})
             db.commit()
     except Exception as e:
         print(f"[NOTIFY] booking.accepted error: {e}")

@@ -939,7 +939,11 @@
     "bank_desc": "Manage your accounts for receiving payments",
     "manage_payout": "Manage payout methods",
     "toast_bank_updated": "Bank details updated!",
-    "toast_save_error": "Error saving"
+    "toast_save_error": "Error saving",
+    "wallet_balance": "Wallet Balance",
+    "wallet_desc": "Balance from completed services",
+    "wallet_transactions": "Wallet Transactions",
+    "wallet_credit": "Service payment"
   },
   "pro_payout": {
     "title": "Payout Methods",
@@ -1125,6 +1129,7 @@
       "users": "Users",
       "bookings": "Bookings",
       "holidays": "Holidays",
+      "wallet": "Wallet",
       "reports": "Reports",
       "alice": "Alice AI",
       "validation": "Validation",
@@ -1135,7 +1140,8 @@
     "sections": {
       "overview": "Overview",
       "bookings": "Bookings",
-      "users": "Users"
+      "users": "Users",
+      "wallet": "Wallet"
     },
     "common": {
       "loading": "Loading...",
@@ -1373,6 +1379,20 @@
       "service_of": "Service of R$100",
       "platform_receives": "Platform receives",
       "professional_receives": "Professional receives"
+    },
+    "wallet": {
+      "title": "Wallets",
+      "tab_platform": "Platform",
+      "tab_all": "All Wallets",
+      "platform_balance": "Platform Balance",
+      "commission_collected": "Total commission collected from services",
+      "recent_transactions": "Recent Transactions",
+      "no_transactions": "No transactions yet",
+      "commission_credit": "Commission credit",
+      "all_wallets": "All Wallets",
+      "no_wallets": "No wallets found",
+      "platform": "Platform",
+      "professional": "Professional"
     },
     "reports": {
       "title": "Reports",
@@ -1888,7 +1908,9 @@
       "penalty": "Penalty",
       "alert": "Alert",
       "verification_complete": "Verification",
-      "document_feedback": "Document"
+      "document_feedback": "Document",
+      "wallet": "Wallet",
+      "commission": "Commission"
     }
   },
   "alerts": {

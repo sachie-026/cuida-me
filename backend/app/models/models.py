@@ -578,4 +578,33 @@ class PayoutMethod(Base):
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
+
+class Wallet(Base):
+    """Dummy wallet for tracking payment splits in test/dev mode."""
+    __tablename__ = "wallets"
+    id          = Column(String, primary_key=True, default=gen_uuid)
+    owner_type  = Column(String, nullable=False)   # "professional" | "platform"
+    owner_id    = Column(String, nullable=True)     # professional.id or NULL for platform
+    balance     = Column(Float, default=0.0)
+    currency    = Column(String, default="BRL")
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
+
+    transactions = relationship("WalletTransaction", back_populates="wallet")
+
+
+class WalletTransaction(Base):
+    """Individual credit/debit entries in a wallet."""
+    __tablename__ = "wallet_transactions"
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    wallet_id       = Column(String, ForeignKey("wallets.id"), nullable=False, index=True)
+    booking_id      = Column(String, nullable=True)
+    payment_id      = Column(String, nullable=True)
+    amount          = Column(Float, nullable=False)
+    tx_type         = Column(String, nullable=False)  # "credit" | "debit" | "refund"
+    description     = Column(String, nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    wallet = relationship("Wallet", back_populates="transactions")
+
     user = relationship("User", backref="payout_methods")
