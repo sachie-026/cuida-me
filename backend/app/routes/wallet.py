@@ -6,7 +6,7 @@ Professionals see their own wallet; admins see platform wallet + all wallets.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth_deps import get_current_user, require_admin
 from app.models.models import User, Professional, Wallet, WalletTransaction
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
