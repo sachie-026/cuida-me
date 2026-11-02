@@ -407,6 +407,17 @@ def confirm_payment(payment_id: str, db: Session = Depends(get_db), current: Use
                 "amount": f"{payment.amount:.2f}",
             }, recipient_users={"client": [client_user]})
             db.commit()
+
+            # ── Notify: admin.payment_received → admins ──
+            admins = db.query(User).filter(User.role == "admin").all()
+            if admins:
+                fire_event(db, "admin.payment_received", {
+                    "client_name": (client_user.full_name if client_user else "Cliente"),
+                    "amount": f"{payment.amount:.2f}",
+                    "service": booking.service_type or "Cuidado",
+                    "booking_code": f"#{booking.id[:6].upper()}",
+                }, recipient_users={"admin": admins})
+                db.commit()
     except Exception as e:
         print(f"[NOTIFY] payment.authorized error: {e}")
 
@@ -496,6 +507,34 @@ def release_payment(booking_id: str, db: Session = Depends(get_db), current: Use
                 "booking_id": booking.id,
                 "service": booking.service_type or "Cuidado",
             }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+            # ── Notify: payment.wallet_credited → professional ──
+            fire_event(db, "payment.wallet_credited", {
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+        # ── Notify: admin.payment_released + admin.commission_received → admins ──
+        admins = db.query(User).filter(User.role == "admin").all()
+        if admins:
+            fire_event(db, "admin.payment_released", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "commission": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"admin": admins})
+            db.commit()
+
+            fire_event(db, "admin.commission_received", {
+                "amount": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+            }, recipient_users={"admin": admins})
             db.commit()
     except Exception as e:
         print(f"[NOTIFY] payment.released_to_professional error: {e}")
@@ -604,6 +643,17 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                         "amount": f"{payment.amount:.2f}",
                     }, recipient_users={"client": [client_user]})
                     db.commit()
+
+                    # ── Notify: admin.payment_received → admins (webhook) ──
+                    admins = db.query(User).filter(User.role == "admin").all()
+                    if admins:
+                        fire_event(db, "admin.payment_received", {
+                            "client_name": (client_user.full_name if client_user else "Cliente"),
+                            "amount": f"{payment.amount:.2f}",
+                            "service": booking.service_type or "Cuidado",
+                            "booking_code": f"#{booking.id[:6].upper()}",
+                        }, recipient_users={"admin": admins})
+                        db.commit()
             except Exception as e:
                 print(f"[NOTIFY] payment.authorized (webhook) error: {e}")
 
@@ -788,6 +838,34 @@ def _do_release_payment(payment: Payment, booking: Booking, db: Session):
                 "booking_id": booking.id,
                 "service": booking.service_type or "Cuidado",
             }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+            # ── Notify: payment.wallet_credited → professional ──
+            fire_event(db, "payment.wallet_credited", {
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+
+        # ── Notify: admin.payment_released + admin.commission_received → admins ──
+        admins = db.query(User).filter(User.role == "admin").all()
+        if admins:
+            fire_event(db, "admin.payment_released", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "amount": f"{(payment.pro_payout or 0):.2f}",
+                "commission": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+            }, recipient_users={"admin": admins})
+            db.commit()
+
+            fire_event(db, "admin.commission_received", {
+                "amount": f"{(payment.commission or 0):.2f}",
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+            }, recipient_users={"admin": admins})
             db.commit()
     except Exception as e:
         print(f"[NOTIFY] payment.released_to_professional error: {e}")

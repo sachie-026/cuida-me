@@ -451,3 +451,132 @@ def seed_notification_events(db: Session):
 
     db.commit()
     print(f"[SEED] Done: {count_events} events, {count_rules} rules, {count_templates} templates, {count_schedules} schedules.")
+
+
+# ── Additional events added post-initial seed ────────────────────────────────
+# These are inserted individually (checking by event_key) so they work even
+# when the main seed above has already run and skipped.
+
+ADDITIONAL_EVENTS = [
+    # Admin: notified when a new booking is requested
+    ("admin.booking_requested", "admin", "Admin notified of new booking request",
+     ["client_name", "professional_name", "service", "booking_date", "booking_time", "booking_code"], [
+        ("admin", ["in_app"], "normal", True, "/admin/bookings", [
+            ("in_app", "Nova reserva solicitada",
+             "{{client_name}} solicitou {{service}} com {{professional_name}} para {{booking_date}} às {{booking_time}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Admin: notified when a booking is accepted
+    ("admin.booking_accepted", "admin", "Admin notified booking was accepted",
+     ["professional_name", "client_name", "service", "booking_date", "booking_code"], [
+        ("admin", ["in_app"], "normal", True, "/admin/bookings", [
+            ("in_app", "Reserva aceita",
+             "{{professional_name}} aceitou o serviço de {{service}} para {{client_name}} em {{booking_date}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Admin: notified when payment is received (authorized)
+    ("admin.payment_received", "admin", "Admin notified of payment received",
+     ["client_name", "amount", "service", "booking_code"], [
+        ("admin", ["in_app"], "normal", True, "/admin/payments", [
+            ("in_app", "Pagamento recebido",
+             "Pagamento de R$ {{amount}} recebido de {{client_name}} para {{service}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Admin: notified when payment is released to professional
+    ("admin.payment_released", "admin", "Admin notified payment released to professional",
+     ["professional_name", "amount", "commission", "service", "booking_code"], [
+        ("admin", ["in_app"], "normal", True, "/admin/payments", [
+            ("in_app", "Pagamento liberado",
+             "R$ {{amount}} liberado para {{professional_name}} (comissão: R$ {{commission}}). Serviço: {{service}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Professional: wallet credited notification
+    ("payment.wallet_credited", "payment", "Professional wallet credited after payment release",
+     ["amount", "service", "booking_code"], [
+        ("professional", ["in_app"], "normal", True, "/earnings", [
+            ("in_app", "Carteira creditada 💰",
+             "R$ {{amount}} foi creditado na sua carteira referente ao serviço de {{service}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Admin: platform wallet commission credited
+    ("admin.commission_received", "admin", "Platform commission credited to wallet",
+     ["amount", "service", "booking_code", "professional_name"], [
+        ("admin", ["in_app"], "normal", True, "/admin/wallet", [
+            ("in_app", "Comissão recebida",
+             "Comissão de R$ {{amount}} creditada ({{service}} — {{professional_name}}). Código: {{booking_code}}."),
+        ], []),
+    ]),
+]
+
+
+def seed_missing_events(db: Session):
+    """
+    Seed additional notification events that were added after the initial seed.
+    Checks each event_key individually — safe to run multiple times.
+    """
+    added = 0
+    for event_key, category, description, variables, rules_data in ADDITIONAL_EVENTS:
+        existing = db.query(NotificationEvent).filter(
+            NotificationEvent.event_key == event_key
+        ).first()
+        if existing:
+            continue
+
+        event = NotificationEvent(
+            event_key=event_key,
+            category=category,
+            description=description,
+            variables=variables,
+        )
+        db.add(event)
+        db.flush()
+
+        for recipient, channels, priority, is_mandatory, action_link, templates, schedules in rules_data:
+            rule = NotificationRule(
+                event_id=event.id,
+                recipient=recipient,
+                channels=channels,
+                priority=priority,
+                is_active=True,
+                is_mandatory=is_mandatory,
+                action_link=action_link,
+            )
+            db.add(rule)
+            db.flush()
+
+            for tmpl_data in templates:
+                channel = tmpl_data[0]
+                title = tmpl_data[1]
+                body = tmpl_data[2]
+                email_subject = tmpl_data[3] if len(tmpl_data) > 3 else None
+                template = NotificationTemplate(
+                    rule_id=rule.id,
+                    channel=channel,
+                    language="pt-BR",
+                    title=title,
+                    body=body,
+                    email_subject=email_subject,
+                )
+                db.add(template)
+
+            for offset_minutes, reference in schedules:
+                schedule = NotificationSchedule(
+                    rule_id=rule.id,
+                    offset_minutes=offset_minutes,
+                    reference=reference,
+                    is_active=True,
+                )
+                db.add(schedule)
+
+        added += 1
+
+    if added:
+        db.commit()
+        print(f"[SEED] Added {added} new notification events.")
+    else:
+        print("[SEED] No new notification events to add.")

@@ -1908,7 +1908,9 @@
       "penalty": "Penalty",
       "alert": "Alert",
       "verification_complete": "Verification",
-      "document_feedback": "Document"
+      "document_feedback": "Document",
+      "wallet": "Wallet",
+      "commission": "Commission"
     }
   },
   "alerts": {

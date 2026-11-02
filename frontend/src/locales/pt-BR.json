@@ -1909,7 +1909,9 @@
       "penalty": "Penalidade",
       "alert": "Alerta",
       "verification_complete": "Verificação",
-      "document_feedback": "Documento"
+      "document_feedback": "Documento",
+      "wallet": "Carteira",
+      "commission": "Comissão"
     }
   },
   "alerts": {

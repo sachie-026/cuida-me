@@ -400,7 +400,7 @@ run_migrations()
 # Seed notification events (idempotent — skips if already seeded)
 def _seed_notifications():
     from app.core.database import SessionLocal
-    from app.utils.seed_notification_events import seed_notification_events
+    from app.utils.seed_notification_events import seed_notification_events, seed_missing_events
     db = SessionLocal()
     try:
         seed_notification_events(db)
@@ -409,6 +409,16 @@ def _seed_notifications():
         db.rollback()
     finally:
         db.close()
+
+    # Seed any new events added after initial deploy
+    db2 = SessionLocal()
+    try:
+        seed_missing_events(db2)
+    except Exception as e:
+        print(f"[SEED] Error seeding missing events: {e}")
+        db2.rollback()
+    finally:
+        db2.close()
 
 _seed_notifications()
 
