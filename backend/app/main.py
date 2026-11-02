@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
-from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, payout_methods
+from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, payout_methods, wallet
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -365,6 +365,26 @@ def run_migrations():
             had_payments INTEGER DEFAULT 0,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )""",
+        # Wallets: dummy payment tracking for test/dev mode
+        """CREATE TABLE IF NOT EXISTS wallets (
+            id VARCHAR PRIMARY KEY,
+            owner_type VARCHAR NOT NULL,
+            owner_id VARCHAR,
+            balance FLOAT DEFAULT 0.0,
+            currency VARCHAR DEFAULT 'BRL',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        """CREATE TABLE IF NOT EXISTS wallet_transactions (
+            id VARCHAR PRIMARY KEY,
+            wallet_id VARCHAR NOT NULL REFERENCES wallets(id),
+            booking_id VARCHAR,
+            payment_id VARCHAR,
+            amount FLOAT NOT NULL,
+            tx_type VARCHAR NOT NULL,
+            description VARCHAR,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -427,6 +447,7 @@ app.include_router(alice.router,        prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(settings.router,      prefix="/api")
 app.include_router(payout_methods.router, prefix="/api")
+app.include_router(wallet.router,         prefix="/api")
 
 @app.post("/api/seed-test-accounts")
 def seed_test_accounts(

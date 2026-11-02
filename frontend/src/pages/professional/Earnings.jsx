@@ -18,6 +18,8 @@ const EarningsPage = () => {
 
   const [tab, setTab] = useState("overview"); // overview, history, bank
   const [earnings, setEarnings] = useState({ available: 0, pending: 0, total: 0, weekly: 0, monthly: 0 });
+  const [walletBalance, setWalletBalance] = useState(null);
+  const [walletTxns, setWalletTxns] = useState([]);
   const [payments, setPayments] = useState([]);
   const [bankAccount, setBankAccount] = useState({ bank: "", agency: "", account: "", pix_key: "" });
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,8 @@ const EarningsPage = () => {
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/bookings/my-bookings`, { headers }).catch(() => ({ data: [] })),
-    ]).then(([bookRes]) => {
+      axios.get(`${API}/api/wallet/my`, { headers }).catch(() => ({ data: null })),
+    ]).then(([bookRes, walletRes]) => {
       const bookings = Array.isArray(bookRes.data) ? bookRes.data : [];
       const completed = bookings.filter(b => b.status === "completed");
       const now = new Date();
@@ -40,6 +43,12 @@ const EarningsPage = () => {
 
       setEarnings({ available: total, pending, total, weekly, monthly });
       setPayments(completed.slice(0, 20));
+
+      // Wallet data
+      if (walletRes.data && walletRes.data.balance !== undefined) {
+        setWalletBalance(walletRes.data.balance);
+        setWalletTxns(walletRes.data.transactions || []);
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -79,6 +88,18 @@ const EarningsPage = () => {
               <p className="text-sm opacity-80 mb-1">{t("pro_earnings.available_balance")}</p>
               <p className="text-3xl font-bold">R$ {earnings.available.toFixed(2)}</p>
             </div>
+            {/* Wallet Balance */}
+            {walletBalance !== null && (
+              <div className="card p-5 border-l-4 border-blue-500">
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet size={16} className="text-blue-500"/>
+                  <p className="text-sm font-semibold text-slate-600">{t("pro_earnings.wallet_balance")}</p>
+                </div>
+                <p className="text-2xl font-bold text-navy">R$ {walletBalance.toFixed(2)}</p>
+                <p className="text-xs text-slate-400 mt-1">{t("pro_earnings.wallet_desc")}</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="card p-4">
                 <div className="flex items-center gap-2 mb-1"><TrendingUp size={14} className="text-blue-500"/><p className="text-xs text-slate-500">{t("pro_earnings.weekly")}</p></div>
@@ -102,23 +123,46 @@ const EarningsPage = () => {
 
         {/* Payment History */}
         {tab === "history" && (
-          <div className="card p-6">
-            <h3 className="font-semibold text-navy mb-4">{t("pro_earnings.payment_history")}</h3>
-            {payments.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-6">{t("pro_earnings.no_payments")}</p>
-            ) : (
-              <div className="space-y-3">
-                {payments.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
-                    <div>
-                      <p className="text-sm font-semibold text-navy">{p.service_type || t("pro_earnings.service_default")}</p>
-                      <p className="text-xs text-slate-500">{p.scheduled_start && new Date(p.scheduled_start).toLocaleDateString("pt-BR")}</p>
+          <div className="space-y-6">
+            {/* Wallet Transactions */}
+            {walletTxns.length > 0 && (
+              <div className="card p-6">
+                <h3 className="font-semibold text-navy mb-4">{t("pro_earnings.wallet_transactions")}</h3>
+                <div className="space-y-3">
+                  {walletTxns.map((tx) => (
+                    <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
+                      <div>
+                        <p className="text-sm font-semibold text-navy">{tx.description || t("pro_earnings.wallet_credit")}</p>
+                        <p className="text-xs text-slate-500">{tx.created_at && new Date(tx.created_at).toLocaleDateString("pt-BR")}</p>
+                      </div>
+                      <span className={`text-sm font-bold ${tx.tx_type === "credit" ? "text-green-600" : "text-red-500"}`}>
+                        {tx.tx_type === "credit" ? "+" : "-"} R$ {Math.abs(tx.amount).toFixed(2)}
+                      </span>
                     </div>
-                    <span className="text-sm font-bold text-green-600">R$ {(p.pro_payout || 0).toFixed(2)}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Booking-based History */}
+            <div className="card p-6">
+              <h3 className="font-semibold text-navy mb-4">{t("pro_earnings.payment_history")}</h3>
+              {payments.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">{t("pro_earnings.no_payments")}</p>
+              ) : (
+                <div className="space-y-3">
+                  {payments.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50">
+                      <div>
+                        <p className="text-sm font-semibold text-navy">{p.service_type || t("pro_earnings.service_default")}</p>
+                        <p className="text-xs text-slate-500">{p.scheduled_start && new Date(p.scheduled_start).toLocaleDateString("pt-BR")}</p>
+                      </div>
+                      <span className="text-sm font-bold text-green-600">R$ {(p.pro_payout || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
