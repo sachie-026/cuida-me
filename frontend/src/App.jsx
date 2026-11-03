@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
-import { Toaster } from "react-hot-toast";
+import DismissibleToaster from "./components/common/DismissibleToaster";
 import "./i18n";
 
 import Navbar          from "./components/layout/Navbar";
@@ -52,7 +52,7 @@ function App() {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <BrowserRouter>
-        <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+        <DismissibleToaster />
         <Routes>
           {/* Public */}
           <Route path="/"        element={<PublicLayout><Home /></PublicLayout>} />
