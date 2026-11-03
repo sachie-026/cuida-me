@@ -578,6 +578,8 @@ class PayoutMethod(Base):
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
+    user = relationship("User", backref="payout_methods")
+
 
 class Wallet(Base):
     """Dummy wallet for tracking payment splits in test/dev mode."""
@@ -606,5 +608,3 @@ class WalletTransaction(Base):
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
     wallet = relationship("Wallet", back_populates="transactions")
-
-    user = relationship("User", backref="payout_methods")
