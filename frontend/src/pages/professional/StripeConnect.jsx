@@ -212,30 +212,6 @@ const StripeConnectPage = () => {
           )}
         </div>
 
-        {/* Info Card */}
-        <div className="bg-white rounded-xl shadow-sm border p-5 space-y-3">
-          <h3 className="font-semibold text-gray-800">
-            {t("stripe_connect.how_it_works", "Como funciona?")}
-          </h3>
-          <div className="space-y-2 text-sm text-gray-600">
-            <div className="flex items-start gap-2">
-              <span className="bg-purple-100 text-purple-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
-              <p>{t("stripe_connect.step_1", "O cliente paga o valor total do serviço.")}</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="bg-purple-100 text-purple-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
-              <p>{t("stripe_connect.step_2", "O pagamento fica retido até a conclusão do atendimento.")}</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="bg-purple-100 text-purple-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
-              <p>{t("stripe_connect.step_3", "Após o cliente confirmar (ou 24h automático), o pagamento é dividido.")}</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="bg-purple-100 text-purple-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">4</span>
-              <p>{t("stripe_connect.step_4", "Você recebe 88% direto na sua conta. CuidaU retém 12% de comissão.")}</p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
