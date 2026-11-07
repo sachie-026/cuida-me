@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import DismissibleToaster from "./components/common/DismissibleToaster";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 import "./i18n";
 
 import Navbar          from "./components/layout/Navbar";
@@ -50,6 +51,7 @@ const PublicLayout = ({ children }) => (
 
 function App() {
   return (
+    <ErrorBoundary>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <BrowserRouter>
         <DismissibleToaster />
@@ -101,6 +103,7 @@ function App() {
       <AliceChatWidget />
       </BrowserRouter>
     </GoogleOAuthProvider>
+    </ErrorBoundary>
   );
 }
 
