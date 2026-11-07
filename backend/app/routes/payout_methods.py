@@ -103,11 +103,7 @@ def _serialize(pm: PayoutMethod) -> dict:
 
 
 def _get_user_cpf(user: User, db: Session) -> str:
-    """Get the CPF from the user's professional profile."""
-    from app.models.models import Professional
-    pro = db.query(Professional).filter(Professional.user_id == user.id).first()
-    if pro and pro.cpf:
-        return clean_cpf(pro.cpf)
+    """Get the CPF from the user record."""
     return clean_cpf(getattr(user, "cpf", "") or "")
 
 
