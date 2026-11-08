@@ -9,6 +9,7 @@ import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
 import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -92,7 +93,7 @@ const ProfessionalDashboard = () => {
   const pending   = bookings.filter(b => b.status === "pending");
 
   const stats = [
-    { icon: <DollarSign size={18} className="text-green-500" />,  label: t("pro_dashboard.stat_earnings"),       value: `R$${earnings.toFixed(0)}`,                          accent: true },
+    { icon: <DollarSign size={18} className="text-green-500" />,  label: t("pro_dashboard.stat_earnings"),       value: formatBRL(earnings, false),                          accent: true },
     { icon: <CalendarDays size={18} className="text-blue-500" />, label: t("pro_dashboard.stat_appointments"),   value: total },
     { icon: <Star size={18} className="text-amber-500" />,        label: t("pro_dashboard.stat_completed"),      value: completed },
     { icon: <CheckCircle size={18} className="text-green-500" />, label: t("pro_dashboard.stat_completion_rate"),value: total ? `${Math.round(completed / total * 100)}%` : "–", accent: true },
@@ -201,11 +202,11 @@ const ProfessionalDashboard = () => {
                     <div>
                       <p className="font-semibold text-navy text-sm">{b.service_type}</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {new Date(b.scheduled_start).toLocaleString("pt-BR")} → {new Date(b.scheduled_end).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(b.scheduled_start).toLocaleDateString("pt-BR")} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} → {new Date(b.scheduled_end).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="font-bold text-green-600 text-sm">R${b.pro_payout?.toFixed(0)}</span>
+                      <span className="font-bold text-green-600 text-sm">{formatBRL(b.pro_payout, false)}</span>
                       <button onClick={() => handleAccept(b.id)} className="btn-primary text-xs px-3 py-1.5">{t("pro_dashboard.btn_accept")}</button>
                       <button onClick={() => handleDecline(b.id)} className="btn-outline text-xs px-3 py-1.5">{t("pro_dashboard.btn_decline")}</button>
                     </div>
@@ -232,7 +233,7 @@ const ProfessionalDashboard = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-navy truncate">{b.service_type}</p>
-                    <p className="text-xs text-slate-500">R${b.pro_payout?.toFixed(0)} {t("pro_dashboard.net")}</p>
+                    <p className="text-xs text-slate-500">{formatBRL(b.pro_payout, false)} {t("pro_dashboard.net")}</p>
                   </div>
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[b.status]}`}>
                     {t(`pro_dashboard.status.${b.status}`)}

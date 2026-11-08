@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -610,7 +611,7 @@ const NewBooking = () => {
                       <div className="flex flex-col items-end gap-2 flex-shrink-0">
                         {proPrice ? (
                           <div className="text-right">
-                            <p className="text-lg font-bold text-green-700">R$ {Number(proPrice).toFixed(0)}</p>
+                            <p className="text-lg font-bold text-green-700">{formatBRL(proPrice, false)}</p>
                             <p className="text-[10px] text-slate-400">{t("client_booking.estimated_value")}</p>
                           </div>
                         ) : (
@@ -639,7 +640,7 @@ const NewBooking = () => {
               <div className="flex justify-between"><span className="text-slate-500">{t("client_booking.confirm_pro")}</span><span className="font-medium text-navy">{selectedPro.full_name||"—"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">{t("client_booking.confirm_service")}</span><span className="font-medium text-navy">{selectedSvcs.length} {t("client_booking.confirm_services_count")}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">{t("client_booking.confirm_duration")}</span><span className="font-medium text-navy">{priceResult.duration_hours}h ({priceResult.duration_minutes}min)</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">{t("client_booking.confirm_date")}</span><span className="font-medium text-navy">{new Date(`${date}T${startTime}`).toLocaleString("pt-BR")} – {endTime}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">{t("client_booking.confirm_date")}</span><span className="font-medium text-navy">{new Date(`${date}T${startTime}`).toLocaleDateString("pt-BR")} · {new Date(`${date}T${startTime}`).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} – {endTime}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">{t("client_booking.confirm_patient")}</span><span className="font-medium text-navy">{patientMode==="myself"?(patient?.patient_name||t("client_booking.patient_myself")):patientForm.patient_name}</span></div>
             </div>
 
@@ -653,7 +654,7 @@ const NewBooking = () => {
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="p-5 text-center">
                 <p className="text-xs text-slate-500 mb-1">{t("client_booking.total_value")}</p>
-                <p className="text-3xl font-bold text-navy">R${priceResult.total?.toFixed(2)}</p>
+                <p className="text-3xl font-bold text-navy">{formatBRL(priceResult.total)}</p>
                 <p className="text-xs text-slate-400 mt-2">💳 {t("client_booking.payment_after_confirm")}</p>
               </div>
             </div>
@@ -672,7 +673,7 @@ const NewBooking = () => {
             <button onClick={handleConfirm} disabled={submitting}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60">
               <CheckCircle size={16}/>
-              {submitting?t("client_booking.confirming"):`${t("client_booking.confirm_booking")} · R$${priceResult.total?.toFixed(2)}`}
+              {submitting?t("client_booking.confirming"):`${t("client_booking.confirm_booking")} · ${formatBRL(priceResult.total)}`}
             </button>
           </div>
         )}

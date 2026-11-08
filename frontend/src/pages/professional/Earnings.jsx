@@ -6,6 +6,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -86,7 +87,7 @@ const EarningsPage = () => {
           <div className="space-y-4">
             <div className="card p-6 bg-gradient-to-br from-green-500 to-green-600 text-white">
               <p className="text-sm opacity-80 mb-1">{t("pro_earnings.available_balance")}</p>
-              <p className="text-3xl font-bold">R$ {earnings.available.toFixed(2)}</p>
+              <p className="text-3xl font-bold">{formatBRL(earnings.available)}</p>
             </div>
             {/* Wallet Balance */}
             {walletBalance !== null && (
@@ -95,7 +96,7 @@ const EarningsPage = () => {
                   <Wallet size={16} className="text-blue-500"/>
                   <p className="text-sm font-semibold text-slate-600">{t("pro_earnings.wallet_balance")}</p>
                 </div>
-                <p className="text-2xl font-bold text-navy">R$ {walletBalance.toFixed(2)}</p>
+                <p className="text-2xl font-bold text-navy">{formatBRL(walletBalance)}</p>
                 <p className="text-xs text-slate-400 mt-1">{t("pro_earnings.wallet_desc")}</p>
               </div>
             )}
@@ -103,19 +104,19 @@ const EarningsPage = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="card p-4">
                 <div className="flex items-center gap-2 mb-1"><TrendingUp size={14} className="text-blue-500"/><p className="text-xs text-slate-500">{t("pro_earnings.weekly")}</p></div>
-                <p className="text-lg font-bold text-navy">R$ {earnings.weekly.toFixed(2)}</p>
+                <p className="text-lg font-bold text-navy">{formatBRL(earnings.weekly)}</p>
               </div>
               <div className="card p-4">
                 <div className="flex items-center gap-2 mb-1"><Calendar size={14} className="text-purple-500"/><p className="text-xs text-slate-500">{t("pro_earnings.monthly")}</p></div>
-                <p className="text-lg font-bold text-navy">R$ {earnings.monthly.toFixed(2)}</p>
+                <p className="text-lg font-bold text-navy">{formatBRL(earnings.monthly)}</p>
               </div>
               <div className="card p-4">
                 <div className="flex items-center gap-2 mb-1"><Wallet size={14} className="text-green-500"/><p className="text-xs text-slate-500">{t("pro_earnings.total")}</p></div>
-                <p className="text-lg font-bold text-navy">R$ {earnings.total.toFixed(2)}</p>
+                <p className="text-lg font-bold text-navy">{formatBRL(earnings.total)}</p>
               </div>
               <div className="card p-4">
                 <div className="flex items-center gap-2 mb-1"><DollarSign size={14} className="text-amber-500"/><p className="text-xs text-slate-500">{t("pro_earnings.pending")}</p></div>
-                <p className="text-lg font-bold text-navy">R$ {earnings.pending.toFixed(2)}</p>
+                <p className="text-lg font-bold text-navy">{formatBRL(earnings.pending)}</p>
               </div>
             </div>
           </div>
@@ -136,7 +137,7 @@ const EarningsPage = () => {
                         <p className="text-xs text-slate-500">{tx.created_at && new Date(tx.created_at).toLocaleDateString("pt-BR")}</p>
                       </div>
                       <span className={`text-sm font-bold ${tx.tx_type === "credit" ? "text-green-600" : "text-red-500"}`}>
-                        {tx.tx_type === "credit" ? "+" : "-"} R$ {Math.abs(tx.amount).toFixed(2)}
+                        {tx.tx_type === "credit" ? "+" : "-"} {formatBRL(Math.abs(tx.amount))}
                       </span>
                     </div>
                   ))}
@@ -157,7 +158,7 @@ const EarningsPage = () => {
                         <p className="text-sm font-semibold text-navy">{p.service_type || t("pro_earnings.service_default")}</p>
                         <p className="text-xs text-slate-500">{p.scheduled_start && new Date(p.scheduled_start).toLocaleDateString("pt-BR")}</p>
                       </div>
-                      <span className="text-sm font-bold text-green-600">R$ {(p.pro_payout || 0).toFixed(2)}</span>
+                      <span className="text-sm font-bold text-green-600">{formatBRL(p.pro_payout || 0)}</span>
                     </div>
                   ))}
                 </div>

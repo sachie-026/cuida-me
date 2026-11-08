@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { X, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -79,7 +80,7 @@ const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancel
               <p className="text-xs text-slate-600">{result.policy}</p>
               {result.refund && result.refund.refund_amount > 0 && (
                 <p className="text-sm font-bold text-green-700 mt-2">
-                  {t("cancel_booking.refund_label")} R$ {result.refund.refund_amount.toFixed(2)} ({result.refund.refund_pct}%)
+                  {t("cancel_booking.refund_label")} {formatBRL(result.refund.refund_amount)} ({result.refund.refund_pct}%)
                 </p>
               )}
             </div>
@@ -93,7 +94,7 @@ const CancelBookingModal = ({ booking, cancelledBy = "client", onClose, onCancel
               <p className="text-sm font-medium text-navy">{t(`cancel_booking.policy.${policyKey}`)}</p>
               {booking.total_price && refundPct > 0 && (
                 <p className="text-xs text-slate-500 mt-1">
-                  {t("cancel_booking.estimated_refund")} R$ {(booking.total_price * refundPct / 100).toFixed(2)}
+                  {t("cancel_booking.estimated_refund")} {formatBRL(booking.total_price * refundPct / 100)}
                 </p>
               )}
             </div>

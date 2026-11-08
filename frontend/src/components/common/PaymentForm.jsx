@@ -5,6 +5,7 @@ import { Elements, CardElement, useStripe, useElements } from "@stripe/react-str
 import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -144,7 +145,7 @@ const CardPaymentInner = ({ bookingId, amount, method, onPaymentComplete, savedM
       <button onClick={handlePay} disabled={loading || (!useNewCard && !selectedSaved)}
         className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 py-3">
         {loading ? <><Loader size={16} className="animate-spin" /> {t("payment_form.processing")}</> :
-          t("payment_form.confirm_pay", { amount: Number(amount).toFixed(2) })}
+          t("payment_form.confirm_pay", { amount: formatBRL(amount) })}
       </button>
     </div>
   );
@@ -265,7 +266,7 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
             }} disabled={loading}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 py-3">
               {loading ? <><Loader size={16} className="animate-spin" /> {t("payment_form.processing")}</> :
-                t("payment_form.confirm_pay", { amount: Number(amount).toFixed(2) })}
+                t("payment_form.confirm_pay", { amount: formatBRL(amount) })}
             </button>
           </div>
         ) : (
@@ -278,7 +279,7 @@ const PaymentForm = ({ bookingId, amount, onPaymentComplete }) => {
         <button onClick={initiatePix} disabled={loading}
           className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 py-3">
           {loading ? <><Loader size={16} className="animate-spin" /> {t("payment_form.generating_pix")}</> :
-            t("payment_form.generate_pix", { amount: Number(amount).toFixed(2) })}
+            t("payment_form.generate_pix", { amount: formatBRL(amount) })}
         </button>
       )}
 

@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import { formatBRL } from "../../utils/format";
 
 const API     = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const TIMES   = Array.from({ length: 48 }, (_, i) => {
@@ -327,7 +328,7 @@ const CalendarTab = ({ userId, profId }) => {
                       </span>
                     </div>
                     <p className="text-sm font-medium text-navy">{b.service_type || t("pro_availability.default_service")}</p>
-                    {b.total_price && <p className="text-xs text-slate-500 mt-0.5">R$ {Number(b.total_price).toFixed(2)}</p>}
+                    {b.total_price && <p className="text-xs text-slate-500 mt-0.5">{formatBRL(b.total_price)}</p>}
                   </div>
                   <div className="flex gap-1.5">
                     <button onClick={() => navigate(`/messages?booking=${b.id}`)} className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold">Chat</button>
@@ -412,7 +413,7 @@ const CalendarTab = ({ userId, profId }) => {
                           <p className="text-sm font-medium text-navy">{b.service_type || t("pro_availability.default_service")}</p>
                           {/* 51a: Client name */}
                           {b.client_name && <p className="text-xs text-slate-500">{t("pro_availability.client_label")} {b.client_name}</p>}
-                          {b.total_price && <p className="text-xs text-slate-500">R$ {Number(b.total_price).toFixed(2)}</p>}
+                          {b.total_price && <p className="text-xs text-slate-500">{formatBRL(b.total_price)}</p>}
 
                           {/* 51d: Confirm/Decline actions on Pending */}
                           {b.status === "pending" && (

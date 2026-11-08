@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertCircle, Navigation, Timer } from "lucide-react";
 import CareBadges from "./CareBadges";
 import VerifiedBadge from "./VerifiedBadge";
+import { formatBRL } from "../../utils/format";
 
 const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) => {
   const { t } = useTranslation();
@@ -131,7 +132,7 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
         <div className="p-3 bg-green-50 rounded-xl mb-4 border border-green-100">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-slate-500 uppercase">{t("booking_detail.your_earnings")}</p>
-            <p className="text-lg font-bold text-green-700">R$ {Number(booking.pro_payout || booking.total_price || 0).toFixed(2)}</p>
+            <p className="text-lg font-bold text-green-700">{formatBRL(booking.pro_payout || booking.total_price || 0)}</p>
           </div>
         </div>
 

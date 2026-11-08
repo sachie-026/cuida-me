@@ -5,6 +5,7 @@ import { ChevronLeft, Calendar, CheckCircle, XCircle, Clock } from "lucide-react
 import axios from "axios";
 import Logo from "../../components/common/Logo";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -95,7 +96,7 @@ const MyActivity = () => {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-bold text-navy">R$ {(b.total_price || 0).toFixed(2)}</p>
+                    <p className="text-sm font-bold text-navy">{formatBRL(b.total_price || 0)}</p>
                     {b.cancel_reason && (
                       <p className="text-[10px] text-red-500 mt-0.5">{t("client_activity.reason")}: {b.cancel_reason.substring(0, 30)}...</p>
                     )}
