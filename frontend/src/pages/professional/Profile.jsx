@@ -10,6 +10,7 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 import VerificationCenter from "../../components/common/VerificationCenter";
 import AvailabilityCalendar from "../../components/professional/AvailabilityCalendar";
 import ProfilePhotoUpload from "../../components/common/ProfilePhotoUpload";
+import { formatBRL } from "../../utils/format";
 
 const API    = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const STATES = ["SP","RJ","MG","RS","PR","BA","CE","GO","DF","SC","PE","Outro"];
@@ -602,18 +603,18 @@ const ProfessionalProfile = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
                       <p className="text-xs font-semibold text-amber-600 uppercase mb-1">{t("pro_profile.pricing_day")}</p>
-                      <p className="text-xl font-bold text-navy">R$ {((pricingTable.day_rate * (1 + (prof.markup_pct||0)/100)) * 0.88).toFixed(2)}<span className="text-xs text-slate-400">{t("pro_profile.per_hour")}</span></p>
+                      <p className="text-xl font-bold text-navy">{formatBRL((pricingTable.day_rate * (1 + (prof.markup_pct||0)/100)) * 0.88)}<span className="text-xs text-slate-400">{t("pro_profile.per_hour")}</span></p>
                       <p className="text-[10px] text-slate-400 mt-1">{t("pro_profile.pricing_base", { rate: pricingTable.day_rate, markup: prof.markup_pct||0 })}</p>
                     </div>
                     <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200">
                       <p className="text-xs font-semibold text-indigo-600 uppercase mb-1">{t("pro_profile.pricing_night")}</p>
-                      <p className="text-xl font-bold text-navy">R$ {((pricingTable.night_rate * (1 + (prof.markup_pct||0)/100)) * 0.88).toFixed(2)}<span className="text-xs text-slate-400">{t("pro_profile.per_hour")}</span></p>
+                      <p className="text-xl font-bold text-navy">{formatBRL((pricingTable.night_rate * (1 + (prof.markup_pct||0)/100)) * 0.88)}<span className="text-xs text-slate-400">{t("pro_profile.per_hour")}</span></p>
                       <p className="text-[10px] text-slate-400 mt-1">{t("pro_profile.pricing_base", { rate: pricingTable.night_rate, markup: prof.markup_pct||0 })}</p>
                     </div>
                   </div>
                   <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200">
                     <p className="text-xs font-semibold text-green-600 uppercase mb-1">{t("pro_profile.pricing_initial_fee")}</p>
-                    <p className="text-lg font-bold text-navy">R$ {pricingTable.initial_fee?.toFixed(2)} <span className="text-xs text-slate-400">{t("pro_profile.pricing_initial_note")}</span></p>
+                    <p className="text-lg font-bold text-navy">{formatBRL(pricingTable.initial_fee)} <span className="text-xs text-slate-400">{t("pro_profile.pricing_initial_note")}</span></p>
                   </div>
                 </div>
               )}

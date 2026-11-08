@@ -131,12 +131,23 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
             if not getattr(current, 'phone_verified', False):
                 raise HTTPException(403, "Verifique seu telefone antes de agendar. Acesse Perfil → Verificar telefone.")
 
-    # Minimum advance booking = 5 hours
+    # Minimum advance booking — read from admin settings (default 5h)
     from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    hours_until = (body.scheduled_start.replace(tzinfo=timezone.utc) - now).total_seconds() / 3600
-    if hours_until < 5:
-        raise HTTPException(400, "O agendamento deve ser feito com no mínimo 5 horas de antecedência.")
+    from zoneinfo import ZoneInfo
+    from app.routes.settings import get_setting
+    min_advance = float(get_setting("min_advance_hours", db) or 5)
+    # Frontend sends naive local times (America/Sao_Paulo).
+    # Compare in the same timezone to avoid UTC offset mismatch.
+    tz_sp = ZoneInfo("America/Sao_Paulo")
+    now_local = datetime.now(tz_sp)
+    sched_local = body.scheduled_start
+    if sched_local.tzinfo is not None:
+        # If tz-aware, convert to SP
+        sched_local = sched_local.astimezone(tz_sp).replace(tzinfo=None)
+    # Both are naive São Paulo times — safe to compare
+    hours_until = (sched_local - now_local.replace(tzinfo=None)).total_seconds() / 3600
+    if hours_until < min_advance:
+        raise HTTPException(400, f"O agendamento deve ser feito com no mínimo {int(min_advance)} horas de antecedência.")
 
     patient = db.query(Patient).filter(Patient.id == body.patient_id).first()
     if not patient:

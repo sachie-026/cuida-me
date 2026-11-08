@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import { useTranslation } from "react-i18next";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -225,7 +226,7 @@ const Overview = () => {
     { label: t("admin_dashboard.overview.caregivers"),          value: stats.total_caregivers || 0, bg: "bg-blue-50",  icon: <ShieldCheck size={18} className="text-blue-400" /> },
     { label: t("admin_dashboard.overview.pending_approvals"),value: stats.pending_approvals,   bg: "bg-amber-100", icon: <ShieldCheck size={20} className="text-amber-500" /> },
     { label: t("admin_dashboard.overview.bookings"),        value: stats.total_bookings,      bg: "bg-blue-100",  icon: <CalendarDays size={20} className="text-blue-500" /> },
-    { label: t("admin_dashboard.overview.revenue"),  value: `R$${Number(stats.total_revenue).toFixed(2)}`, bg: "bg-green-100", icon: <DollarSign size={20} className="text-green-500" /> },
+    { label: t("admin_dashboard.overview.revenue"),  value: formatBRL(stats.total_revenue), bg: "bg-green-100", icon: <DollarSign size={20} className="text-green-500" /> },
   ];
   return (
     <div>
@@ -1255,8 +1256,8 @@ const BookingsPanel = () => {
                 <tr key={b.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-navy text-sm">{b.service_type}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{new Date(b.scheduled_start).toLocaleDateString("pt-BR")}</td>
-                  <td className="px-4 py-3 font-semibold text-navy text-sm">R${b.total_price?.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-green-600 font-semibold text-sm">R${b.platform_fee?.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold text-navy text-sm">{formatBRL(b.total_price)}</td>
+                  <td className="px-4 py-3 text-green-600 font-semibold text-sm">{formatBRL(b.platform_fee)}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_COLOR[b.status]}`}>{b.status}</span>
                   </td>
@@ -1303,9 +1304,9 @@ const CommissionPanel = () => {
         </div>
         <div className="bg-slate-50 rounded-xl p-4 text-sm">
           <p className="font-semibold text-navy mb-2">{t("admin_dashboard.commission.example_title", { rate })}:</p>
-          <p className="text-slate-600">{t("admin_dashboard.commission.service_of")} <strong>R$200</strong></p>
-          <p className="text-green-600">→ {t("admin_dashboard.commission.platform_receives")}: <strong>R${(200 * rate / 100).toFixed(2)}</strong></p>
-          <p className="text-blue-600">→ {t("admin_dashboard.commission.professional_receives")}: <strong>R${(200 * (1 - rate / 100)).toFixed(2)}</strong></p>
+          <p className="text-slate-600">{t("admin_dashboard.commission.service_of")} <strong>{formatBRL(200, false)}</strong></p>
+          <p className="text-green-600">→ {t("admin_dashboard.commission.platform_receives")}: <strong>{formatBRL(200 * rate / 100)}</strong></p>
+          <p className="text-blue-600">→ {t("admin_dashboard.commission.professional_receives")}: <strong>{formatBRL(200 * (1 - rate / 100))}</strong></p>
         </div>
       </div>
     </div>
@@ -1351,7 +1352,7 @@ const WalletPanel = () => {
         <div className="space-y-4">
           <div className="card p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white">
             <p className="text-sm opacity-80 mb-1">{t("admin_dashboard.wallet.platform_balance")}</p>
-            <p className="text-3xl font-bold">R$ {Number(platform.balance).toFixed(2)}</p>
+            <p className="text-3xl font-bold">{formatBRL(platform.balance)}</p>
             <p className="text-xs opacity-60 mt-1">{t("admin_dashboard.wallet.commission_collected")}</p>
           </div>
           <div className="card p-6">
@@ -1367,7 +1368,7 @@ const WalletPanel = () => {
                       <p className="text-xs text-slate-500">{tx.created_at && new Date(tx.created_at).toLocaleDateString("pt-BR")}</p>
                     </div>
                     <span className={`text-sm font-bold ${tx.tx_type === "credit" ? "text-green-600" : "text-red-500"}`}>
-                      {tx.tx_type === "credit" ? "+" : "-"} R$ {Math.abs(tx.amount).toFixed(2)}
+                      {tx.tx_type === "credit" ? "+" : "-"} {formatBRL(Math.abs(tx.amount))}
                     </span>
                   </div>
                 ))}
@@ -1390,7 +1391,7 @@ const WalletPanel = () => {
                     <p className="text-sm font-semibold text-navy">{w.owner_name}</p>
                     <p className="text-xs text-slate-500">{w.owner_type === "platform" ? t("admin_dashboard.wallet.platform") : t("admin_dashboard.wallet.professional")}</p>
                   </div>
-                  <span className="text-sm font-bold text-navy">R$ {Number(w.balance).toFixed(2)}</span>
+                  <span className="text-sm font-bold text-navy">{formatBRL(w.balance)}</span>
                 </div>
               ))}
             </div>

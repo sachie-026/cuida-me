@@ -507,7 +507,7 @@ def seed_test_accounts(
     for idx, cat in enumerate(CATEGORIES, start=1):
         user_id  = f"test-pro-{idx:03d}"
         prof_id  = f"test-prof-{idx:03d}"
-        email    = f"test.pro{idx}@cuida.test"
+        email    = f"test.pro{idx}@cuidau.com.br"
         cpf      = f"999.999.{idx:03d}-00"
         coren    = f"{cat['coren_prefix']}{idx:03d}" if cat["role"] != "caregiver" else ""
 
@@ -572,7 +572,7 @@ def seed_test_accounts(
     created_clients = []
     for ci, (name, slug) in enumerate(CLIENT_NAMES, start=1):
         client_id = f"test-client-{ci:03d}"
-        client_email = f"test.{slug}@cuida.test"
+        client_email = f"test.{slug}@cuidau.com.br"
 
         if db.query(User).filter(User.id == client_id).first():
             created_clients.append({"id": client_id, "email": client_email, "password": "Test@2026", "status": "already_exists"})

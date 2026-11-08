@@ -10,6 +10,7 @@ import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
 import RatingModal from "../../components/common/RatingModal";
 import PaymentForm from "../../components/common/PaymentForm";
+import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -167,7 +168,7 @@ const ClientDashboard = () => {
                 <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 transition-colors gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-navy text-sm truncate">{b.service_type}</p>
-                    <p className="text-xs text-slate-500">{new Date(b.scheduled_start).toLocaleString("pt-BR")} · R${b.total_price?.toFixed(0)}</p>
+                    <p className="text-xs text-slate-500">{new Date(b.scheduled_start).toLocaleDateString("pt-BR")} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {formatBRL(b.total_price, false)}</p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor(b.status)}`}>
@@ -222,7 +223,7 @@ const ClientDashboard = () => {
               <div>
                 <h3 className="font-display font-bold text-navy">Pagamento</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {payingBooking.service_type} · R$ {payingBooking.total_price?.toFixed(2)}
+                  {payingBooking.service_type} · {formatBRL(payingBooking.total_price)}
                 </p>
               </div>
               <button onClick={() => setPayingBooking(null)}
