@@ -2060,7 +2060,21 @@
     "accept": "Aceitar",
     "decline": "Recusar",
     "chat_client": "Conversar com cliente",
-    "close": "Fechar"
+    "call": "Ligar",
+    "open_waze": "Abrir no Waze",
+    "patient": "Paciente",
+    "rate_client": "Avaliar cliente",
+    "close": "Fechar",
+    "status": {
+      "pending": "Pendente",
+      "accepted": "Aceito",
+      "professional_arrived": "Chegou",
+      "checked_in": "Em andamento",
+      "completed": "Concluído",
+      "cancelled": "Cancelado",
+      "no_show": "Ausência",
+      "under_review": "Em análise"
+    }
   },
   "care_badges": {
     "services": {

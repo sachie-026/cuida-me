@@ -273,9 +273,58 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
     if not prof: raise HTTPException(404, "Professional not found")
     if prof.user_id != current.id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
-    return db.query(Booking).filter(
+
+    from zoneinfo import ZoneInfo
+    tz_sp = ZoneInfo("America/Sao_Paulo")
+    now_sp = datetime.now(tz_sp)
+
+    bookings = db.query(Booking).filter(
         Booking.professional_id == professional_id
     ).order_by(Booking.scheduled_start.desc()).all()
+
+    # Auto-expire past pending bookings / auto-complete past accepted
+    for b in bookings:
+        end_dt = b.scheduled_end
+        if end_dt and end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=tz_sp)
+        if end_dt and end_dt < now_sp:
+            if b.status == BookingStatus.pending:
+                b.status = BookingStatus.cancelled
+                b.cancel_reason = "Expirado automaticamente"
+                b.cancelled_by = "system"
+                b.cancelled_at = datetime.now(timezone.utc)
+            elif b.status == BookingStatus.accepted:
+                b.status = BookingStatus.completed
+    db.commit()
+
+    # Enrich with client/patient info for the frontend
+    result = []
+    for b in bookings:
+        row = {c.name: getattr(b, c.name) for c in b.__table__.columns}
+        # Serialize enums
+        if row.get("status"):
+            row["status"] = row["status"].value if hasattr(row["status"], "value") else str(row["status"])
+        # Client info from user_id
+        client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
+        row["client_name"] = client_user.full_name if client_user else "Cliente"
+        row["client_phone"] = client_user.phone if client_user else None
+        row["client_verified"] = bool(client_user and client_user.phone_verified) if client_user else False
+        # Patient info
+        patient = db.query(Patient).filter(Patient.id == b.patient_id).first() if b.patient_id else None
+        row["patient_name"] = patient.patient_name if patient else None
+        row["address"] = patient.address if patient else None
+        row["city"] = None
+        if patient and patient.address:
+            parts = patient.address.split(",")
+            row["city"] = parts[-2].strip() if len(parts) >= 2 else parts[0].strip()
+            row["approximate_location"] = row["city"]
+        else:
+            row["approximate_location"] = None
+        row["latitude"] = patient.latitude if patient else None
+        row["longitude"] = patient.longitude if patient else None
+        result.append(row)
+
+    return result
 
 @router.patch("/{booking_id}/accept")
 def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Session = Depends(get_db), current: User = Depends(get_current_user)):

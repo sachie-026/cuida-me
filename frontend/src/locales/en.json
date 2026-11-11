@@ -2059,7 +2059,21 @@
     "accept": "Accept",
     "decline": "Decline",
     "chat_client": "Chat with client",
-    "close": "Close"
+    "call": "Call",
+    "open_waze": "Open in Waze",
+    "patient": "Patient",
+    "rate_client": "Rate client",
+    "close": "Close",
+    "status": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "professional_arrived": "Arrived",
+      "checked_in": "In progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "no_show": "No show",
+      "under_review": "Under review"
+    }
   },
   "care_badges": {
     "services": {
