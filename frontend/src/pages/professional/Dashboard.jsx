@@ -9,6 +9,7 @@ import LanguageSwitcher from "../../components/common/LanguageSwitcher";
 import ProfileMenu from "../../components/common/ProfileMenu";
 import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
+import BookingDetailModal from "../../components/common/BookingDetailModal";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -37,6 +38,7 @@ const ProfessionalDashboard = () => {
   const [stripeConnected, setStripeConnected] = useState(true); // assume connected to avoid flash
   const [loading,        setLoading]        = useState(true);
   const [cancellingBooking, setCancellingBooking] = useState(null);
+  const [selectedBooking, setSelectedBooking] = useState(null);
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -227,7 +229,8 @@ const ProfessionalDashboard = () => {
           ) : (
             <div className="space-y-3">
               {bookings.map((b, i) => (
-                <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50">
+                <div key={i} onClick={() => setSelectedBooking(b)}
+                  className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
                   <div className="text-xs font-bold text-blue-500 w-20 flex-shrink-0">
                     {new Date(b.scheduled_start).toLocaleDateString("pt-BR")}
                   </div>
@@ -239,7 +242,7 @@ const ProfessionalDashboard = () => {
                     {t(`pro_dashboard.status.${b.status}`)}
                   </span>
                   {(b.status === "accepted" || b.status === "pending") && b.status !== "cancelled" && b.status !== "completed" && (
-                    <button onClick={() => setCancellingBooking(b)} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-semibold flex-shrink-0">
+                    <button onClick={(e) => { e.stopPropagation(); setCancellingBooking(b); }} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-semibold flex-shrink-0">
                       {t("pro_dashboard.btn_cancel")}
                     </button>
                   )}
@@ -256,6 +259,17 @@ const ProfessionalDashboard = () => {
             cancelledBy="professional"
             onClose={() => setCancellingBooking(null)}
             onCancelled={() => { setCancellingBooking(null); window.location.reload(); }}
+          />
+        )}
+
+        {/* Booking detail modal */}
+        {selectedBooking && (
+          <BookingDetailModal
+            booking={selectedBooking}
+            onClose={() => setSelectedBooking(null)}
+            onAccept={handleAccept}
+            onDecline={handleDecline}
+            onChat={(id) => navigate(`/messages?booking=${id}`)}
           />
         )}
       </div>

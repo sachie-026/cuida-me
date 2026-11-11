@@ -38,7 +38,15 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
   const statusColor = statusColors[booking.status] || statusColors.pending;
 
   const isPending = booking.status === "pending";
-  const isAccepted = booking.status === "accepted";
+  const isAccepted = booking.status === "accepted" || booking.status === "professional_arrived" || booking.status === "checked_in";
+  const isCompleted = booking.status === "completed";
+  const isCancelled = booking.status === "cancelled" || booking.status === "no_show";
+  const isFinished = isCompleted || isCancelled;
+
+  // LGPD: client name visibility — pending shows first name only, finished hides contact
+  const clientDisplayName = isPending
+    ? (booking.client_name?.split(" ")[0] || t("booking_detail.client"))
+    : (booking.client_name || t("booking_detail.client"));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -87,46 +95,70 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           </div>
         )}
 
-        {/* Client info */}
-        <div className="p-3 bg-slate-50 rounded-xl mb-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">{t("booking_detail.client")}</p>
-          <div className="flex items-center gap-2 mb-1">
-            <User size={14} className="text-slate-400" />
-            <span className="text-sm font-medium text-navy">{booking.client_name || t("booking_detail.client")}</span>
-            {booking.client_verified && <VerifiedBadge type="client" verified={true} size="sm" />}
+        {/* Client info — hidden for completed/cancelled (LGPD) */}
+        {!isFinished && (
+          <div className="p-3 bg-slate-50 rounded-xl mb-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">{t("booking_detail.client")}</p>
+            <div className="flex items-center gap-2 mb-1">
+              <User size={14} className="text-slate-400" />
+              <span className="text-sm font-medium text-navy">{clientDisplayName}</span>
+              {booking.client_verified && <VerifiedBadge type="client" verified={true} size="sm" />}
+            </div>
+            {booking.client_reliability && (
+              <p className="text-xs text-slate-500">{t("booking_detail.reliability")} {booking.client_reliability}%</p>
+            )}
           </div>
-          {booking.client_reliability && (
-            <p className="text-xs text-slate-500">{t("booking_detail.reliability")} {booking.client_reliability}%</p>
-          )}
-        </div>
+        )}
 
-        {/* Location — approximate before accept, full after */}
-        <div className="p-3 bg-slate-50 rounded-xl mb-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
-            {isPending ? t("booking_detail.approximate_location") : t("booking_detail.address")}
-          </p>
-          <div className="flex items-start gap-2">
-            <MapPin size={14} className="text-slate-400 mt-0.5" />
-            <span className="text-sm text-slate-600">
-              {isPending
-                ? (booking.approximate_location || booking.city || t("booking_detail.region_not_provided"))
-                : (booking.address || booking.city || t("booking_detail.address_not_provided"))}
-            </span>
+        {/* Patient info — always visible (except completed/cancelled contact info) */}
+        {booking.patient_name && (
+          <div className="p-3 bg-slate-50 rounded-xl mb-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">{t("booking_detail.patient")}</p>
+            <div className="flex items-center gap-2">
+              <User size={14} className="text-slate-400" />
+              <span className="text-sm font-medium text-navy">
+                {isFinished ? booking.patient_name?.split(" ")[0] : booking.patient_name}
+              </span>
+            </div>
           </div>
-          {isPending && (
-            <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-              <AlertCircle size={11} /> {t("booking_detail.address_after_accept")}
+        )}
+
+        {/* Location — approximate before accept, full after, hidden when finished (LGPD) */}
+        {!isFinished && (
+          <div className="p-3 bg-slate-50 rounded-xl mb-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
+              {isPending ? t("booking_detail.approximate_location") : t("booking_detail.address")}
             </p>
-          )}
-          {/* #41: Maps navigation */}
-          {!isPending && booking.address && (
-            <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(booking.address)}`}
-              target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors w-fit">
-              <Navigation size={12} /> {t("booking_detail.open_maps")}
-            </a>
-          )}
-        </div>
+            <div className="flex items-start gap-2">
+              <MapPin size={14} className="text-slate-400 mt-0.5" />
+              <span className="text-sm text-slate-600">
+                {isPending
+                  ? (booking.approximate_location || booking.city || t("booking_detail.region_not_provided"))
+                  : (booking.address || booking.city || t("booking_detail.address_not_provided"))}
+              </span>
+            </div>
+            {isPending && (
+              <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                <AlertCircle size={11} /> {t("booking_detail.address_after_accept")}
+              </p>
+            )}
+            {/* Navigation buttons — only for accepted */}
+            {isAccepted && booking.address && (
+              <div className="flex gap-2 mt-2">
+                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(booking.address)}`}
+                  target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+                  <Navigation size={12} /> {t("booking_detail.open_maps")}
+                </a>
+                <a href={`https://waze.com/ul?q=${encodeURIComponent(booking.address)}&navigate=yes`}
+                  target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors">
+                  <Navigation size={12} /> {t("booking_detail.open_waze")}
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Pricing */}
         <div className="p-3 bg-green-50 rounded-xl mb-4 border border-green-100">
@@ -144,8 +176,8 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           </div>
         )}
 
-        {/* Emergency contact */}
-        {(booking.emergency_name || booking.emergency_phone) && (
+        {/* Emergency contact — only for accepted bookings */}
+        {isAccepted && (booking.emergency_name || booking.emergency_phone) && (
           <div className="p-3 bg-red-50 rounded-xl mb-4 border border-red-100">
             <p className="text-xs font-semibold text-red-600 uppercase mb-1">{t("booking_detail.emergency_contact")}</p>
             <p className="text-sm text-red-700">{booking.emergency_name} · {booking.emergency_phone}</p>
@@ -161,6 +193,21 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
               {" · "}
               {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}
             </p>
+          </div>
+        )}
+
+        {/* Contact buttons — WhatsApp + Call — only for accepted (LGPD) */}
+        {isAccepted && booking.client_phone && (
+          <div className="flex gap-2 mb-4">
+            <a href={`https://wa.me/55${booking.client_phone.replace(/\D/g, "")}`}
+              target="_blank" rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors">
+              <MessageSquare size={14} /> WhatsApp
+            </a>
+            <a href={`tel:${booking.client_phone}`}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors">
+              <Phone size={14} /> {t("booking_detail.call")}
+            </a>
           </div>
         )}
 
@@ -181,9 +228,12 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
               <MessageSquare size={14} /> {t("booking_detail.chat_client")}
             </button>
           )}
-          {!isPending && (
-            <button onClick={onClose} className="btn-outline flex-1">{t("booking_detail.close")}</button>
+          {isCompleted && (
+            <button onClick={() => {/* TODO: navigate to rate */}} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
+              <Star size={14} /> {t("booking_detail.rate_client")}
+            </button>
           )}
+          <button onClick={onClose} className="btn-outline flex-1">{t("booking_detail.close")}</button>
         </div>
       </div>
     </div>
