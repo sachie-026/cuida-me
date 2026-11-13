@@ -10,6 +10,7 @@ import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
 import RatingModal from "../../components/common/RatingModal";
 import PaymentForm from "../../components/common/PaymentForm";
+import ClientBookingDetailModal from "../../components/common/ClientBookingDetailModal";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -34,6 +35,7 @@ const ClientDashboard = () => {
   const [ratedIds,     setRatedIds]     = useState([]);
   const [cancellingBooking, setCancellingBooking] = useState(null);
   const [payingBooking,     setPayingBooking]     = useState(null);
+  const [selectedBooking,   setSelectedBooking]   = useState(null);
 
   useEffect(() => {
     // 2.5c: Check verification status
@@ -165,29 +167,33 @@ const ClientDashboard = () => {
           ) : (
             <div className="space-y-3">
               {filteredBookings.map((b, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 transition-colors gap-3">
+                <div key={i}
+                  onClick={() => setSelectedBooking(b)}
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 transition-colors gap-3 cursor-pointer">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-navy text-sm truncate">{b.service_type}</p>
-                    <p className="text-xs text-slate-500">{new Date(b.scheduled_start).toLocaleDateString("pt-BR")} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {formatBRL(b.total_price, false)}</p>
+                    <p className="text-xs text-slate-500">
+                      {new Date(b.scheduled_start).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} · {formatBRL(b.total_price, false)}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor(b.status)}`}>
                       {statusLabel(b.status)}
                     </span>
                     {b.status === "accepted" && (
-                      <button onClick={() => setPayingBooking(b)}
+                      <button onClick={(e) => { e.stopPropagation(); setPayingBooking(b); }}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
                         <CreditCard size={11} /> Pagar
                       </button>
                     )}
                     {(b.status === "pending" || b.status === "accepted") && (
-                      <button onClick={() => setCancellingBooking(b)}
+                      <button onClick={(e) => { e.stopPropagation(); setCancellingBooking(b); }}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors">
                         Cancelar
                       </button>
                     )}
                     {b.status === "completed" && !ratedIds.includes(b.id) && (
-                      <button onClick={() => setRatingBooking(b)}
+                      <button onClick={(e) => { e.stopPropagation(); setRatingBooking(b); }}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors">
                         <Star size={11} /> Avaliar
                       </button>
@@ -214,6 +220,16 @@ const ClientDashboard = () => {
           cancelledBy="client"
           onClose={() => setCancellingBooking(null)}
           onCancelled={() => { setCancellingBooking(null); window.location.reload(); }}
+        />
+      )}
+      {selectedBooking && (
+        <ClientBookingDetailModal
+          booking={selectedBooking}
+          onClose={() => setSelectedBooking(null)}
+          onUpdated={(updated) => {
+            setBookings(prev => prev.map(x => x.id === updated.id ? { ...x, ...updated } : x));
+            setSelectedBooking(updated);
+          }}
         />
       )}
       {payingBooking && (

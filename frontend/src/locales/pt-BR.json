@@ -2076,6 +2076,29 @@
       "under_review": "Em análise"
     }
   },
+  "client_booking_detail": {
+    "service_default": "Serviço de Cuidado Domiciliar",
+    "duration": "Duração",
+    "services": "Serviços",
+    "professional": "Profissional",
+    "address": "Endereço",
+    "total": "Total",
+    "editable": "Detalhes do agendamento",
+    "edit": "Editar",
+    "edit_disabled": "Edição desativada para agendamentos concluídos ou cancelados",
+    "notes": "Observações",
+    "notes_placeholder": "Informações para o profissional (alergias, rotinas, etc.)",
+    "emergency_contact": "Contato de emergência",
+    "em_name_placeholder": "Nome",
+    "em_phone_placeholder": "Telefone",
+    "none": "Não informado",
+    "save": "Salvar",
+    "saving": "Salvando...",
+    "cancel_edit": "Cancelar",
+    "save_success": "Agendamento atualizado.",
+    "save_error": "Não foi possível salvar as alterações.",
+    "close": "Fechar"
+  },
   "care_badges": {
     "services": {
       "companionship": "Companhia e supervisão",

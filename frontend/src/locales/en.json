@@ -2075,6 +2075,29 @@
       "under_review": "Under review"
     }
   },
+  "client_booking_detail": {
+    "service_default": "Home Care Service",
+    "duration": "Duration",
+    "services": "Services",
+    "professional": "Professional",
+    "address": "Address",
+    "total": "Total",
+    "editable": "Booking details",
+    "edit": "Edit",
+    "edit_disabled": "Editing disabled for completed or cancelled bookings",
+    "notes": "Notes",
+    "notes_placeholder": "Information for the professional (allergies, routines, etc.)",
+    "emergency_contact": "Emergency contact",
+    "em_name_placeholder": "Name",
+    "em_phone_placeholder": "Phone",
+    "none": "Not provided",
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel_edit": "Cancel",
+    "save_success": "Booking updated.",
+    "save_error": "Could not save changes.",
+    "close": "Close"
+  },
   "care_badges": {
     "services": {
       "companionship": "Companionship & supervision",

@@ -35,6 +35,13 @@ class CheckInOut(BaseModel):
 class CancelRequest(BaseModel):
     reason: Optional[str] = None
 
+class BookingDetailsUpdate(BaseModel):
+    """Fields the client can edit on an active booking.
+    Only metadata — no price, no timing, no pro-approval needed."""
+    notes:           Optional[str] = None
+    emergency_name:  Optional[str] = None
+    emergency_phone: Optional[str] = None
+
 def _check_booking_access(booking: Booking, current: User, db: Session):
     if current.role.value == "admin":
         return
@@ -282,20 +289,23 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
         Booking.professional_id == professional_id
     ).order_by(Booking.scheduled_start.desc()).all()
 
-    # Auto-expire past pending bookings / auto-complete past accepted
+    # Auto-expire past pending bookings (safe — no payment was made yet).
+    # We deliberately do NOT auto-complete past accepted bookings because the
+    # normal checkout flow triggers Stripe payment release + wallet credits via
+    # _do_release_payment; a status flip here would strand money in escrow.
+    changed = False
     for b in bookings:
         end_dt = b.scheduled_end
         if end_dt and end_dt.tzinfo is None:
             end_dt = end_dt.replace(tzinfo=tz_sp)
-        if end_dt and end_dt < now_sp:
-            if b.status == BookingStatus.pending:
-                b.status = BookingStatus.cancelled
-                b.cancel_reason = "Expirado automaticamente"
-                b.cancelled_by = "system"
-                b.cancelled_at = datetime.now(timezone.utc)
-            elif b.status == BookingStatus.accepted:
-                b.status = BookingStatus.completed
-    db.commit()
+        if end_dt and end_dt < now_sp and b.status == BookingStatus.pending:
+            b.status = BookingStatus.cancelled
+            b.cancel_reason = "Expirado automaticamente"
+            b.cancelled_by = "system"
+            b.cancelled_at = datetime.now(timezone.utc)
+            changed = True
+    if changed:
+        db.commit()
 
     # Enrich with client/patient info for the frontend
     result = []
@@ -325,6 +335,55 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
         result.append(row)
 
     return result
+
+@router.patch("/{booking_id}/details")
+def update_booking_details(
+    booking_id: str,
+    body: BookingDetailsUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Client-only edit of non-sensitive booking fields.
+    Allowed fields: notes, emergency_name, emergency_phone.
+    Blocked once the booking is a finalized record (completed / cancelled / no_show)."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    # Ownership — only the client who booked (or admin) can edit
+    client_id = _get_booking_client_id(booking, db)
+    if client_id != current.id and current.role.value != "admin":
+        raise HTTPException(403, "Apenas o cliente pode editar este agendamento.")
+
+    # Status gate — finalized bookings are immutable
+    finalized = {BookingStatus.completed, BookingStatus.cancelled, BookingStatus.no_show}
+    if booking.status in finalized:
+        raise HTTPException(400, "Não é possível editar um agendamento finalizado.")
+
+    # Apply only provided fields (None means "don't touch")
+    changed = []
+    if body.notes is not None:
+        booking.notes = body.notes
+        changed.append("notes")
+    if body.emergency_name is not None:
+        booking.emergency_name = body.emergency_name or None
+        changed.append("emergency_name")
+    if body.emergency_phone is not None:
+        booking.emergency_phone = body.emergency_phone or None
+        changed.append("emergency_phone")
+
+    if not changed:
+        raise HTTPException(400, "Nenhuma alteração enviada.")
+
+    db.commit()
+    db.refresh(booking)
+    return {
+        "booking_id": booking.id,
+        "updated_fields": changed,
+        "notes": booking.notes,
+        "emergency_name": booking.emergency_name,
+        "emergency_phone": booking.emergency_phone,
+    }
 
 @router.patch("/{booking_id}/accept")
 def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Session = Depends(get_db), current: User = Depends(get_current_user)):

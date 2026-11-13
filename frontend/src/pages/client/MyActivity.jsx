@@ -5,6 +5,7 @@ import { ChevronLeft, Calendar, CheckCircle, XCircle, Clock } from "lucide-react
 import axios from "axios";
 import Logo from "../../components/common/Logo";
 import ProfileMenu from "../../components/common/ProfileMenu";
+import ClientBookingDetailModal from "../../components/common/ClientBookingDetailModal";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -31,6 +32,7 @@ const MyActivity = () => {
   const [tab, setTab] = useState("upcoming");
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBooking, setSelectedBooking] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/api/bookings/my-bookings`, { headers })
@@ -78,7 +80,9 @@ const MyActivity = () => {
         ) : (
           <div className="space-y-3">
             {filtered.map((b, i) => (
-              <div key={i} className="card p-4">
+              <div key={i}
+                onClick={() => setSelectedBooking(b)}
+                className="card p-4 cursor-pointer hover:ring-2 hover:ring-blue-200 transition-all">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -86,13 +90,13 @@ const MyActivity = () => {
                         {t(`client_activity.status.${b.status}`)}
                       </span>
                       <span className="text-xs text-slate-400">
-                        {b.scheduled_start && new Date(b.scheduled_start).toLocaleDateString("pt-BR")}
+                        {b.scheduled_start && new Date(b.scheduled_start).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-navy">{b.service_type || t("client_activity.fallback_service")}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}
-                      {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}`}
+                      {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"})}
+                      {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"})}`}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -107,6 +111,18 @@ const MyActivity = () => {
           </div>
         )}
       </div>
+
+      {selectedBooking && (
+        <ClientBookingDetailModal
+          booking={selectedBooking}
+          onClose={() => setSelectedBooking(null)}
+          onUpdated={(updated) => {
+            // Patch the booking in the local list so the row reflects the edit without a refetch
+            setBookings(prev => prev.map(x => x.id === updated.id ? { ...x, ...updated } : x));
+            setSelectedBooking(updated);
+          }}
+        />
+      )}
     </div>
   );
 };
