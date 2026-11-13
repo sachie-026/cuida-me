@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user, require_admin
 from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus, DocStatus
@@ -192,6 +193,8 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     server_price = _compute_price(body, db)
     booking_data = body.dict()
     booking_data["is_holiday"] = is_holiday
+    # Scheduled times are treated as bare wall-clock Brazilian time throughout
+    # the app: stored as-is, returned as-is, displayed as-is. No TZ math.
     if server_price:
         booking_data.update({
             "total_price":  server_price["total"],
@@ -255,12 +258,49 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
 
     return booking
 
+def _booking_to_dict(b: Booking, db: Session, enrich: bool = False) -> dict:
+    """Serialize a Booking as a dict with all datetime offsets stripped.
+    The app treats scheduled_start/end etc. as bare wall-clock Brazilian time —
+    whatever string the frontend sent is what we return, so the browser displays
+    the same hour regardless of its own timezone. `enrich=True` adds client /
+    patient / professional display fields used by the booking detail modals."""
+    row = {c.name: getattr(b, c.name) for c in b.__table__.columns}
+    # Serialize status enum to its string value
+    if row.get("status") is not None and hasattr(row["status"], "value"):
+        row["status"] = row["status"].value
+    # Strip tzinfo from every datetime field (so FastAPI emits "YYYY-MM-DDTHH:MM:SS"
+    # with no "+00:00" offset) — browsers then render the stored hour as-is.
+    for k, v in list(row.items()):
+        if v is not None and hasattr(v, "tzinfo") and v.tzinfo is not None:
+            row[k] = v.replace(tzinfo=None)
+    if enrich:
+        client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
+        row["client_name"]     = client_user.full_name if client_user else "Cliente"
+        row["client_phone"]    = client_user.phone if client_user else None
+        row["client_verified"] = bool(client_user and client_user.phone_verified) if client_user else False
+        pro = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+        pro_user = db.query(User).filter(User.id == pro.user_id).first() if pro else None
+        row["professional_name"] = pro_user.full_name if pro_user else None
+        patient = db.query(Patient).filter(Patient.id == b.patient_id).first() if b.patient_id else None
+        row["patient_name"] = patient.patient_name if patient else None
+        row["address"]      = patient.address if patient else None
+        if patient and patient.address:
+            parts = patient.address.split(",")
+            row["city"] = parts[-2].strip() if len(parts) >= 2 else parts[0].strip()
+            row["approximate_location"] = row["city"]
+        else:
+            row["city"] = None
+            row["approximate_location"] = None
+        row["latitude"]  = patient.latitude  if patient else None
+        row["longitude"] = patient.longitude if patient else None
+    return row
+
 @router.get("/{booking_id}")
 def get_booking(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     b = db.query(Booking).filter(Booking.id == booking_id).first()
     if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
-    return b
+    return _booking_to_dict(b, db, enrich=True)
 
 @router.get("/patient/{patient_or_user_id}")
 def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
@@ -270,9 +310,10 @@ def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db),
     if not patient: raise HTTPException(404, "Patient not found")
     if patient.user_id != current.id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
-    return db.query(Booking).filter(
+    bookings = db.query(Booking).filter(
         Booking.patient_id == patient.id
     ).order_by(Booking.scheduled_start.desc()).all()
+    return [_booking_to_dict(b, db, enrich=True) for b in bookings]
 
 @router.get("/professional/{professional_id}")
 def get_professional_bookings(professional_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
@@ -280,10 +321,6 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
     if not prof: raise HTTPException(404, "Professional not found")
     if prof.user_id != current.id and current.role.value != "admin":
         raise HTTPException(403, "Access denied")
-
-    from zoneinfo import ZoneInfo
-    tz_sp = ZoneInfo("America/Sao_Paulo")
-    now_sp = datetime.now(tz_sp)
 
     bookings = db.query(Booking).filter(
         Booking.professional_id == professional_id
@@ -293,12 +330,14 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
     # We deliberately do NOT auto-complete past accepted bookings because the
     # normal checkout flow triggers Stripe payment release + wallet credits via
     # _do_release_payment; a status flip here would strand money in escrow.
+    # Comparison uses naive wall-clock Brazilian time (strip any tz on either side).
+    now_sp_naive = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
     changed = False
     for b in bookings:
         end_dt = b.scheduled_end
-        if end_dt and end_dt.tzinfo is None:
-            end_dt = end_dt.replace(tzinfo=tz_sp)
-        if end_dt and end_dt < now_sp and b.status == BookingStatus.pending:
+        if end_dt is not None and end_dt.tzinfo is not None:
+            end_dt = end_dt.replace(tzinfo=None)
+        if end_dt is not None and end_dt < now_sp_naive and b.status == BookingStatus.pending:
             b.status = BookingStatus.cancelled
             b.cancel_reason = "Expirado automaticamente"
             b.cancelled_by = "system"
@@ -307,34 +346,7 @@ def get_professional_bookings(professional_id: str, db: Session = Depends(get_db
     if changed:
         db.commit()
 
-    # Enrich with client/patient info for the frontend
-    result = []
-    for b in bookings:
-        row = {c.name: getattr(b, c.name) for c in b.__table__.columns}
-        # Serialize enums
-        if row.get("status"):
-            row["status"] = row["status"].value if hasattr(row["status"], "value") else str(row["status"])
-        # Client info from user_id
-        client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
-        row["client_name"] = client_user.full_name if client_user else "Cliente"
-        row["client_phone"] = client_user.phone if client_user else None
-        row["client_verified"] = bool(client_user and client_user.phone_verified) if client_user else False
-        # Patient info
-        patient = db.query(Patient).filter(Patient.id == b.patient_id).first() if b.patient_id else None
-        row["patient_name"] = patient.patient_name if patient else None
-        row["address"] = patient.address if patient else None
-        row["city"] = None
-        if patient and patient.address:
-            parts = patient.address.split(",")
-            row["city"] = parts[-2].strip() if len(parts) >= 2 else parts[0].strip()
-            row["approximate_location"] = row["city"]
-        else:
-            row["approximate_location"] = None
-        row["latitude"] = patient.latitude if patient else None
-        row["longitude"] = patient.longitude if patient else None
-        result.append(row)
-
-    return result
+    return [_booking_to_dict(b, db, enrich=True) for b in bookings]
 
 @router.patch("/{booking_id}/details")
 def update_booking_details(
@@ -587,7 +599,8 @@ def request_reschedule(booking_id: str, body: RescheduleRequest, db: Session = D
     if hours_until < 12:
         raise HTTPException(400, "Reagendamento só é permitido com mais de 12 horas de antecedência")
 
-    # Store the reschedule request
+    # Store the reschedule request — treat scheduled times as bare wall-clock
+    # Brazilian time, pass through unchanged.
     booking.reschedule_new_start = body.new_start
     booking.reschedule_new_end = body.new_end
     booking.reschedule_status = "requested"
@@ -1515,9 +1528,17 @@ def request_extension(booking_id: str, body: ExtensionRequest, db: Session = Dep
     if booking.status.value != "checked_in":
         raise HTTPException(400, "Extensão só é possível para atendimentos em andamento")
 
-    # Calculate additional time and cost
+    # Calculate additional time and cost. All times are wall-clock Brazilian
+    # time stored naively; pass through without TZ conversion.
     current_end = booking.scheduled_end
     new_end = body.new_end_time
+    # Align tz-awareness for the comparison without changing the stored meaning.
+    if (current_end is not None and new_end is not None
+            and (current_end.tzinfo is None) != (new_end.tzinfo is None)):
+        if current_end.tzinfo is not None:
+            current_end = current_end.replace(tzinfo=None)
+        else:
+            new_end = new_end.replace(tzinfo=None)
     if new_end <= current_end:
         raise HTTPException(400, "Novo horário deve ser após o término atual")
 

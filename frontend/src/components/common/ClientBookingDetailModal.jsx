@@ -10,12 +10,14 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const FINALIZED = new Set(["completed", "cancelled", "no_show"]);
 
-// All dates/times rendered in São Paulo time so Brazilian bookings read
-// consistently for any viewer, independent of their browser TZ.
+// Backend returns naive ISO strings (no TZ offset). Browsers parse them as
+// local time, so the displayed hour matches what was originally stored — no
+// TZ conversion is done anywhere and the app treats all times as wall-clock
+// Brazilian time end-to-end.
 const fmtDate = (iso) =>
-  iso ? new Date(iso).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }) : "";
+  iso ? new Date(iso).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }) : "";
 const fmtTime = (iso) =>
-  iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "";
+  iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
 
 const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
   const { t } = useTranslation();

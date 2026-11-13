@@ -746,7 +746,7 @@
     "min_2h": "Duração mínima de 2 horas",
     "recommendation": "Recomendação",
     "long_booking_tip": "Para atendimentos acima de 12h, considere dividir em turnos para garantir a qualidade do cuidado.",
-    "urgent_surcharge": "⚡ Agendamento com menos de 12h de antecedência — taxa de urgência pode ser aplicada",
+    "urgent_surcharge": "⚡ Agendamento com menos de {{hours}}h de antecedência — taxa de urgência pode ser aplicada",
     "emergency_title": "Contato de emergência (obrigatório)",
     "emergency_name": "Nome do contato",
     "emergency_phone": "Telefone",

@@ -84,15 +84,15 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           </div>
         )}
 
-        {/* Schedule — always rendered in America/Sao_Paulo so times match
-            what the client entered, regardless of the viewer's browser TZ. */}
+        {/* Schedule — backend returns naive ISO (no TZ offset); browser parses as
+            local so the displayed hour matches what was originally sent. */}
         <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
           <Clock size={14} className="text-slate-400" />
           <span>
-            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long", timeZone:"America/Sao_Paulo" })}
+            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" })}
             {" · "}
-            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", timeZone:"America/Sao_Paulo" })}
-            {booking.scheduled_end && ` – ${new Date(booking.scheduled_end).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", timeZone:"America/Sao_Paulo" })}`}
+            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}
+            {booking.scheduled_end && ` – ${new Date(booking.scheduled_end).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}`}
           </span>
         </div>
         {booking.duration_hours && (
@@ -201,9 +201,9 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           <div className="p-3 bg-amber-50 rounded-xl mb-4 border border-amber-200">
             <p className="text-xs font-semibold text-amber-700 uppercase mb-1">{t("booking_detail.reschedule_request")}</p>
             <p className="text-sm text-amber-600">
-              {t("booking_detail.new_date")} {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleDateString("pt-BR", { timeZone:"America/Sao_Paulo" })}
+              {t("booking_detail.new_date")} {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleDateString("pt-BR")}
               {" · "}
-              {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", timeZone:"America/Sao_Paulo" })}
+              {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}
             </p>
           </div>
         )}

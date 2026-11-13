@@ -90,13 +90,13 @@ const MyActivity = () => {
                         {t(`client_activity.status.${b.status}`)}
                       </span>
                       <span className="text-xs text-slate-400">
-                        {b.scheduled_start && new Date(b.scheduled_start).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                        {b.scheduled_start && new Date(b.scheduled_start).toLocaleDateString("pt-BR")}
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-navy">{b.service_type || t("client_activity.fallback_service")}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"})}
-                      {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"})}`}
+                      {b.scheduled_start && new Date(b.scheduled_start).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}
+                      {b.scheduled_end && ` – ${new Date(b.scheduled_end).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}`}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
