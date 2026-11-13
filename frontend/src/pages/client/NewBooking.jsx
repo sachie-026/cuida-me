@@ -58,6 +58,9 @@ const NewBooking = () => {
   const [endTime,     setEndTime]     = useState("");
   const [shift,       setShift]       = useState("day");
   const [isUrgent,    setIsUrgent]    = useState(false);
+  // Thresholds come from admin settings so admin changes take effect without a redeploy.
+  // Defaults match backend fallbacks in app/routes/settings.py.
+  const [urgentWindowHours, setUrgentWindowHours] = useState(12);
   const [notes,       setNotes]       = useState("");
   const [durationInfo,setDurationInfo]= useState(null);
   const [patientMode, setPatientMode] = useState("myself");
@@ -120,6 +123,16 @@ const NewBooking = () => {
   };
   useEffect(() => { loadData(); }, []);
 
+  // Load the urgency threshold from admin settings so admin changes apply live.
+  useEffect(() => {
+    axios.get(`${API}/api/settings/public`)
+      .then(r => {
+        const v = Number(r.data?.urgent_window_start_hours);
+        if (!isNaN(v) && v > 0) setUrgentWindowHours(v);
+      })
+      .catch(() => { /* keep default on failure */ });
+  }, []);
+
   useEffect(() => {
     if (!startTime) return;
     const hour = parseInt(startTime.split(":")[0]);
@@ -130,8 +143,8 @@ const NewBooking = () => {
     if (!date || !startTime) return;
     const scheduled = new Date(`${date}T${startTime}`);
     const hoursUntil = (scheduled - new Date()) / 1000 / 60 / 60;
-    setIsUrgent(hoursUntil < 12);
-  }, [date, startTime]);
+    setIsUrgent(hoursUntil < urgentWindowHours);
+  }, [date, startTime, urgentWindowHours]);
 
   // Auto-calculate duration from start/end
   useEffect(() => {
@@ -506,9 +519,9 @@ const NewBooking = () => {
             )}
 
             {isUrgent && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
-                <AlertCircle size={16} className="text-red-500"/>
-                <p className="text-xs text-red-600 font-medium">{t("client_booking.urgent_surcharge")}</p>
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertCircle size={16} className="text-amber-500"/>
+                <p className="text-xs text-amber-700 font-medium">{t("client_booking.urgent_surcharge", { hours: urgentWindowHours })}</p>
               </div>
             )}
 

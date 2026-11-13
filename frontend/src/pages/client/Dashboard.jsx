@@ -173,7 +173,7 @@ const ClientDashboard = () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-navy text-sm truncate">{b.service_type}</p>
                     <p className="text-xs text-slate-500">
-                      {new Date(b.scheduled_start).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} · {formatBRL(b.total_price, false)}
+                      {new Date(b.scheduled_start).toLocaleDateString("pt-BR")} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {formatBRL(b.total_price, false)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

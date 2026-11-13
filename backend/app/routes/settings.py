@@ -244,6 +244,31 @@ def get_all_settings(db: Session) -> dict:
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+@router.get("/public")
+def get_public_settings(db: Session = Depends(get_db)):
+    """Public, unauthenticated subset of platform settings — safe values the
+    client UI needs to render booking flows correctly (thresholds, windows,
+    payout pct). Never expose financial pricing, templates or internal keys."""
+    current = get_all_settings(db)
+    PUBLIC_KEYS = [
+        "min_advance_hours",
+        "min_booking_hours",
+        "urgent_window_start_hours",
+        "urgent_window_end_hours",
+        "urgent_booking_enabled",
+        "urgent_surcharge_pct",
+        "day_start_hour",
+        "night_start_hour",
+        "min_booking_duration_minutes",
+        "max_booking_duration_enabled",
+        "max_booking_duration_hours",
+        "max_future_booking_days",
+        "grace_period_minutes",
+        "refund_full_hours",
+        "refund_partial_hours",
+    ]
+    return {k: current.get(k, DEFAULTS.get(k)) for k in PUBLIC_KEYS}
+
 @router.get("")
 @router.get("/")
 def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):

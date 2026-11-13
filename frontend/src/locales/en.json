@@ -745,7 +745,7 @@
     "min_2h": "Minimum duration of 2 hours",
     "recommendation": "Recommendation",
     "long_booking_tip": "For appointments over 12 hours, consider splitting into shifts to ensure quality of care.",
-    "urgent_surcharge": "⚡ Booking less than 12 hours in advance — urgency fee may apply",
+    "urgent_surcharge": "⚡ Booking less than {{hours}} hours in advance — urgency fee may apply",
     "emergency_title": "Emergency contact (required)",
     "emergency_name": "Contact name",
     "emergency_phone": "Phone",

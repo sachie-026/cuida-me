@@ -204,7 +204,7 @@ const ProfessionalDashboard = () => {
                     <div>
                       <p className="font-semibold text-navy text-sm">{b.service_type}</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {new Date(b.scheduled_start).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} → {new Date(b.scheduled_end).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
+                        {new Date(b.scheduled_start).toLocaleDateString("pt-BR")} · {new Date(b.scheduled_start).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} → {new Date(b.scheduled_end).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -232,7 +232,7 @@ const ProfessionalDashboard = () => {
                 <div key={i} onClick={() => setSelectedBooking(b)}
                   className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
                   <div className="text-xs font-bold text-blue-500 w-20 flex-shrink-0">
-                    {new Date(b.scheduled_start).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                    {new Date(b.scheduled_start).toLocaleDateString("pt-BR")}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-navy truncate">{b.service_type}</p>
