@@ -300,6 +300,17 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db), current
     if not body.updates:
         raise HTTPException(400, "No updates provided")
 
+    # Strip metadata fields BEFORE any validation/permission check so they
+    # don't trip the "unknown field" guard. The frontend sends _loaded_version
+    # on every save for concurrent-edit protection.
+    loaded_version = body.updates.pop("_loaded_version", None)
+    # Also discard any leading-underscore keys that may have been echoed from a
+    # prior GET (e.g. _version) — only real setting fields should be validated.
+    for meta_key in [k for k in body.updates if k.startswith("_")]:
+        body.updates.pop(meta_key, None)
+    if not body.updates:
+        raise HTTPException(400, "No updates provided")
+
     # 50-34: Enforce sub-role permissions
     FINANCE_FIELDS = {"initial_fee_", "day_rate_", "night_rate_", "platform_commission", "holiday_surcharge", "urgent_surcharge", "holiday_pricing", "urgent_booking", "urgent_fee", "urgent_fixed", "payment_"}
     OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait"}
@@ -338,8 +349,6 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db), current
     old_data = dict(row.data) if row.data else {}
 
     # 50-43: Concurrent editing warning — check if data changed since client loaded
-    # Client can send _loaded_version; if it doesn't match current, warn
-    loaded_version = body.updates.pop("_loaded_version", None)
     current_version = old_data.get("_version", 0)
     if loaded_version is not None and int(loaded_version) != int(current_version):
         raise HTTPException(409, "Configurações foram alteradas por outro administrador. Recarregue antes de salvar.")

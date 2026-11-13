@@ -3,11 +3,22 @@ import { useTranslation } from "react-i18next";
 import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertCircle, Navigation, Timer } from "lucide-react";
 import CareBadges from "./CareBadges";
 import VerifiedBadge from "./VerifiedBadge";
+import RatingModal from "./RatingModal";
 import { formatBRL } from "../../utils/format";
+
+// Build a WhatsApp wa.me URL for a Brazilian phone, without double-prefixing 55.
+const waUrl = (raw) => {
+  if (!raw) return null;
+  let digits = String(raw).replace(/\D/g, "");
+  if (!digits) return null;
+  if (!digits.startsWith("55")) digits = `55${digits}`;
+  return `https://wa.me/${digits}`;
+};
 
 const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) => {
   const { t } = useTranslation();
   const [countdown, setCountdown] = useState(null);
+  const [showRating, setShowRating] = useState(false);
 
   // #39: Countdown timer for pending requests
   useEffect(() => {
@@ -73,14 +84,15 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           </div>
         )}
 
-        {/* Schedule */}
+        {/* Schedule — always rendered in America/Sao_Paulo so times match
+            what the client entered, regardless of the viewer's browser TZ. */}
         <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
           <Clock size={14} className="text-slate-400" />
           <span>
-            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" })}
+            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long", timeZone:"America/Sao_Paulo" })}
             {" · "}
-            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}
-            {booking.scheduled_end && ` – ${new Date(booking.scheduled_end).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}`}
+            {booking.scheduled_start && new Date(booking.scheduled_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", timeZone:"America/Sao_Paulo" })}
+            {booking.scheduled_end && ` – ${new Date(booking.scheduled_end).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", timeZone:"America/Sao_Paulo" })}`}
           </span>
         </div>
         {booking.duration_hours && (
@@ -189,9 +201,9 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           <div className="p-3 bg-amber-50 rounded-xl mb-4 border border-amber-200">
             <p className="text-xs font-semibold text-amber-700 uppercase mb-1">{t("booking_detail.reschedule_request")}</p>
             <p className="text-sm text-amber-600">
-              {t("booking_detail.new_date")} {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleDateString("pt-BR")}
+              {t("booking_detail.new_date")} {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleDateString("pt-BR", { timeZone:"America/Sao_Paulo" })}
               {" · "}
-              {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}
+              {booking.reschedule_new_start && new Date(booking.reschedule_new_start).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", timeZone:"America/Sao_Paulo" })}
             </p>
           </div>
         )}
@@ -199,11 +211,13 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
         {/* Contact buttons — WhatsApp + Call — only for accepted (LGPD) */}
         {isAccepted && booking.client_phone && (
           <div className="flex gap-2 mb-4">
-            <a href={`https://wa.me/55${booking.client_phone.replace(/\D/g, "")}`}
-              target="_blank" rel="noreferrer"
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors">
-              <MessageSquare size={14} /> WhatsApp
-            </a>
+            {waUrl(booking.client_phone) && (
+              <a href={waUrl(booking.client_phone)}
+                target="_blank" rel="noreferrer"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors">
+                <MessageSquare size={14} /> WhatsApp
+              </a>
+            )}
             <a href={`tel:${booking.client_phone}`}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors">
               <Phone size={14} /> {t("booking_detail.call")}
@@ -228,14 +242,24 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
               <MessageSquare size={14} /> {t("booking_detail.chat_client")}
             </button>
           )}
-          {isCompleted && (
-            <button onClick={() => {/* TODO: navigate to rate */}} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
+          {isCompleted && booking.user_id && (
+            <button onClick={() => setShowRating(true)} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
               <Star size={14} /> {t("booking_detail.rate_client")}
             </button>
           )}
           <button onClick={onClose} className="btn-outline flex-1">{t("booking_detail.close")}</button>
         </div>
       </div>
+
+      {/* Rating modal — professional rates the client */}
+      {showRating && booking.user_id && (
+        <RatingModal
+          booking={booking}
+          revieweeId={booking.user_id}
+          onClose={() => setShowRating(false)}
+          onDone={() => { setShowRating(false); onClose(); }}
+        />
+      )}
     </div>
   );
 };
