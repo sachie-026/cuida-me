@@ -1298,6 +1298,7 @@
       "tab_clients": "Clientes",
       "review": "Revisar",
       "profile": "Perfil",
+      "availability": "Agenda",
       "identity": "Identidade",
       "account": "Conta",
       "active": "Ativo",
@@ -2098,6 +2099,27 @@
     "save_success": "Agendamento atualizado.",
     "save_error": "Não foi possível salvar as alterações.",
     "close": "Fechar"
+  },
+  "admin_availability": {
+    "title": "Agenda do profissional",
+    "recurring": "Horários semanais recorrentes",
+    "specific": "Datas específicas / exceções",
+    "no_recurring": "Nenhum horário recorrente definido.",
+    "no_specific": "Nenhum horário específico definido.",
+    "blocked": "Bloqueado",
+    "count_recurring": "{{n}} horário(s) recorrente(s)",
+    "count_specific": "{{n}} horário(s) específico(s)",
+    "load_error": "Não foi possível carregar a agenda.",
+    "close": "Fechar",
+    "days": {
+      "mon": "Seg",
+      "tue": "Ter",
+      "wed": "Qua",
+      "thu": "Qui",
+      "fri": "Sex",
+      "sat": "Sáb",
+      "sun": "Dom"
+    }
   },
   "care_badges": {
     "services": {
