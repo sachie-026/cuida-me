@@ -15,11 +15,13 @@ from app.utils.pricing import (
 router = APIRouter(prefix="/professionals", tags=["professionals"])
 
 # ── Environment: controls whether test accounts are hidden from real users ────
-# APP_ENV values: "production" → hide test accounts from real users (default
-# posture, safe if the env var is missing). Any other value (dev, staging,
-# local) → show test accounts to everyone so QA works without a test login.
+# Opt-IN to strict isolation. Set APP_ENV=production on the live Render service
+# when you actually ship — then test accounts are hidden from real users.
+# Anywhere APP_ENV is not exactly "production" (unset, "dev", "staging", "qa",
+# a typo, etc.) test accounts are visible to everyone so QA works without
+# first logging in as a test client.
 def _is_production() -> bool:
-    return os.getenv("APP_ENV", "production").lower() == "production"
+    return os.getenv("APP_ENV", "").strip().lower() == "production"
 
 class ProfessionalUpdate(BaseModel):
     council_number:   Optional[str]       = None
@@ -121,9 +123,15 @@ def get_nearby(
 ):
     """Public endpoint — returns approved professionals with availability slots, filtered by services if provided."""
     from datetime import datetime, timezone
-    print("[NEARBY] v2 — availability-slot filtering active")
     required_services = [s.strip() for s in services.split(",")] if services else []
     now = datetime.now(timezone.utc)
+
+    _prod_mode = _is_production()
+    _caller = f"{current.email} (is_test={getattr(current, 'is_test', False)})" if current else "anonymous"
+    print(f"[NEARBY] prod_mode={_prod_mode} APP_ENV={os.getenv('APP_ENV','<unset>')!r} caller={_caller} services={required_services} time={start_time}→{end_time}")
+
+    total_approved = db.query(Professional).filter(Professional.approval_status == DocStatus.approved).count()
+    print(f"[NEARBY] approved pros in DB: {total_approved}")
 
     professionals = db.query(Professional).filter(
         Professional.approval_status == DocStatus.approved,
@@ -140,17 +148,22 @@ def get_nearby(
     enforce_test_isolation = _is_production()
     for p in professionals:
         u = db.query(User).filter(User.id == p.user_id).first()
-        if not u or not u.is_verified:
+        if not u:
+            print(f"[NEARBY] drop {p.id}: user record missing")
+            continue
+        if not u.is_verified:
+            print(f"[NEARBY] drop {p.id} ({u.email}): user.is_verified=False")
             continue
         if enforce_test_isolation:
-            # Test accounts only visible to other test accounts
             if getattr(u, 'is_test', False) and not is_current_test:
+                print(f"[NEARBY] drop {p.id} ({u.email}): test account hidden from non-test caller")
                 continue
-            # Real accounts hidden from test account searches
             if not getattr(u, 'is_test', False) and is_current_test:
+                print(f"[NEARBY] drop {p.id} ({u.email}): real account hidden from test caller")
                 continue
         verified_pros.append(p)
     professionals = verified_pros
+    print(f"[NEARBY] after verification/test-isolation: {len(professionals)}")
 
     # Filter out resting professionals (#7 mandatory rest)
     professionals = [p for p in professionals if not p.rest_until or p.rest_until <= now]
@@ -169,6 +182,7 @@ def get_nearby(
 
             # 10.3-30: Skip globally suspended/banned accounts
             if getattr(user, 'account_status', 'active') in ('suspended', 'banned', 'deleted'):
+                print(f"[NEARBY] drop {prof.id} ({user.email}): account_status={user.account_status}")
                 continue
 
             # 10.3-22,23,24: Check per-category active status
@@ -250,7 +264,11 @@ def get_nearby(
                             )
                         ).first()
 
-                        if not avail_slot or blocked_slot:
+                        if not avail_slot:
+                            print(f"[NEARBY] drop {prof.id}: no available slot covers {req_date} {req_start}-{req_end} (dow={req_dow})")
+                            can_perform = False
+                        elif blocked_slot:
+                            print(f"[NEARBY] drop {prof.id}: blocked slot overlaps window")
                             can_perform = False
                     else:
                         # No time filter — check professional has current/future availability slots
@@ -290,8 +308,15 @@ def get_nearby(
 
                 # Only include professionals with a valid price
                 if start_time and end_time and not pro_data.get("total_price"):
+                    print(f"[NEARBY] drop {prof.id}: price calc returned no total")
                     continue  # skip — no price means can't book
                 filtered.append(pro_data)
+            elif not can_perform:
+                # Already logged a drop reason above
+                pass
+            else:
+                print(f"[NEARBY] drop {prof.id}: no requested service in services_offered")
+        print(f"[NEARBY] final result: {len(filtered)} pros")
         return {"professionals": filtered, "count": len(filtered)}
 
     # No service filter — enrich all with user data, but only those with availability slots
