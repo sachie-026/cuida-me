@@ -1,3 +1,4 @@
+import os
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -12,6 +13,13 @@ from app.utils.pricing import (
 )
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
+
+# ── Environment: controls whether test accounts are hidden from real users ────
+# APP_ENV values: "production" → hide test accounts from real users (default
+# posture, safe if the env var is missing). Any other value (dev, staging,
+# local) → show test accounts to everyone so QA works without a test login.
+def _is_production() -> bool:
+    return os.getenv("APP_ENV", "production").lower() == "production"
 
 class ProfessionalUpdate(BaseModel):
     council_number:   Optional[str]       = None
@@ -122,21 +130,25 @@ def get_nearby(
     ).all()
 
     # 2.5b: Filter out professionals whose user account is not verified
-    # Block 5: Filter out test accounts from real user searches
+    # Block 5: Filter test accounts — but only on production. In dev / staging
+    # (APP_ENV != "production") test accounts are visible to everyone so QA
+    # can search without first logging in with a test client.
     verified_pros = []
     is_current_test = False
     if current:
         is_current_test = getattr(current, 'is_test', False)
+    enforce_test_isolation = _is_production()
     for p in professionals:
         u = db.query(User).filter(User.id == p.user_id).first()
         if not u or not u.is_verified:
             continue
-        # Test accounts only visible to other test accounts
-        if getattr(u, 'is_test', False) and not is_current_test:
-            continue
-        # Real accounts hidden from test account searches
-        if not getattr(u, 'is_test', False) and is_current_test:
-            continue
+        if enforce_test_isolation:
+            # Test accounts only visible to other test accounts
+            if getattr(u, 'is_test', False) and not is_current_test:
+                continue
+            # Real accounts hidden from test account searches
+            if not getattr(u, 'is_test', False) and is_current_test:
+                continue
         verified_pros.append(p)
     professionals = verified_pros
 
