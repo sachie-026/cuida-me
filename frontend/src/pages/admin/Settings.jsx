@@ -153,7 +153,6 @@ const AdminSettings = () => {
       <div className={`flex items-center justify-between py-3 border-b border-slate-100 ${isDirty ? "bg-amber-50 -mx-2 px-2 rounded-lg" : ""}`}>
         <div>
           <span className="text-sm text-slate-700">{label}</span>
-          {defaultVal !== undefined && !isBool && <span className="text-[10px] text-slate-400 ml-2">{t("admin_settings.default_value", { value: String(defaultVal).substring(0,30) + unit })}</span>}
         </div>
         <div className="flex items-center gap-2">
           {isBool ? (
