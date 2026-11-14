@@ -1297,6 +1297,7 @@
       "tab_clients": "Clients",
       "review": "Review",
       "profile": "Profile",
+      "availability": "Schedule",
       "identity": "Identity",
       "account": "Account",
       "active": "Active",
@@ -2097,6 +2098,27 @@
     "save_success": "Booking updated.",
     "save_error": "Could not save changes.",
     "close": "Close"
+  },
+  "admin_availability": {
+    "title": "Professional schedule",
+    "recurring": "Recurring weekly slots",
+    "specific": "Specific dates / overrides",
+    "no_recurring": "No recurring slots set.",
+    "no_specific": "No specific-date slots.",
+    "blocked": "Blocked",
+    "count_recurring": "{{n}} recurring slot(s)",
+    "count_specific": "{{n}} specific slot(s)",
+    "load_error": "Could not load schedule.",
+    "close": "Close",
+    "days": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    }
   },
   "care_badges": {
     "services": {

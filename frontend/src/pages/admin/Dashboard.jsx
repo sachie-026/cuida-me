@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, CalendarDays, DollarSign, ShieldCheck, ShieldOff, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings, Wallet } from "lucide-react";
+import { Users, CalendarDays, DollarSign, ShieldCheck, ShieldOff, Menu, LogOut, CheckCircle, XCircle, Ban, FileText, ExternalLink, CalendarRange, Trash2, Plus, Bot, Settings, Wallet, Calendar } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
+import AdminAvailabilityModal from "../../components/common/AdminAvailabilityModal";
 import { useTranslation } from "react-i18next";
 import { formatBRL } from "../../utils/format";
 
@@ -700,6 +701,7 @@ const ProfessionalsPanel = () => {
   const [verifyAction, setVerifyAction] = useState(null);
   const [pendingProCount, setPendingProCount] = useState(0);
   const [pendingClientCount, setPendingClientCount] = useState(0);
+  const [viewingAvailability, setViewingAvailability] = useState(null);
 
   const loadProfessionals = () => {
     axios.get(`${API}/api/admin/professionals?status=${filter}`, { headers })
@@ -773,6 +775,7 @@ const ProfessionalsPanel = () => {
   return (
     <div>
       {viewingDoc && <DocModal prof={viewingDoc} onClose={() => setViewingDoc(null)} onDocUpdate={() => { loadProfessionals(); setViewingDoc(null); }} />}
+      {viewingAvailability && <AdminAvailabilityModal professional={viewingAvailability} onClose={() => setViewingAvailability(null)} />}
 
       {/* 10.1-17: Approval Checklist Modal */}
       {checklist && (
@@ -1006,6 +1009,11 @@ const ProfessionalsPanel = () => {
                   <button onClick={() => loadUnifiedProfile(p.user_id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 border border-purple-200 text-purple-600 rounded-lg text-xs font-semibold hover:bg-purple-50">
                     👤 {t("admin_dashboard.professionals.profile")}
+                  </button>
+                  {/* Availability — view only */}
+                  <button onClick={() => setViewingAvailability(p)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-200 text-emerald-600 rounded-lg text-xs font-semibold hover:bg-emerald-50">
+                    <Calendar size={13} /> {t("admin_dashboard.professionals.availability")}
                   </button>
 
                   {filter === "pending" && (
