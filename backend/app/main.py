@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.core.database import Base, engine, get_db
 from app.routes import auth, professionals, bookings, admin, ratings, users, documents
 from app.routes import availability, payments, messages, holidays, reports, alerts, alice, notifications, settings, payout_methods, wallet
+from app.routes import addresses
 from app.core.auth_deps import require_admin as _require_admin
 from fastapi import Depends as _Depends
 
@@ -385,6 +386,27 @@ def run_migrations():
             description VARCHAR,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )""",
+        # Change 44 — multiple saved service addresses per client (additive)
+        """CREATE TABLE IF NOT EXISTS service_addresses (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id),
+            label VARCHAR,
+            cep VARCHAR,
+            street VARCHAR,
+            number VARCHAR,
+            complement VARCHAR,
+            neighborhood VARCHAR,
+            city VARCHAR,
+            state VARCHAR,
+            reference TEXT,
+            latitude FLOAT,
+            longitude FLOAT,
+            is_default BOOLEAN DEFAULT FALSE,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_service_addresses_user_id ON service_addresses(user_id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -458,6 +480,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(settings.router,      prefix="/api")
 app.include_router(payout_methods.router, prefix="/api")
 app.include_router(wallet.router,         prefix="/api")
+app.include_router(addresses.router,      prefix="/api")
 
 @app.post("/api/seed-test-accounts")
 def seed_test_accounts(

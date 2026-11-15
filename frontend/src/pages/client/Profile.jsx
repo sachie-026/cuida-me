@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Save, Upload, CheckCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, Upload, CheckCircle, AlertTriangle, MapPin, Plus, Edit2, Trash2, Star } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
@@ -10,6 +10,7 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 import PhoneVerificationModal from "../../components/common/PhoneVerificationModal";
 import VerificationCenter from "../../components/common/VerificationCenter";
 import ProfilePhotoUpload from "../../components/common/ProfilePhotoUpload";
+import ServiceAddressModal from "../../components/common/ServiceAddressModal";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -27,18 +28,57 @@ const ClientProfile = () => {
 
   const [user, setUser] = useState({ full_name: "", phone: "", cpf: "", email: "", is_verified: false });
   const [patient, setPatient] = useState({});
+  // Change 44 — service addresses
+  const [addresses, setAddresses] = useState([]);
+  const [editingAddress, setEditingAddress] = useState(null); // null | row | {}
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   useEffect(() => {
     Promise.all([
       axios.get(`${API}/api/users/${userId}`, { headers }),
       axios.get(`${API}/api/users/${userId}/patient`, { headers }).catch(() => ({ data: null })),
       axios.get(`${API}/api/documents/my-documents`, { headers }).catch(() => ({ data: [] })),
-    ]).then(([uRes, pRes, docRes]) => {
+      axios.get(`${API}/api/addresses`, { headers }).catch(() => ({ data: [] })),
+    ]).then(([uRes, pRes, docRes, aRes]) => {
       setUser(uRes.data);
       if (pRes.data) setPatient(pRes.data);
       setClientDocs(Array.isArray(docRes.data) ? docRes.data : []);
+      setAddresses(Array.isArray(aRes.data) ? aRes.data : []);
     }).finally(() => setLoading(false));
   }, []);
+
+  // ── Service-address actions ────────────────────────────────────────────────
+  const openAddAddress = () => { setEditingAddress(null); setShowAddressModal(true); };
+  const openEditAddress = (a) => { setEditingAddress(a); setShowAddressModal(true); };
+  const onAddressSaved = (row) => {
+    setAddresses(prev => {
+      const idx = prev.findIndex(x => x.id === row.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = row;
+        if (row.is_default) next.forEach(x => { if (x.id !== row.id) x.is_default = false; });
+        return next;
+      }
+      const next = [row, ...prev];
+      if (row.is_default) next.forEach(x => { if (x.id !== row.id) x.is_default = false; });
+      return next;
+    });
+  };
+  const setAddressDefault = async (id) => {
+    try {
+      await axios.patch(`${API}/api/addresses/${id}/default`, {}, { headers });
+      setAddresses(prev => prev.map(x => ({ ...x, is_default: x.id === id })));
+      toast.success(t("service_address.default_set"));
+    } catch { toast.error(t("service_address.default_error")); }
+  };
+  const deleteAddress = async (id) => {
+    if (!window.confirm(t("service_address.confirm_delete"))) return;
+    try {
+      await axios.delete(`${API}/api/addresses/${id}`, { headers });
+      setAddresses(prev => prev.filter(x => x.id !== id));
+      toast.success(t("service_address.deleted"));
+    } catch { toast.error(t("service_address.delete_error")); }
+  };
 
   const setU = k => e => setUser(p => ({ ...p, [k]: e.target.value }));
   const setP = k => e => setPatient(p => ({ ...p, [k]: e.target.value }));
@@ -92,6 +132,76 @@ const ClientProfile = () => {
             </div>
 
             {/* Patient info — removed per suggestion: patient data moves to booking flow */}
+
+            {/* Change 44 — Service Addresses */}
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-navy flex items-center gap-2">
+                    <MapPin size={16} className="text-blue-500" />
+                    {t("service_address.section_title")}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{t("service_address.section_desc")}</p>
+                </div>
+                <button onClick={openAddAddress} className="btn-outline text-xs flex items-center gap-1.5">
+                  <Plus size={13} /> {t("service_address.add")}
+                </button>
+              </div>
+
+              {addresses.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">{t("service_address.empty")}</p>
+              ) : (
+                <div className="space-y-2">
+                  {addresses.map(a => (
+                    <div key={a.id} className={`p-3 rounded-xl border ${a.is_default ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <p className="text-sm font-semibold text-navy truncate">
+                              {a.label || t("service_address.unnamed")}
+                            </p>
+                            {a.is_default && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-1">
+                                <Star size={9} /> {t("service_address.default")}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {[
+                              a.street && a.number ? `${a.street}, ${a.number}` : a.street,
+                              a.complement,
+                              a.neighborhood,
+                              a.city && a.state ? `${a.city} - ${a.state}` : (a.city || a.state),
+                              a.cep,
+                            ].filter(Boolean).join(" · ")}
+                          </p>
+                          {a.reference && <p className="text-[11px] text-slate-400 mt-0.5 italic">{a.reference}</p>}
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {!a.is_default && (
+                            <button onClick={() => setAddressDefault(a.id)}
+                              title={t("service_address.make_default")}
+                              className="p-1.5 rounded-lg hover:bg-white text-slate-500 hover:text-blue-600">
+                              <Star size={14} />
+                            </button>
+                          )}
+                          <button onClick={() => openEditAddress(a)}
+                            title={t("service_address.edit")}
+                            className="p-1.5 rounded-lg hover:bg-white text-slate-500 hover:text-blue-600">
+                            <Edit2 size={14} />
+                          </button>
+                          <button onClick={() => deleteAddress(a.id)}
+                            title={t("service_address.delete")}
+                            className="p-1.5 rounded-lg hover:bg-white text-slate-500 hover:text-red-500">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Verification Center */}
             <VerificationCenter role="client" userId={userId} />
@@ -243,6 +353,15 @@ const ClientProfile = () => {
             })()}
 
           </div>
+        )}
+
+        {/* Change 44 — Address add/edit modal */}
+        {showAddressModal && (
+          <ServiceAddressModal
+            address={editingAddress}
+            onClose={() => setShowAddressModal(false)}
+            onSaved={onAddressSaved}
+          />
         )}
       </div>
     </div>

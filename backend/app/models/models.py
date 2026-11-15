@@ -607,4 +607,32 @@ class WalletTransaction(Base):
     description     = Column(String, nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
+# ── Change 44 — Service Addresses (client profile) ──────────────────────────────
+# A client can keep multiple saved service addresses (home, parent's place, etc.).
+# Each address is geocoded so the GPS check-in radius can be enforced per booking.
+# NOTHING in this table is required by existing features; it is additive. Bookings
+# created before Change 44 continue to use Patient.address exactly as before —
+# this table only supplies optional snapshots when the client uses the picker.
+class ServiceAddress(Base):
+    __tablename__ = "service_addresses"
+    id             = Column(String, primary_key=True, default=gen_uuid)
+    user_id        = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    label          = Column(String, nullable=True)   # e.g. "Casa", "Casa da mãe"
+    cep            = Column(String, nullable=True)   # Brazilian postal code
+    street         = Column(String, nullable=True)
+    number         = Column(String, nullable=True)
+    complement     = Column(String, nullable=True)
+    neighborhood   = Column(String, nullable=True)
+    city           = Column(String, nullable=True)
+    state          = Column(String, nullable=True)
+    reference      = Column(Text,   nullable=True)
+    latitude       = Column(Float,  nullable=True)
+    longitude      = Column(Float,  nullable=True)
+    is_default     = Column(Boolean, default=False)
+    is_active      = Column(Boolean, default=True)   # soft-delete
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at     = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", backref="service_addresses")
+
     wallet = relationship("Wallet", back_populates="transactions")
