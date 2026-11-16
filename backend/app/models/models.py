@@ -607,6 +607,8 @@ class WalletTransaction(Base):
     description     = Column(String, nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
+    wallet = relationship("Wallet", back_populates="transactions")
+
 # ── Change 44 — Service Addresses (client profile) ──────────────────────────────
 # A client can keep multiple saved service addresses (home, parent's place, etc.).
 # Each address is geocoded so the GPS check-in radius can be enforced per booking.
@@ -634,5 +636,3 @@ class ServiceAddress(Base):
     updated_at     = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", backref="service_addresses")
-
-    wallet = relationship("Wallet", back_populates="transactions")
