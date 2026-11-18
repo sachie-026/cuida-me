@@ -13,6 +13,21 @@ from app.utils.notification_engine import fire_event
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
+class ServiceAddressPayload(BaseModel):
+    """Change 44 — snapshot address captured at booking creation.
+    All fields optional at the schema level so older frontend bundles don't 400;
+    the create endpoint enforces the required subset (street, city, state)."""
+    cep:          Optional[str] = None
+    street:       Optional[str] = None
+    number:       Optional[str] = None
+    complement:   Optional[str] = None
+    neighborhood: Optional[str] = None
+    city:         Optional[str] = None
+    state:        Optional[str] = None
+    reference:    Optional[str] = None
+    latitude:     Optional[float] = None
+    longitude:    Optional[float] = None
+
 class BookingCreate(BaseModel):
     patient_id:      str
     professional_id: str
@@ -28,6 +43,8 @@ class BookingCreate(BaseModel):
     distance_km:     float         = 0.0
     markup_pct:      int           = 0
     notes:           Optional[str] = None
+    # Change 44 — optional at schema level, validated below if present
+    service_address: Optional[ServiceAddressPayload] = None
 
 class CheckInOut(BaseModel):
     lat: float
@@ -174,25 +191,78 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     holiday_info = check_date_for_holiday(date_str, db)
     is_holiday = body.is_holiday or holiday_info["is_holiday"]
 
-    # State registration validation — pro can only work in their COREN state
+    # State registration validation — pro can only work in their COREN state.
+    # Change 44: prefer the structured service_address.state captured on the
+    # booking payload (deterministic 2-letter UF). Fall back to parsing
+    # patient.address, but with a WORD-BOUNDARY match so "PARANÁ" does not
+    # register as "PA" (the previous substring-match bug).
     if hasattr(body, 'professional_id') and body.professional_id:
         pro = db.query(Professional).filter(Professional.id == body.professional_id).first()
-        if pro and pro.council_state and patient.address:
+        if pro and pro.council_state:
             pro_state = pro.council_state.upper()
-            # Extract state from patient address (last 2 chars if it's a state code, or search for state abbreviation)
-            addr_upper = patient.address.upper() if patient.address else ""
-            STATES = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
+            STATES = {"AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
+                      "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"}
             patient_state = None
-            for s in STATES:
-                if f" {s}" in addr_upper or f"-{s}" in addr_upper or addr_upper.endswith(s):
-                    patient_state = s
-                    break
+            # 1) Preferred — structured field from Change 44 payload
+            sa = getattr(body, "service_address", None)
+            if sa and getattr(sa, "state", None):
+                cand = sa.state.strip().upper()
+                if cand in STATES:
+                    patient_state = cand
+            # 2) Fallback — parse the patient profile address text with a
+            # word-boundary regex so "PARANÁ" doesn't trigger "PA".
+            if patient_state is None and patient and patient.address:
+                import re
+                addr_upper = patient.address.upper()
+                for s in STATES:
+                    if re.search(rf"\b{s}\b", addr_upper):
+                        patient_state = s
+                        break
             if patient_state and patient_state != pro_state:
                 raise HTTPException(403, f"Este profissional possui registro COREN-{pro_state} e não pode atender no estado {patient_state}.")
 
+    # Change 44 — snapshot the service address onto the booking row.
+    # Required fields enforced here (schema has them optional to avoid breaking
+    # old frontend bundles during rollout, which is a soft failure path, not a
+    # silent one — if the frontend forgot to send the address we 400 here with
+    # a clear message rather than hiding the omission).
+    sa = body.service_address
+    if not sa or not (sa.street and sa.city and sa.state):
+        raise HTTPException(400, "Endereço de atendimento é obrigatório (rua, cidade e estado).")
+    # Lat/lng — use what the client sent, otherwise geocode on the server as a
+    # best-effort fallback. Missing coordinates are OK; GPS check-in simply
+    # won't enforce a radius for this booking.
+    sa_lat, sa_lng = sa.latitude, sa.longitude
+    if sa_lat is None or sa_lng is None:
+        try:
+            from app.utils.geocoding import geocode_address
+            full = ", ".join(x for x in [
+                f"{sa.street}, {sa.number}" if sa.number else sa.street,
+                sa.complement, sa.neighborhood, sa.city, sa.state,
+                f"CEP {sa.cep}" if sa.cep else None,
+            ] if x)
+            coords = geocode_address(full)
+            if coords:
+                sa_lat, sa_lng = coords
+        except Exception:
+            pass
+
     server_price = _compute_price(body, db)
     booking_data = body.dict()
+    booking_data.pop("service_address", None)  # flatten below instead
     booking_data["is_holiday"] = is_holiday
+    booking_data.update({
+        "service_street":       sa.street,
+        "service_number":       sa.number,
+        "service_complement":   sa.complement,
+        "service_neighborhood": sa.neighborhood,
+        "service_city":         sa.city,
+        "service_state":        sa.state,
+        "service_cep":          sa.cep,
+        "service_reference":    sa.reference,
+        "service_latitude":     sa_lat,
+        "service_longitude":    sa_lng,
+    })
     # Scheduled times are treated as bare wall-clock Brazilian time throughout
     # the app: stored as-is, returned as-is, displayed as-is. No TZ math.
     if server_price:
@@ -283,16 +353,34 @@ def _booking_to_dict(b: Booking, db: Session, enrich: bool = False) -> dict:
         row["professional_name"] = pro_user.full_name if pro_user else None
         patient = db.query(Patient).filter(Patient.id == b.patient_id).first() if b.patient_id else None
         row["patient_name"] = patient.patient_name if patient else None
-        row["address"]      = patient.address if patient else None
-        if patient and patient.address:
-            parts = patient.address.split(",")
-            row["city"] = parts[-2].strip() if len(parts) >= 2 else parts[0].strip()
-            row["approximate_location"] = row["city"]
+
+        # Change 44 — prefer the booking snapshot, fall back to patient.address
+        # for bookings created before this change.
+        has_snapshot = bool(b.service_street or b.service_city)
+        if has_snapshot:
+            full_parts = [
+                f"{b.service_street}, {b.service_number}" if b.service_street and b.service_number else b.service_street,
+                b.service_complement,
+                b.service_neighborhood,
+                f"{b.service_city} - {b.service_state}" if b.service_city and b.service_state else (b.service_city or b.service_state),
+                f"CEP {b.service_cep}" if b.service_cep else None,
+            ]
+            row["address"]  = ", ".join(p for p in full_parts if p)
+            row["city"]     = b.service_city
+            row["approximate_location"] = ", ".join(p for p in [b.service_neighborhood, b.service_city] if p) or b.service_city
+            row["latitude"]  = b.service_latitude  if b.service_latitude  is not None else (patient.latitude  if patient else None)
+            row["longitude"] = b.service_longitude if b.service_longitude is not None else (patient.longitude if patient else None)
         else:
-            row["city"] = None
-            row["approximate_location"] = None
-        row["latitude"]  = patient.latitude  if patient else None
-        row["longitude"] = patient.longitude if patient else None
+            row["address"] = patient.address if patient else None
+            if patient and patient.address:
+                parts = patient.address.split(",")
+                row["city"] = parts[-2].strip() if len(parts) >= 2 else parts[0].strip()
+                row["approximate_location"] = row["city"]
+            else:
+                row["city"] = None
+                row["approximate_location"] = None
+            row["latitude"]  = patient.latitude  if patient else None
+            row["longitude"] = patient.longitude if patient else None
     return row
 
 @router.get("/{booking_id}")

@@ -280,6 +280,20 @@ class Booking(Base):
     match_deadline   = Column(DateTime(timezone=True), nullable=True)
     match_batch      = Column(Integer, nullable=True)
     matched_pro_ids  = Column(JSON, default=list)
+    # Change 44 — service-address snapshot (captured at booking creation so
+    # later edits to the client profile don't change historical bookings).
+    # All nullable for backward compatibility with bookings created before
+    # this change; display code falls back to patient.address when NULL.
+    service_street       = Column(String, nullable=True)
+    service_number       = Column(String, nullable=True)
+    service_complement   = Column(String, nullable=True)
+    service_neighborhood = Column(String, nullable=True)
+    service_city         = Column(String, nullable=True)
+    service_state        = Column(String, nullable=True)
+    service_cep          = Column(String, nullable=True)
+    service_reference    = Column(Text,   nullable=True)
+    service_latitude     = Column(Float,  nullable=True)
+    service_longitude    = Column(Float,  nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
     patient      = relationship("Patient",      back_populates="bookings")
