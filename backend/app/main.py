@@ -407,6 +407,17 @@ def run_migrations():
             updated_at TIMESTAMPTZ DEFAULT NOW()
         )""",
         "CREATE INDEX IF NOT EXISTS ix_service_addresses_user_id ON service_addresses(user_id)",
+        # Change 44 — snapshot service address on each booking (additive, nullable)
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_street VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_number VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_complement VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_neighborhood VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_city VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_state VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_cep VARCHAR",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_reference TEXT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_latitude FLOAT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_longitude FLOAT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

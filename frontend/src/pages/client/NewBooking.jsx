@@ -69,6 +69,12 @@ const NewBooking = () => {
     phone:"", emergency_name:"", emergency_phone:"", gender:"",
   });
   const [emergencyContact, setEmergencyContact] = useState({ name:"", phone:"" });
+  // Change 44 — mandatory service address captured during booking flow.
+  const [serviceAddress, setServiceAddress] = useState({
+    cep: "", street: "", number: "", complement: "",
+    neighborhood: "", city: "", state: "", reference: "",
+  });
+  const [cepLoading, setCepLoading] = useState(false);
   const [isVerified, setIsVerified] = useState(true);
   const [phoneVerified, setPhoneVerified] = useState(true);
   const [svcLoadState, setSvcLoadState] = useState("loading");
@@ -162,11 +168,37 @@ const NewBooking = () => {
   const toggleService = (svc) =>
     setSelectedSvcs(prev => prev.includes(svc) ? prev.filter(s=>s!==svc) : [...prev,svc]);
 
+  // Change 44 — CEP autofill via backend ViaCEP proxy
+  const handleCepLookup = async () => {
+    const digits = (serviceAddress.cep || "").replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/api/addresses/cep/${digits}`, { headers });
+      setServiceAddress(p => ({
+        ...p,
+        cep: data.cep || p.cep,
+        street: data.street || p.street,
+        neighborhood: data.neighborhood || p.neighborhood,
+        city: data.city || p.city,
+        state: data.state || p.state,
+      }));
+    } catch (err) {
+      if (err.response?.status === 404) toast(t("client_booking.cep_not_found"));
+      else toast.error(t("client_booking.cep_error"));
+    } finally { setCepLoading(false); }
+  };
+
   const handleStep1Next = () => {
     if (selectedSvcs.length===0) { toast.error(t("client_booking.select_service_error")); return; }
     if (!date || !startTime || !endTime) { toast.error(t("client_booking.fill_datetime_error")); return; }
     if (!durationInfo || durationInfo.totalMinutes < 120) { toast.error(t("client_booking.min_duration_error")); return; }
     if (!emergencyContact.name || !emergencyContact.phone) { toast.error(t("client_booking.emergency_required")); return; }
+    // Change 44 — service address mandatory
+    if (!serviceAddress.street.trim() || !serviceAddress.city.trim() || !serviceAddress.state.trim()) {
+      toast.error(t("client_booking.address_required"));
+      return;
+    }
     setLoading(true);
     const svcParam = encodeURIComponent(selectedSvcs.join(","));
     // Send local date+time without UTC conversion — availability slots are stored in local time
@@ -252,6 +284,17 @@ const NewBooking = () => {
         is_urgent: isUrgent, distance_km: 0,
         markup_pct: selectedPro.markup_pct || 0,
         notes,
+        // Change 44 — snapshot the service address with this booking
+        service_address: {
+          cep:          (serviceAddress.cep || "").replace(/\D/g, "") || null,
+          street:       serviceAddress.street.trim() || null,
+          number:       serviceAddress.number.trim() || null,
+          complement:   serviceAddress.complement.trim() || null,
+          neighborhood: serviceAddress.neighborhood.trim() || null,
+          city:         serviceAddress.city.trim() || null,
+          state:        serviceAddress.state.trim() || null,
+          reference:    serviceAddress.reference.trim() || null,
+        },
       }, {headers});
       toast.success(t("client_booking.booking_created"));
       navigate("/dashboard/client");
@@ -533,6 +576,65 @@ const NewBooking = () => {
                   <input className="form-input" value={emergencyContact.name} onChange={e=>setEmergencyContact(p=>({...p,name:e.target.value}))} placeholder={t("client_booking.emergency_name_placeholder")}/></div>
                 <div><label className="form-label">{t("client_booking.emergency_phone")} *</label>
                   <input className="form-input" type="tel" value={emergencyContact.phone} onChange={e=>setEmergencyContact(p=>({...p,phone:e.target.value}))} placeholder="(11) 99999-9999"/></div>
+              </div>
+            </div>
+
+            {/* Change 44 — Service address (mandatory) */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">{t("client_booking.address_title")}</p>
+              <div>
+                <label className="form-label">{t("client_booking.address_cep")}</label>
+                <div className="relative">
+                  <input className="form-input pr-24" value={serviceAddress.cep}
+                    onChange={e=>setServiceAddress(p=>({...p,cep:e.target.value}))}
+                    onBlur={handleCepLookup}
+                    placeholder="00000-000" maxLength={9}/>
+                  {cepLoading && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-blue-500">...</span>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="form-label">{t("client_booking.address_street")} *</label>
+                  <input className="form-input" value={serviceAddress.street}
+                    onChange={e=>setServiceAddress(p=>({...p,street:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="form-label">{t("client_booking.address_number")}</label>
+                  <input className="form-input" value={serviceAddress.number}
+                    onChange={e=>setServiceAddress(p=>({...p,number:e.target.value}))}/>
+                </div>
+              </div>
+              <div>
+                <label className="form-label">{t("client_booking.address_complement")}</label>
+                <input className="form-input" value={serviceAddress.complement}
+                  onChange={e=>setServiceAddress(p=>({...p,complement:e.target.value}))}
+                  placeholder={t("client_booking.address_complement_placeholder")}/>
+              </div>
+              <div>
+                <label className="form-label">{t("client_booking.address_neighborhood")}</label>
+                <input className="form-input" value={serviceAddress.neighborhood}
+                  onChange={e=>setServiceAddress(p=>({...p,neighborhood:e.target.value}))}/>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="form-label">{t("client_booking.address_city")} *</label>
+                  <input className="form-input" value={serviceAddress.city}
+                    onChange={e=>setServiceAddress(p=>({...p,city:e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="form-label">{t("client_booking.address_state")} *</label>
+                  <input className="form-input" value={serviceAddress.state}
+                    onChange={e=>setServiceAddress(p=>({...p,state:e.target.value.toUpperCase()}))}
+                    maxLength={2} placeholder="SP"/>
+                </div>
+              </div>
+              <div>
+                <label className="form-label">{t("client_booking.address_reference")}</label>
+                <textarea className="form-input" rows={2} value={serviceAddress.reference}
+                  onChange={e=>setServiceAddress(p=>({...p,reference:e.target.value}))}
+                  placeholder={t("client_booking.address_reference_placeholder")}/>
               </div>
             </div>
 

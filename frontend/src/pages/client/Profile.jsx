@@ -133,7 +133,12 @@ const ClientProfile = () => {
 
             {/* Patient info — removed per suggestion: patient data moves to booking flow */}
 
-            {/* Change 44 — Service Addresses */}
+            {/* Change 44 — Service Addresses: hidden from profile. Address is
+                now entered during the booking flow (NewBooking.jsx) and stored
+                as a snapshot per booking. Section kept in the code for future
+                re-enabling; render-guarded by `false &&` below so React skips
+                the entire block without complaining about unused helpers. */}
+            {false && (
             <div className="card p-6">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -202,6 +207,7 @@ const ClientProfile = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Verification Center */}
             <VerificationCenter role="client" userId={userId} />
