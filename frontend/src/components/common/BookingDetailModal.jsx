@@ -6,15 +6,6 @@ import VerifiedBadge from "./VerifiedBadge";
 import RatingModal from "./RatingModal";
 import { formatBRL } from "../../utils/format";
 
-// Build a WhatsApp wa.me URL for a Brazilian phone, without double-prefixing 55.
-const waUrl = (raw) => {
-  if (!raw) return null;
-  let digits = String(raw).replace(/\D/g, "");
-  if (!digits) return null;
-  if (!digits.startsWith("55")) digits = `55${digits}`;
-  return `https://wa.me/${digits}`;
-};
-
 const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) => {
   const { t } = useTranslation();
   const [countdown, setCountdown] = useState(null);
@@ -208,16 +199,11 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
           </div>
         )}
 
-        {/* Contact buttons — WhatsApp + Call — only for accepted (LGPD) */}
+        {/* Contact button — Call only. WhatsApp hidden until the direct-chat
+            flow is in place; the in-app "Conversar com cliente" button below
+            covers messaging. */}
         {isAccepted && booking.client_phone && (
           <div className="flex gap-2 mb-4">
-            {waUrl(booking.client_phone) && (
-              <a href={waUrl(booking.client_phone)}
-                target="_blank" rel="noreferrer"
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors">
-                <MessageSquare size={14} /> WhatsApp
-              </a>
-            )}
             <a href={`tel:${booking.client_phone}`}
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors">
               <Phone size={14} /> {t("booking_detail.call")}
@@ -237,8 +223,8 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
               </button>
             </>
           )}
-          {isAccepted && onChat && (
-            <button onClick={() => onChat(booking.id)} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
+          {isAccepted && onChat && booking.user_id && (
+            <button onClick={() => onChat(booking.user_id)} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
               <MessageSquare size={14} /> {t("booking_detail.chat_client")}
             </button>
           )}

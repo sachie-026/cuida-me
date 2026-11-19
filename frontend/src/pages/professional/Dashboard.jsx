@@ -269,7 +269,7 @@ const ProfessionalDashboard = () => {
             onClose={() => setSelectedBooking(null)}
             onAccept={async (id) => { await handleAccept(id); setSelectedBooking(null); }}
             onDecline={async (id) => { await handleDecline(id); setSelectedBooking(null); }}
-            onChat={(id) => navigate(`/messages?booking=${id}`)}
+            onChat={(partnerUserId) => navigate(`/messages?partner=${partnerUserId}`)}
           />
         )}
       </div>
