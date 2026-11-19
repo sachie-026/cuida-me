@@ -126,9 +126,18 @@ const Messages = () => {
                         : "bg-white text-navy border border-slate-200 rounded-bl-sm"
                     }`}>
                       <p>{msg.content}</p>
-                      <p className={`text-xs mt-1 ${msg.sender_id === currentId ? "text-blue-200" : "text-slate-400"}`}>
-                        {new Date(msg.created_at).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}
-                      </p>
+                      {(() => {
+                        // Defensive: show time only when we actually have a valid timestamp.
+                        // Prevents "Invalid Date" when an endpoint returns a message
+                        // without a created_at field.
+                        const d = msg.created_at ? new Date(msg.created_at) : null;
+                        if (!d || isNaN(d.getTime())) return null;
+                        return (
+                          <p className={`text-xs mt-1 ${msg.sender_id === currentId ? "text-blue-200" : "text-slate-400"}`}>
+                            {d.toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}
