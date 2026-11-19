@@ -40,8 +40,8 @@ class MessageOut(BaseModel):
     class Config:
         from_attributes = True
 
-@router.post("", status_code=201)
-@router.post("/", status_code=201, include_in_schema=False)
+@router.post("", status_code=201, response_model=MessageOut)
+@router.post("/", status_code=201, response_model=MessageOut, include_in_schema=False)
 def send_message(body: MessageCreate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Send a message to another user."""
     if not body.content.strip():
