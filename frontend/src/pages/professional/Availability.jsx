@@ -331,7 +331,7 @@ const CalendarTab = ({ userId, profId }) => {
                     {b.total_price && <p className="text-xs text-slate-500 mt-0.5">{formatBRL(b.total_price)}</p>}
                   </div>
                   <div className="flex gap-1.5">
-                    <button onClick={() => navigate(`/messages?booking=${b.id}`)} className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold">Chat</button>
+                    <button onClick={() => b.user_id ? navigate(`/messages?partner=${b.user_id}`) : navigate("/messages")} className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold">Chat</button>
                   </div>
                 </div>
               );
