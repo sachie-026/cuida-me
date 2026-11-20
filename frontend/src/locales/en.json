@@ -2051,6 +2051,21 @@
     "pro_profile": "Professional Profile",
     "pro_dashboard": "Professional Dashboard"
   },
+  "start_end_service": {
+    "start": "Start service",
+    "finish": "End service",
+    "start_tooltip": "Validates your location and marks the service as in progress",
+    "finish_tooltip": "Validates your location and ends the service — the client will be asked to confirm",
+    "started": "Service started. Have a good appointment!",
+    "finished": "Service ended. Waiting for client confirmation to release payment.",
+    "already_started": "Service is already in progress.",
+    "out_of_radius_warning": "Location saved, but you appear to be outside the service address radius.",
+    "gps_unavailable": "GPS not supported on this device.",
+    "gps_denied": "Please allow location access to start or end the service.",
+    "gps_timeout": "Could not get your location — try again.",
+    "gps_error": "Could not read your location.",
+    "action_error": "Could not complete the action. Please try again."
+  },
   "booking_detail": {
     "expired": "Expired",
     "service_default": "Home Care Service",

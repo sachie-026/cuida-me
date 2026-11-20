@@ -2052,6 +2052,21 @@
     "pro_profile": "Perfil Profissional",
     "pro_dashboard": "Painel Profissional"
   },
+  "start_end_service": {
+    "start": "Iniciar atendimento",
+    "finish": "Finalizar atendimento",
+    "start_tooltip": "Valida sua localização e marca o atendimento como em andamento",
+    "finish_tooltip": "Valida sua localização e finaliza o atendimento — o cliente será solicitado a confirmar",
+    "started": "Atendimento iniciado. Bom atendimento!",
+    "finished": "Atendimento finalizado. Aguardando confirmação do cliente para liberar o pagamento.",
+    "already_started": "Atendimento já está em andamento.",
+    "out_of_radius_warning": "Localização registrada, mas você aparece fora do raio do endereço do atendimento.",
+    "gps_unavailable": "GPS não é suportado neste dispositivo.",
+    "gps_denied": "Permita o acesso à sua localização para iniciar ou finalizar o atendimento.",
+    "gps_timeout": "Não foi possível obter sua localização — tente novamente.",
+    "gps_error": "Não foi possível ler sua localização.",
+    "action_error": "Não foi possível concluir a ação. Tente novamente."
+  },
   "booking_detail": {
     "expired": "Expirado",
     "service_default": "Serviço de Cuidado Domiciliar",
