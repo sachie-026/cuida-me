@@ -867,6 +867,108 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
                    else "⚠️ Check-in registrado, mas a localização está fora do raio esperado.",
     }
 
+@router.get("/with-partner/{partner_user_id}")
+def get_active_booking_with_partner(
+    partner_user_id: str,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Change 44a — returns the most recent currently-active booking between the
+    current user and a chat partner. Used by the Messages page to decide which
+    quick-message chips to show. Returns null if no active booking exists."""
+    active = [BookingStatus.accepted, BookingStatus.professional_arrived, BookingStatus.checked_in]
+    # Walk current user's bookings as either client or professional, find one
+    # whose other side matches the partner.
+    bookings = db.query(Booking).filter(
+        Booking.status.in_(active),
+    ).order_by(Booking.scheduled_start.desc()).all()
+    for b in bookings:
+        prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+        pro_user_id = prof.user_id if prof else None
+        client_user_id = _get_booking_client_id(b, db)
+        pair_a = {current.id, partner_user_id}
+        pair_b = {pro_user_id, client_user_id}
+        if None in pair_b:
+            continue
+        if pair_a == pair_b:
+            return _booking_to_dict(b, db, enrich=True)
+    return None
+
+class QuickMessageRequest(BaseModel):
+    """Change 44a — kind of one-tap message to fire.
+    "on_the_way"       : pro → client (I'm on my way)
+    "client_ready"     : client → pro ("Pode chegar")
+    "client_waiting"   : client → pro ("Estou aguardando")"""
+    message_type: str
+
+@router.post("/{booking_id}/quick-message")
+def quick_message(
+    booking_id: str,
+    body: QuickMessageRequest,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Fire a dedicated quick-message notification event (not a chat message).
+    Enforces that only the correct side can send each kind, and that the
+    booking status is sane (accepted / professional_arrived / checked_in).
+    Idempotent-ish: the notification engine already dedupes identical
+    deliveries by (user_id, event_key, booking_id)."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    status_now = booking.status.value if hasattr(booking.status, "value") else str(booking.status)
+    if status_now not in ("accepted", "professional_arrived", "checked_in"):
+        raise HTTPException(400, "Mensagem rápida indisponível para este status.")
+
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first() if booking.professional_id else None
+    pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+    client_user = _get_booking_client_user(booking, db)
+
+    is_pro    = pro_user    and current.id == pro_user.id
+    is_client = client_user and current.id == client_user.id
+
+    base_vars = {
+        "service":      booking.service_type or "Cuidado",
+        "booking_code": f"#{booking.id[:6].upper()}",
+        "booking_id":   booking.id,
+    }
+
+    kind = (body.message_type or "").strip().lower()
+
+    if kind == "on_the_way":
+        if not is_pro:
+            raise HTTPException(403, "Apenas o profissional pode enviar esta mensagem.")
+        if not client_user:
+            raise HTTPException(404, "Cliente não encontrado.")
+        try:
+            fire_event(db, "service.on_the_way", {
+                **base_vars,
+                "professional_name": current.full_name or "Profissional",
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+        except Exception as e:
+            print(f"[NOTIFY] service.on_the_way error: {e}")
+        return {"ok": True, "message_type": kind}
+
+    if kind in ("client_ready", "client_waiting"):
+        if not is_client:
+            raise HTTPException(403, "Apenas o cliente pode enviar esta mensagem.")
+        if not pro_user:
+            raise HTTPException(404, "Profissional não encontrado.")
+        event_key = "service.client_ready" if kind == "client_ready" else "service.client_waiting"
+        try:
+            fire_event(db, event_key, {
+                **base_vars,
+                "client_name": current.full_name or "Cliente",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+        except Exception as e:
+            print(f"[NOTIFY] {event_key} error: {e}")
+        return {"ok": True, "message_type": kind}
+
+    raise HTTPException(400, f"Tipo de mensagem desconhecido: '{kind}'")
+
 @router.post("/{booking_id}/start-service-combined")
 def start_service_combined(booking_id: str, body: CheckInRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Change 44a — one-shot "Iniciar atendimento".

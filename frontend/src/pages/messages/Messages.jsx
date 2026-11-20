@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import Logo from "../../components/common/Logo";
 import ProfileMenu from "../../components/common/ProfileMenu";
 import LanguageSwitcher from "../../components/common/LanguageSwitcher";
+import QuickMessagesButtons from "../../components/common/QuickMessagesButtons";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -24,6 +25,13 @@ const Messages = () => {
   const [messages,      setMessages]       = useState([]);
   const [newMsg,        setNewMsg]         = useState("");
   const [sending,       setSending]        = useState(false);
+  // Change 44a — active booking shared between current user & partner, for the quick-message chips
+  const [activeBooking, setActiveBooking] = useState(null);
+  // Current user's primary role — used to pick which chip set to render
+  const currentRole = (localStorage.getItem("role") || "").toLowerCase();
+  const chipSide = currentRole === "client" ? "client"
+                   : ["nurse","technician","nursing_assistant","caregiver"].includes(currentRole) ? "pro"
+                   : null;
 
   useEffect(() => {
     axios.get(`${API}/api/messages/conversations`, { headers })
@@ -32,10 +40,15 @@ const Messages = () => {
   }, []);
 
   useEffect(() => {
-    if (!activePartner) return;
+    if (!activePartner) { setActiveBooking(null); return; }
     axios.get(`${API}/api/messages/thread/${activePartner}`, { headers })
       .then(r => { setMessages(r.data); scrollToBottom(); })
       .catch(() => {});
+    // Change 44a — try to resolve an active booking with this partner so
+    // the quick-message chips can appear in the chat.
+    axios.get(`${API}/api/bookings/with-partner/${activePartner}`, { headers })
+      .then(r => setActiveBooking(r.data || null))
+      .catch(() => setActiveBooking(null));
   }, [activePartner]);
 
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -143,6 +156,13 @@ const Messages = () => {
                 ))}
                 <div ref={bottomRef} />
               </div>
+
+              {/* Change 44a — quick-message chips (only when an active booking exists with this partner) */}
+              {activeBooking && chipSide && (
+                <div className="bg-white border-t border-slate-100 px-4 py-2">
+                  <QuickMessagesButtons booking={activeBooking} side={chipSide} />
+                </div>
+              )}
 
               {/* Input */}
               <div className="bg-white border-t border-slate-100 p-4 flex gap-3">

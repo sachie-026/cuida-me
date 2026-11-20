@@ -2066,6 +2066,13 @@
     "gps_error": "Could not read your location.",
     "action_error": "Could not complete the action. Please try again."
   },
+  "quick_messages": {
+    "on_the_way": "I'm on my way",
+    "client_ready": "You can come",
+    "client_waiting": "I'm waiting",
+    "sent": "Message sent.",
+    "send_error": "Could not send the message."
+  },
   "booking_detail": {
     "expired": "Expired",
     "service_default": "Home Care Service",

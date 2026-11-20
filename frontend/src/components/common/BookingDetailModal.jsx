@@ -5,6 +5,7 @@ import CareBadges from "./CareBadges";
 import VerifiedBadge from "./VerifiedBadge";
 import RatingModal from "./RatingModal";
 import StartEndServiceButtons from "./StartEndServiceButtons";
+import QuickMessagesButtons from "./QuickMessagesButtons";
 import { formatBRL } from "../../utils/format";
 
 const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onBookingChanged }) => {
@@ -219,6 +220,11 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onB
             booking={booking}
             onUpdate={() => { onBookingChanged?.(); onClose?.(); }}
           />
+        </div>
+
+        {/* Change 44a — One-tap quick message chips (pro side: "Estou a caminho") */}
+        <div className="mb-3">
+          <QuickMessagesButtons booking={booking} side="pro" />
         </div>
 
         {/* Actions */}

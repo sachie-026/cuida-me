@@ -2067,6 +2067,13 @@
     "gps_error": "Não foi possível ler sua localização.",
     "action_error": "Não foi possível concluir a ação. Tente novamente."
   },
+  "quick_messages": {
+    "on_the_way": "Estou a caminho",
+    "client_ready": "Pode chegar",
+    "client_waiting": "Estou aguardando",
+    "sent": "Mensagem enviada.",
+    "send_error": "Não foi possível enviar a mensagem."
+  },
   "booking_detail": {
     "expired": "Expirado",
     "service_default": "Serviço de Cuidado Domiciliar",

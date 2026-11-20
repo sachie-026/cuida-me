@@ -4,6 +4,7 @@ import { X, MapPin, Clock, User, Phone, MessageSquare, Edit2, Save, AlertCircle,
 import axios from "axios";
 import toast from "react-hot-toast";
 import CareBadges from "./CareBadges";
+import QuickMessagesButtons from "./QuickMessagesButtons";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -151,6 +152,11 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
             <p className="text-xs font-semibold text-slate-500 uppercase">{t("client_booking_detail.total")}</p>
             <p className="text-lg font-bold text-green-700">{formatBRL(booking.total_price || 0)}</p>
           </div>
+        </div>
+
+        {/* Change 44a — One-tap quick-message chips (client side: Pode chegar / Estou aguardando) */}
+        <div className="mb-4">
+          <QuickMessagesButtons booking={booking} side="client" />
         </div>
 
         {/* ── Editable section ───────────────────────────────────────────── */}
