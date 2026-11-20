@@ -10,6 +10,7 @@ import ProfileMenu from "../../components/common/ProfileMenu";
 import NotificationCenter from "../../components/common/NotificationCenter";
 import CancelBookingModal from "../../components/common/CancelBookingModal";
 import BookingDetailModal from "../../components/common/BookingDetailModal";
+import StartEndServiceButtons from "../../components/common/StartEndServiceButtons";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -39,6 +40,14 @@ const ProfessionalDashboard = () => {
   const [loading,        setLoading]        = useState(true);
   const [cancellingBooking, setCancellingBooking] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
+
+  // Change 44a — reload bookings after a status change (Iniciar/Finalizar)
+  const reloadBookings = () => {
+    if (!profId) return;
+    axios.get(`${API}/api/bookings/professional/${profId}`, { headers })
+      .then(r => setBookings(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -241,6 +250,9 @@ const ProfessionalDashboard = () => {
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[b.status]}`}>
                     {t(`pro_dashboard.status.${b.status}`)}
                   </span>
+                  {/* Change 44a — Iniciar / Finalizar inline on the row (compact).
+                      Component renders null for statuses that don't apply. */}
+                  <StartEndServiceButtons booking={b} onUpdate={reloadBookings} compact={true} />
                   {(b.status === "accepted" || b.status === "pending") && b.status !== "cancelled" && b.status !== "completed" && (
                     <button onClick={(e) => { e.stopPropagation(); setCancellingBooking(b); }} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-semibold flex-shrink-0">
                       {t("pro_dashboard.btn_cancel")}
@@ -270,6 +282,7 @@ const ProfessionalDashboard = () => {
             onAccept={async (id) => { await handleAccept(id); setSelectedBooking(null); }}
             onDecline={async (id) => { await handleDecline(id); setSelectedBooking(null); }}
             onChat={(partnerUserId) => navigate(`/messages?partner=${partnerUserId}`)}
+            onBookingChanged={reloadBookings}
           />
         )}
       </div>

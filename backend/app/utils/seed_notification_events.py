@@ -511,6 +511,47 @@ ADDITIONAL_EVENTS = [
              "Comissão de R$ {{amount}} creditada ({{service}} — {{professional_name}}). Código: {{booking_code}}."),
         ], []),
     ]),
+
+    # Change 44a — Quick messages (one-tap chips in chat + booking screen)
+    # Professional → client: "Estou a caminho"
+    ("service.on_the_way", "service", "Professional is on the way",
+     ["professional_name", "service", "booking_code"], [
+        ("client", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Profissional a caminho 🚗",
+             "{{professional_name}} está a caminho para o serviço de {{service}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Client → professional: "Pode chegar"
+    ("service.client_ready", "service", "Client is ready — professional can arrive",
+     ["client_name", "service", "booking_code"], [
+        ("professional", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Cliente está pronto ✓",
+             "{{client_name}} avisou que já pode chegar. Serviço: {{service}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Client → professional: "Estou aguardando"
+    ("service.client_waiting", "service", "Client is waiting at the service address",
+     ["client_name", "service", "booking_code"], [
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Cliente aguardando ⏱",
+             "{{client_name}} está aguardando no local. Serviço: {{service}}. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # +25 min reminder: "O atendimento já foi iniciado?"
+    # Scheduler filters by status == accepted, so this only fires if the pro
+    # hasn't checked in yet (checkin bumps status to checked_in).
+    ("service.checkin_reminder", "service", "Checkin reminder to client — service not started yet",
+     ["professional_name", "service", "booking_code"], [
+        ("client", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "O atendimento já foi iniciado?",
+             "O horário do serviço de {{service}} com {{professional_name}} já começou e ainda não há check-in. Código: {{booking_code}}. Está tudo bem?"),
+        ], [
+            (25, "booking_start"),  # +25 min after booking.scheduled_start
+        ]),
+    ]),
 ]
 
 

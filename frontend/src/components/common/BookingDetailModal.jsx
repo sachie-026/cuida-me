@@ -4,9 +4,11 @@ import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertC
 import CareBadges from "./CareBadges";
 import VerifiedBadge from "./VerifiedBadge";
 import RatingModal from "./RatingModal";
+import StartEndServiceButtons from "./StartEndServiceButtons";
+import QuickMessagesButtons from "./QuickMessagesButtons";
 import { formatBRL } from "../../utils/format";
 
-const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) => {
+const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onBookingChanged }) => {
   const { t } = useTranslation();
   const [countdown, setCountdown] = useState(null);
   const [showRating, setShowRating] = useState(false);
@@ -210,6 +212,20 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat }) =
             </a>
           </div>
         )}
+
+        {/* Change 44a — Start / End service (pro only; component renders null
+            when the status does not match, so it is safe to always mount). */}
+        <div className="mb-3">
+          <StartEndServiceButtons
+            booking={booking}
+            onUpdate={() => { onBookingChanged?.(); onClose?.(); }}
+          />
+        </div>
+
+        {/* Change 44a — One-tap quick message chips (pro side: "Estou a caminho") */}
+        <div className="mb-3">
+          <QuickMessagesButtons booking={booking} side="pro" />
+        </div>
 
         {/* Actions */}
         <div className="flex gap-2 mt-2">
