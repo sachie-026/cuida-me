@@ -1830,17 +1830,23 @@
     "bad": "Ruim",
     "fair": "Regular",
     "good": "Bom",
+    "great": "Ótimo",
     "very_good": "Muito bom",
     "excellent": "Excelente",
+    "select_score": "Selecione uma nota",
     "comment_label": "Comentário {{required}}",
     "optional": "(opcional)",
     "comment_placeholder": "Conte-nos sobre sua experiência...",
     "comment_required": "Comentário obrigatório para avaliações de 3 estrelas ou menos.",
     "submit": "Enviar avaliação",
     "submitting": "Enviando...",
+    "submitted": "Avaliação enviada!",
+    "submit_error": "Não foi possível enviar a avaliação.",
+    "cancel": "Cancelar",
     "select_rating": "Selecione uma avaliação.",
     "rating_success": "Avaliação enviada com sucesso!",
     "rating_error": "Erro ao enviar avaliação.",
+    "already_rated": "Avaliado",
     "close": "Fechar"
   },
   "sos_button": {
@@ -1986,6 +1992,7 @@
     "section_my_account": "MINHA CONTA",
     "my_profile": "Meu Perfil",
     "my_activity": "Minha Atividade",
+    "history": "Histórico",
     "messages": "Mensagens",
     "section_payments": "PAGAMENTOS",
     "payment_methods": "Métodos de Pagamento",
@@ -2066,6 +2073,13 @@
     "gps_timeout": "Não foi possível obter sua localização — tente novamente.",
     "gps_error": "Não foi possível ler sua localização.",
     "action_error": "Não foi possível concluir a ação. Tente novamente."
+  },
+  "history": {
+    "title": "Histórico",
+    "loading": "Carregando...",
+    "empty": "Nenhum agendamento anterior.",
+    "service_default": "Serviço de Cuidado Domiciliar",
+    "expired": "Expirado"
   },
   "quick_messages": {
     "on_the_way": "Estou a caminho",

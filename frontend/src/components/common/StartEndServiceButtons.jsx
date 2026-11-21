@@ -38,7 +38,15 @@ const StartEndServiceButtons = ({ booking, onUpdate, compact = false }) => {
   if (!booking || !booking.id || !booking.status) return null;
 
   const status = booking.status;
-  const canStart  = status === "accepted";
+  // Past-booking gate: once the service window is fully over, the pro can no
+  // longer "start" a service that was never started. In-progress bookings
+  // (canFinish) are unaffected — a pro who checked in must still be able to
+  // check out even if the scheduled end has passed.
+  const now = new Date();
+  const endAt = booking.scheduled_end ? new Date(booking.scheduled_end) : null;
+  const isPast = endAt && !isNaN(endAt.getTime()) && endAt.getTime() < now.getTime();
+
+  const canStart  = status === "accepted" && !isPast;
   const canFinish = status === "checked_in" || status === "professional_arrived";
   if (!canStart && !canFinish) return null;
 

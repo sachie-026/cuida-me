@@ -80,7 +80,20 @@ const ClientDashboard = () => {
 
   const [filter, setFilter] = useState("all");
 
-  const filteredBookings = filter === "all" ? bookings : bookings.filter(b => b.status === filter);
+  // Change 44b — "Agendamentos" default view hides finalized / past bookings;
+  // they live in the dedicated /history page. The explicit "completed" filter
+  // still shows them for quick inline review.
+  const nowMs = Date.now();
+  const isActiveBooking = (b) => {
+    if (b.status === "checked_in" || b.status === "professional_arrived") return true;
+    if (!["pending", "accepted"].includes(b.status)) return false;
+    if (!b.scheduled_end) return true;
+    const endMs = new Date(b.scheduled_end).getTime();
+    return isNaN(endMs) || endMs >= nowMs;
+  };
+  const filteredBookings = filter === "all"
+    ? bookings.filter(isActiveBooking)
+    : bookings.filter(b => b.status === filter);
 
   const stats = [
     { icon: <CalendarDays size={18} className="text-blue-500" />,  label: "Agendamentos",  value: bookings.length, filterKey: "all" },

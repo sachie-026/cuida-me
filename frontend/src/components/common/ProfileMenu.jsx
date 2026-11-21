@@ -74,6 +74,7 @@ const ProfileMenu = () => {
     { label: t("profile_menu.section_my_account"), items: [
       { icon: <User size={15}/>, text: t("profile_menu.my_profile"), path: "/profile/client" },
       { icon: <History size={15}/>, text: t("profile_menu.my_activity"), path: "/activity" },
+      { icon: <History size={15}/>, text: t("profile_menu.history"), path: "/history" },
       { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
     ]},
     { label: t("profile_menu.section_payments"), items: [
@@ -95,6 +96,7 @@ const ProfileMenu = () => {
       { icon: <User size={15}/>, text: t("profile_menu.my_profile"), path: "/profile/professional" },
       { icon: <Calendar size={15}/>, text: t("profile_menu.my_schedule"), path: "/availability" },
       { icon: <LayoutDashboard size={15}/>, text: t("profile_menu.my_services"), path: "/dashboard/professional" },
+      { icon: <History size={15}/>, text: t("profile_menu.history"), path: "/history" },
       { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
     ]},
     { label: t("profile_menu.section_earnings"), items: [
@@ -121,6 +123,7 @@ const ProfileMenu = () => {
     { label: t("profile_menu.section_my_account"), items: [
       { icon: <User size={15}/>, text: t("profile_menu.my_profile"), path: "/profile/client" },
       { icon: <History size={15}/>, text: t("profile_menu.my_activity"), path: "/activity" },
+      { icon: <History size={15}/>, text: t("profile_menu.history"), path: "/history" },
       { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
     ]},
     { label: t("profile_menu.section_professional"), items: [

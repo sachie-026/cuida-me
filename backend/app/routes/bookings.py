@@ -403,6 +403,43 @@ def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db),
     ).order_by(Booking.scheduled_start.desc()).all()
     return [_booking_to_dict(b, db, enrich=True) for b in bookings]
 
+@router.get("/my-bookings")
+def get_my_bookings(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Return all bookings for the current user, auto-scoped by their role.
+    - Client: bookings where they created the booking (user_id match) or own the patient.
+    - Professional: bookings where they are the assigned pro.
+    - Admin: empty list (admins use dedicated admin endpoints).
+    Earnings.jsx and client MyActivity.jsx both call this endpoint; previously
+    it did not exist and both screens silently fell back to empty arrays."""
+    bookings = []
+    # Try client side (via user_id snapshot first, patient fallback for older rows)
+    user_bookings = db.query(Booking).filter(Booking.user_id == current.id).all()
+    for b in user_bookings:
+        bookings.append(b)
+    # Patient fallback (older rows where user_id wasn't set at creation)
+    patient = db.query(Patient).filter(Patient.user_id == current.id).first()
+    if patient:
+        seen_ids = {b.id for b in bookings}
+        for b in db.query(Booking).filter(Booking.patient_id == patient.id).all():
+            if b.id not in seen_ids:
+                bookings.append(b)
+    # Pro side
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if prof:
+        seen_ids = {b.id for b in bookings}
+        for b in db.query(Booking).filter(Booking.professional_id == prof.id).all():
+            if b.id not in seen_ids:
+                bookings.append(b)
+    # Order by scheduled_start desc (newest first). Normalize to naive so
+    # tz-aware and naive values don't blow up when sorted together.
+    def _sort_key(b):
+        d = b.scheduled_start
+        if d is None:
+            return datetime.min
+        return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    bookings.sort(key=_sort_key, reverse=True)
+    return [_booking_to_dict(b, db, enrich=True) for b in bookings]
+
 @router.get("/professional/{professional_id}")
 def get_professional_bookings(professional_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     prof = db.query(Professional).filter(Professional.id == professional_id).first()
