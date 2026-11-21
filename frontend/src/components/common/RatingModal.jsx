@@ -20,20 +20,29 @@ const RatingModal = ({ booking, revieweeId, onClose, onDone }) => {
 
   const handleSubmit = async () => {
     if (!rating) { toast.error(t("rating_modal.select_rating")); return; }
+    if (saving) return;  // double-tap guard
     setSaving(true);
     try {
-      await axios.post(`${API}/api/ratings`, {
+      const res = await axios.post(`${API}/api/ratings`, {
         booking_id:  booking.id,
-        reviewer_id: userId,
         reviewee_id: revieweeId,
         rating,
-        comment: comment || null,
+        comment: comment?.trim() || null,
       }, { headers });
+      // Verify we got a real assessment back (not an unexpected empty response)
+      if (!res?.data?.id) {
+        console.error("[RATING] Unexpected response:", res?.data);
+        toast.error(t("rating_modal.submit_error"));
+        return;
+      }
       toast.success(t("rating_modal.submitted"));
-      onDone();
-      onClose();
+      onDone?.(res.data);
+      onClose?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("rating_modal.submit_error"));
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      console.error(`[RATING] Submit failed: status=${status}, detail=${detail}`, err);
+      toast.error(detail || `${t("rating_modal.submit_error")}${status ? ` (${status})` : ""}`);
     } finally {
       setSaving(false);
     }
@@ -73,10 +82,14 @@ const RatingModal = ({ booking, revieweeId, onClose, onDone }) => {
             placeholder={t("rating_modal.comment_placeholder")} />
         </div>
 
-        <div className="flex gap-3">
-          <button onClick={onClose} className="btn-outline flex-1">{t("rating_modal.cancel")}</button>
+        {/* Flex-wrap + min-w-0 prevents the "Enviar avaliação" button from
+            overflowing past the modal edge on narrow mobile screens. */}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={onClose} className="btn-outline flex-1 min-w-0 whitespace-nowrap">
+            {t("rating_modal.cancel")}
+          </button>
           <button onClick={handleSubmit} disabled={saving || !rating}
-            className="btn-primary flex-1 disabled:opacity-60">
+            className="btn-primary flex-1 min-w-0 whitespace-nowrap disabled:opacity-60 text-center overflow-hidden text-ellipsis">
             {saving ? t("rating_modal.submitting") : t("rating_modal.submit")}
           </button>
         </div>

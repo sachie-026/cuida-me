@@ -157,7 +157,20 @@ def create_rating(body: RatingCreate, db: Session = Depends(get_db), current: Us
     except Exception as e:
         print(f"[NOTIFY] rating.received error: {e}")
 
-    return assessment
+    # Return an explicit dict rather than the raw ORM object — the previous
+    # `return assessment` would occasionally fail JSON serialization for
+    # certain SQLAlchemy relationship states, which the frontend saw as a
+    # silent 500 (toast was also broken because `rating_modal.submitted` key
+    # was missing; that is fixed in Phase A).
+    return {
+        "id":          assessment.id,
+        "booking_id":  assessment.booking_id,
+        "reviewer_id": assessment.reviewer_id,
+        "reviewee_id": assessment.reviewee_id,
+        "rating":      assessment.rating,
+        "comment":     assessment.comment,
+        "created_at":  assessment.created_at.isoformat() if assessment.created_at else None,
+    }
 
 @router.get("/booking/{booking_id}")
 def get_booking_ratings(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):

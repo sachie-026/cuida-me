@@ -403,6 +403,43 @@ def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db),
     ).order_by(Booking.scheduled_start.desc()).all()
     return [_booking_to_dict(b, db, enrich=True) for b in bookings]
 
+@router.get("/my-bookings")
+def get_my_bookings(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Return all bookings for the current user, auto-scoped by their role.
+    - Client: bookings where they created the booking (user_id match) or own the patient.
+    - Professional: bookings where they are the assigned pro.
+    - Admin: empty list (admins use dedicated admin endpoints).
+    Earnings.jsx and client MyActivity.jsx both call this endpoint; previously
+    it did not exist and both screens silently fell back to empty arrays."""
+    bookings = []
+    # Try client side (via user_id snapshot first, patient fallback for older rows)
+    user_bookings = db.query(Booking).filter(Booking.user_id == current.id).all()
+    for b in user_bookings:
+        bookings.append(b)
+    # Patient fallback (older rows where user_id wasn't set at creation)
+    patient = db.query(Patient).filter(Patient.user_id == current.id).first()
+    if patient:
+        seen_ids = {b.id for b in bookings}
+        for b in db.query(Booking).filter(Booking.patient_id == patient.id).all():
+            if b.id not in seen_ids:
+                bookings.append(b)
+    # Pro side
+    prof = db.query(Professional).filter(Professional.user_id == current.id).first()
+    if prof:
+        seen_ids = {b.id for b in bookings}
+        for b in db.query(Booking).filter(Booking.professional_id == prof.id).all():
+            if b.id not in seen_ids:
+                bookings.append(b)
+    # Order by scheduled_start desc (newest first). Normalize to naive so
+    # tz-aware and naive values don't blow up when sorted together.
+    def _sort_key(b):
+        d = b.scheduled_start
+        if d is None:
+            return datetime.min
+        return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    bookings.sort(key=_sort_key, reverse=True)
+    return [_booking_to_dict(b, db, enrich=True) for b in bookings]
+
 @router.get("/professional/{professional_id}")
 def get_professional_bookings(professional_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     prof = db.query(Professional).filter(Professional.id == professional_id).first()
@@ -1118,12 +1155,64 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
     booking.actual_checkout = datetime.now(timezone.utc)
     booking.status = BookingStatus.completed
 
-    # #14: Calculate actual duration for audit, but payment uses SCHEDULED time
+    # #14: Calculate actual duration for audit
     if booking.actual_checkin:
         actual_minutes = (booking.actual_checkout - booking.actual_checkin).total_seconds() / 60
         booking.actual_duration_minutes = round(actual_minutes)
-    # Payment is always based on scheduled_start → scheduled_end (not GPS timestamps)
-    # Only Early Termination or Real-Time Extension can change the paid duration
+
+    # Change 23/30 — early-finalize pricing recalc.
+    # Default: payment stays on scheduled_start → scheduled_end.
+    # If the pro finalises >10 min before scheduled_end: recalc per the
+    # existing pricing engine using the actual checkout time, and store the
+    # delta so the client can be refunded. 10 min tolerance avoids
+    # micro-adjustments when the pro is just tidying up slightly early.
+    early_termination_delta = 0.0
+    try:
+        EARLY_TOLERANCE_MIN = 10
+        sched_end = booking.scheduled_end
+        if sched_end and booking.actual_checkout and booking.scheduled_start:
+            # Normalise tz so arithmetic doesn't blow up on mixed types
+            def _naive(d):
+                return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+            sched_end_n = _naive(sched_end)
+            actual_out_n = _naive(booking.actual_checkout)
+            sched_start_n = _naive(booking.scheduled_start)
+            minutes_early = (sched_end_n - actual_out_n).total_seconds() / 60
+            if minutes_early > EARLY_TOLERANCE_MIN:
+                # Role for pricing
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                role = pro_user.role.value if (pro_user and hasattr(pro_user.role, "value")) else "caregiver"
+                # Recalc with end = actual_checkout
+                new_price = calculate_price(
+                    role=role,
+                    start_time=sched_start_n,
+                    end_time=actual_out_n,
+                    markup_pct=booking.markup_pct or 0,
+                    is_urgent=bool(booking.is_urgent),
+                    is_holiday=bool(booking.is_holiday),
+                    distance_km=booking.distance_km or 0,
+                )
+                old_total = booking.total_price or 0
+                new_total = new_price["total"]
+                if new_total < old_total:
+                    early_termination_delta = round(old_total - new_total, 2)
+                    booking.total_price  = new_total
+                    booking.platform_fee = new_price["platform_fee"]
+                    booking.pro_payout   = new_price["pro_payout"]
+                    booking.base_price   = new_price.get("base_price", booking.base_price)
+                    booking.surcharge_pct = new_price.get("surcharge_pct", booking.surcharge_pct)
+                    booking.early_termination = True
+                    booking.early_termination_reason = (
+                        f"Pro finalizou {int(minutes_early)} min antes do horário previsto. "
+                        f"Diferença de R$ {early_termination_delta:.2f} a reembolsar."
+                    )
+                    # If a payment already exists, mark the refund amount for the client.
+                    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+                    if payment:
+                        prev = getattr(payment, "refund_amount", None) or 0
+                        payment.refund_amount = round(float(prev) + early_termination_delta, 2)
+    except Exception as early_err:
+        print(f"[EARLY-FINISH] recalc failed: {early_err}")
 
     # Update professional stats
     prof.completed_count = (prof.completed_count or 0) + 1
@@ -1151,7 +1240,14 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
         "booking_id": booking_id, "status": "completed",
         "checkout_time": booking.actual_checkout.isoformat(),
         "actual_duration_minutes": booking.actual_duration_minutes,
-        "message": "Checkout realizado. Atendimento concluído.",
+        "early_termination": bool(early_termination_delta > 0),
+        "refund_amount": early_termination_delta,
+        "pro_payout": booking.pro_payout,
+        "message": (
+            f"Atendimento concluído. Valor ajustado — R$ {early_termination_delta:.2f} será reembolsado ao cliente."
+            if early_termination_delta > 0
+            else "Checkout realizado. Atendimento concluído."
+        ),
     }
 
 # ── #16: Report Client No-Show ────────────────────────────────────────────────

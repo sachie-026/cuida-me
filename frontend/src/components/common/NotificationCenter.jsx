@@ -87,7 +87,13 @@ const NotificationCenter = () => {
     }
     if (n.action_link) {
       setOpen(false);
-      navigate(n.action_link);
+      // Defensive fallback: if an old notification still has an unresolved
+      // "{{booking_id}}" placeholder (raw or URL-encoded), route to the
+      // notifications list instead of letting the browser 404 on it.
+      const safe = n.action_link.includes("{{") || n.action_link.includes("%7B%7B")
+        ? "/notifications"
+        : n.action_link;
+      navigate(safe);
     }
   };
 

@@ -1829,17 +1829,23 @@
     "bad": "Bad",
     "fair": "Fair",
     "good": "Good",
+    "great": "Great",
     "very_good": "Very good",
     "excellent": "Excellent",
+    "select_score": "Select a rating",
     "comment_label": "Comment {{required}}",
     "optional": "(optional)",
     "comment_placeholder": "Tell us about your experience...",
     "comment_required": "Comment is required for ratings of 3 stars or less.",
     "submit": "Submit rating",
     "submitting": "Submitting...",
+    "submitted": "Rating submitted!",
+    "submit_error": "Could not submit the rating.",
+    "cancel": "Cancel",
     "select_rating": "Please select a rating.",
     "rating_success": "Rating submitted successfully!",
     "rating_error": "Error submitting rating.",
+    "already_rated": "Rated",
     "close": "Close"
   },
   "sos_button": {
@@ -1985,6 +1991,7 @@
     "section_my_account": "MY ACCOUNT",
     "my_profile": "My Profile",
     "my_activity": "My Activity",
+    "history": "History",
     "messages": "Messages",
     "section_payments": "PAYMENTS",
     "payment_methods": "Payment Methods",
@@ -2064,7 +2071,16 @@
     "gps_denied": "Please allow location access to start or end the service.",
     "gps_timeout": "Could not get your location — try again.",
     "gps_error": "Could not read your location.",
-    "action_error": "Could not complete the action. Please try again."
+    "action_error": "Could not complete the action. Please try again.",
+    "early_finish_confirm": "You are ending the service before the scheduled time ({{time}}). The amount will be adjusted based on actual time worked. Continue?",
+    "finished_adjusted": "Service ended. Amount adjusted — R$ {{refund}} refunded to the client."
+  },
+  "history": {
+    "title": "History",
+    "loading": "Loading...",
+    "empty": "No past bookings yet.",
+    "service_default": "Home Care Service",
+    "expired": "Expired"
   },
   "quick_messages": {
     "on_the_way": "I'm on my way",

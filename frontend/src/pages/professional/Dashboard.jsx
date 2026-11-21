@@ -103,6 +103,19 @@ const ProfessionalDashboard = () => {
   const total     = bookings.length;
   const pending   = bookings.filter(b => b.status === "pending");
 
+  // Change 44b — "Todos os agendamentos" now shows ONLY active bookings.
+  // Active = scheduled_end is in the future OR booking is currently in-progress.
+  // Finalized / past / cancelled bookings move to the dedicated /history screen.
+  const nowMs = Date.now();
+  const activeBookings = bookings.filter(b => {
+    if (b.status === "checked_in" || b.status === "professional_arrived") return true;
+    if (!["pending", "accepted"].includes(b.status)) return false;
+    if (!b.scheduled_end) return true;
+    const endMs = new Date(b.scheduled_end).getTime();
+    if (isNaN(endMs)) return true;
+    return endMs >= nowMs;
+  });
+
   const stats = [
     { icon: <DollarSign size={18} className="text-green-500" />,  label: t("pro_dashboard.stat_earnings"),       value: formatBRL(earnings, false),                          accent: true },
     { icon: <CalendarDays size={18} className="text-blue-500" />, label: t("pro_dashboard.stat_appointments"),   value: total },
@@ -233,11 +246,11 @@ const ProfessionalDashboard = () => {
           <h3 className="font-semibold text-navy mb-4">{t("pro_dashboard.all_bookings")}</h3>
           {loading ? (
             <p className="text-sm text-slate-400 text-center py-6">{t("pro_dashboard.loading")}</p>
-          ) : bookings.length === 0 ? (
+          ) : activeBookings.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-6">{t("pro_dashboard.no_bookings")}</p>
           ) : (
             <div className="space-y-3">
-              {bookings.map((b, i) => (
+              {activeBookings.map((b, i) => (
                 <div key={i} onClick={() => setSelectedBooking(b)}
                   className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
                   <div className="text-xs font-bold text-blue-500 w-20 flex-shrink-0">
@@ -253,7 +266,10 @@ const ProfessionalDashboard = () => {
                   {/* Change 44a — Iniciar / Finalizar inline on the row (compact).
                       Component renders null for statuses that don't apply. */}
                   <StartEndServiceButtons booking={b} onUpdate={reloadBookings} compact={true} />
-                  {(b.status === "accepted" || b.status === "pending") && b.status !== "cancelled" && b.status !== "completed" && (
+                  {/* Cancel button: only for pending/accepted bookings whose
+                      service window has NOT fully passed. */}
+                  {(b.status === "accepted" || b.status === "pending")
+                   && (!b.scheduled_end || new Date(b.scheduled_end).getTime() >= nowMs) && (
                     <button onClick={(e) => { e.stopPropagation(); setCancellingBooking(b); }} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-semibold flex-shrink-0">
                       {t("pro_dashboard.btn_cancel")}
                     </button>

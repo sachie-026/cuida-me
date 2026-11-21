@@ -38,6 +38,7 @@ import ManageProfiles        from "./pages/ManageProfiles";
 import NotificationsPage     from "./pages/notifications/NotificationsPage";
 import PayoutMethodsPanel    from "./pages/professional/PayoutMethods";
 import StripeConnect         from "./pages/professional/StripeConnect";
+import BookingHistory        from "./pages/common/BookingHistory";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
@@ -96,6 +97,9 @@ function App() {
 
           {/* Messages — all authenticated users */}
           <Route path="/messages" element={<ProtectedRoute allowedRoles={ALL_ROLES}><Messages /></ProtectedRoute>} />
+
+          {/* Change 44b — Booking history (read-only). Shared client + pro. */}
+          <Route path="/history" element={<ProtectedRoute allowedRoles={ALL_ROLES}><BookingHistory /></ProtectedRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

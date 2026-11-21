@@ -540,6 +540,19 @@ ADDITIONAL_EVENTS = [
         ], []),
     ]),
 
+    # Change 44b — Late arrival (pro didn't check in within 15 min of scheduled_start)
+    ("service.late_arrival", "service", "Professional late arrival — 15 min past scheduled start without check-in",
+     ["professional_name", "service", "booking_code"], [
+        ("client", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Atraso do profissional ⏱",
+             "{{professional_name}} ainda não fez check-in. Serviço: {{service}}. Código: {{booking_code}}. Estamos monitorando."),
+        ], []),
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Atraso registrado",
+             "Você ainda não fez check-in no serviço de {{service}}. Código: {{booking_code}}. Chegadas tardias contam para penalidades."),
+        ], []),
+    ]),
+
     # +25 min reminder: "O atendimento já foi iniciado?"
     # Scheduler filters by status == accepted, so this only fires if the pro
     # hasn't checked in yet (checkin bumps status to checked_in).
