@@ -2071,7 +2071,9 @@
     "gps_denied": "Please allow location access to start or end the service.",
     "gps_timeout": "Could not get your location — try again.",
     "gps_error": "Could not read your location.",
-    "action_error": "Could not complete the action. Please try again."
+    "action_error": "Could not complete the action. Please try again.",
+    "early_finish_confirm": "You are ending the service before the scheduled time ({{time}}). The amount will be adjusted based on actual time worked. Continue?",
+    "finished_adjusted": "Service ended. Amount adjusted — R$ {{refund}} refunded to the client."
   },
   "history": {
     "title": "History",

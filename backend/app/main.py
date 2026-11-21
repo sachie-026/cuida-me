@@ -418,6 +418,16 @@ def run_migrations():
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_reference TEXT",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_latitude FLOAT",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_longitude FLOAT",
+        # Phase B — backfill action_link for notifications that stored the raw
+        # "{{booking_id}}" placeholder before the fill_template fix. Safe to run
+        # on every boot: UPDATE only touches rows that still contain '{{' and
+        # have a booking_id to substitute in.
+        "UPDATE notifications SET action_link = REPLACE(action_link, '{{booking_id}}', booking_id) "
+        "WHERE action_link LIKE '%{{booking_id}}%' AND booking_id IS NOT NULL",
+        # For notifications that have the placeholder but no booking_id, fall
+        # back to the dashboard so the click doesn't 404.
+        "UPDATE notifications SET action_link = '/dashboard/client' "
+        "WHERE action_link LIKE '%{{booking_id}}%' AND booking_id IS NULL",
     ]
     with engine.connect() as conn:
         for sql in migrations:

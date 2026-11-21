@@ -12,6 +12,7 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onB
   const { t } = useTranslation();
   const [countdown, setCountdown] = useState(null);
   const [showRating, setShowRating] = useState(false);
+  const [justRated, setJustRated] = useState(false);
 
   // #39: Countdown timer for pending requests
   useEffect(() => {
@@ -244,9 +245,14 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onB
               <MessageSquare size={14} /> {t("booking_detail.chat_client")}
             </button>
           )}
-          {isCompleted && booking.user_id && (
+          {isCompleted && booking.user_id && !justRated && (
             <button onClick={() => setShowRating(true)} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
               <Star size={14} /> {t("booking_detail.rate_client")}
+            </button>
+          )}
+          {isCompleted && booking.user_id && justRated && (
+            <button disabled className="btn-outline flex-1 flex items-center justify-center gap-1.5 opacity-70 cursor-default">
+              <Star size={14} className="fill-amber-400 text-amber-400" /> {t("rating_modal.already_rated")}
             </button>
           )}
           <button onClick={onClose} className="btn-outline flex-1">{t("booking_detail.close")}</button>
@@ -259,7 +265,7 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onB
           booking={booking}
           revieweeId={booking.user_id}
           onClose={() => setShowRating(false)}
-          onDone={() => { setShowRating(false); onClose(); }}
+          onDone={() => { setShowRating(false); setJustRated(true); onBookingChanged?.(); }}
         />
       )}
     </div>

@@ -94,6 +94,10 @@ def _create_notification_for_user(
 
     title = fill_template(in_app_template.title, variables)
     body = fill_template(in_app_template.body, variables)
+    # Resolve placeholders in the action link too — e.g. "/bookings/{{booking_id}}"
+    # was being stored verbatim and sent to the frontend as "/bookings/%7B%7Bbooking_id%7D%7D",
+    # giving a 404 on click.
+    resolved_action_link = fill_template(rule.action_link, variables) if rule.action_link else None
 
     notif = Notification(
         user_id=user.id,
@@ -103,7 +107,7 @@ def _create_notification_for_user(
         title=title,
         message=body,
         priority=rule.priority,
-        action_link=rule.action_link,
+        action_link=resolved_action_link,
         is_mandatory=rule.is_mandatory,
         booking_id=variables.get("booking_id"),
         doc_id=variables.get("doc_id"),

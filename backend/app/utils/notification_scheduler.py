@@ -91,6 +91,7 @@ def _create_scheduled_notification(
 
     title = fill_template(in_app_tpl.title, variables)
     body = fill_template(in_app_tpl.body, variables)
+    resolved_action_link = fill_template(rule.action_link, variables) if rule.action_link else None
 
     # Deduplicate
     existing = db.query(Notification).filter(
@@ -109,7 +110,7 @@ def _create_scheduled_notification(
         title=title,
         message=body,
         priority=rule.priority,
-        action_link=rule.action_link,
+        action_link=resolved_action_link,
         is_mandatory=rule.is_mandatory,
         booking_id=variables.get("booking_id"),
         delivery_in_app="sent",
@@ -151,9 +152,6 @@ def run_scheduled_notifications():
             NotificationSchedule.is_active == True,
         ).all()
 
-        if not schedules:
-            return
-
         for schedule in schedules:
             rule = schedule.rule
             if not rule or not rule.is_active:
@@ -175,9 +173,138 @@ def run_scheduled_notifications():
     finally:
         db.close()
 
+    # Phase B — late-arrival + auto-no-show enforcement. Separate DB sessions so
+    # errors in one job don't poison the others.
+    _run_late_arrival_sweep()
+    _run_auto_no_show_sweep()
+
     # Trim cache if too large
     if len(_processed_cache) > _MAX_CACHE:
         _processed_cache = set()
+
+
+def _run_late_arrival_sweep():
+    """At scheduled_start + 15 min without check-in, flag the booking as
+    late-arrival. Idempotent via the _processed_cache keyed by booking.id."""
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=15)
+        # Only touch future-ended bookings (otherwise no-show sweep takes over)
+        bookings = db.query(Booking).filter(
+            Booking.status == BookingStatus.accepted,
+            Booking.late_arrival == False,
+            Booking.scheduled_start.isnot(None),
+        ).all()
+        for b in bookings:
+            start = b.scheduled_start
+            if getattr(start, "tzinfo", None) is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if start > cutoff:
+                continue  # 15 min hasn't elapsed yet
+            end = b.scheduled_end
+            if end and getattr(end, "tzinfo", None) is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if end and end < now:
+                continue  # already past service window — no-show sweep handles
+            cache_key = ("late", b.id)
+            if cache_key in _processed_cache:
+                continue
+            b.late_arrival = True
+            b.late_arrival_count = (b.late_arrival_count or 0) + 1
+            try:
+                from app.utils.notification_engine import fire_event
+                prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
+                vars_ = {
+                    "professional_name": pro_user.full_name if pro_user else "Profissional",
+                    "service": b.service_type or "Cuidado",
+                    "booking_code": f"#{b.id[:6].upper()}",
+                    "booking_id": b.id,
+                }
+                recipients = {}
+                if client_user: recipients["client"] = [client_user]
+                if pro_user:    recipients["professional"] = [pro_user]
+                if recipients:
+                    fire_event(db, "service.late_arrival", vars_, recipient_users=recipients)
+            except Exception as e:
+                print(f"[LATE-ARRIVAL] notify failed for {b.id}: {e}")
+            _processed_cache.add(cache_key)
+        db.commit()
+    except Exception as e:
+        print(f"[LATE-ARRIVAL] sweep error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _run_auto_no_show_sweep():
+    """When scheduled_end passes without a check-in, mark the booking as
+    professional no-show: refund the client, apply the penalty counter, and
+    notify both sides. Only touches bookings still in accepted or
+    professional_arrived (not checked_in / completed / cancelled)."""
+    from app.models.models import Payment, PaymentStatus
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        bookings = db.query(Booking).filter(
+            Booking.status.in_([BookingStatus.accepted, BookingStatus.professional_arrived]),
+            Booking.scheduled_end.isnot(None),
+        ).all()
+        for b in bookings:
+            end = b.scheduled_end
+            if getattr(end, "tzinfo", None) is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if end >= now:
+                continue  # service window not fully over
+            cache_key = ("noshow", b.id)
+            if cache_key in _processed_cache:
+                continue
+            # Mark as no-show
+            b.status = BookingStatus.no_show
+            b.no_show_who = "professional"
+            b.cancelled_at = now
+            b.cancel_reason = "Auto: profissional não compareceu (sem check-in até o fim do horário agendado)."
+            # Bump pro's no-show counter
+            if b.professional_id:
+                prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+                if prof:
+                    prof.no_shows = (prof.no_shows or 0) + 1
+            # Full refund to client if a payment exists in escrow
+            try:
+                payment = db.query(Payment).filter(Payment.booking_id == b.id).first()
+                if payment and payment.status in (PaymentStatus.held, PaymentStatus.authorized):
+                    payment.status = PaymentStatus.refunded
+                    payment.refund_amount = payment.amount
+                    payment.refunded_at = now
+            except Exception as pay_err:
+                print(f"[NO-SHOW] refund mark failed for {b.id}: {pay_err}")
+            # Notify both sides via existing event
+            try:
+                from app.utils.notification_engine import fire_event
+                prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
+                recipients = {}
+                if client_user: recipients["client"] = [client_user]
+                if pro_user:    recipients["professional"] = [pro_user]
+                if recipients:
+                    fire_event(db, "service.no_show_professional", {
+                        "professional_name": pro_user.full_name if pro_user else "Profissional",
+                        "service": b.service_type or "Cuidado",
+                        "booking_code": f"#{b.id[:6].upper()}",
+                        "booking_id": b.id,
+                    }, recipient_users=recipients)
+            except Exception as e:
+                print(f"[NO-SHOW] notify failed for {b.id}: {e}")
+            _processed_cache.add(cache_key)
+        db.commit()
+    except Exception as e:
+        print(f"[NO-SHOW] sweep error: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _process_booking_start_schedule(

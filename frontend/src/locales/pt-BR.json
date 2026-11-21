@@ -2072,7 +2072,9 @@
     "gps_denied": "Permita o acesso à sua localização para iniciar ou finalizar o atendimento.",
     "gps_timeout": "Não foi possível obter sua localização — tente novamente.",
     "gps_error": "Não foi possível ler sua localização.",
-    "action_error": "Não foi possível concluir a ação. Tente novamente."
+    "action_error": "Não foi possível concluir a ação. Tente novamente.",
+    "early_finish_confirm": "Você está finalizando antes do horário previsto ({{time}}). O valor será ajustado de acordo com o tempo realizado. Deseja continuar?",
+    "finished_adjusted": "Atendimento finalizado. Valor ajustado — R$ {{refund}} reembolsados ao cliente."
   },
   "history": {
     "title": "Histórico",

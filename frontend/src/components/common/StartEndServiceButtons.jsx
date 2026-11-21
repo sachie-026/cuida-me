@@ -77,6 +77,12 @@ const StartEndServiceButtons = ({ booking, onUpdate, compact = false }) => {
         toast(t("start_end_service.out_of_radius_warning"), { icon: "📍", duration: 5000 });
       } else if (data?.already_started) {
         toast(t("start_end_service.already_started"));
+      } else if (data?.early_termination && data?.refund_amount > 0) {
+        // Backend recalculated; show the adjusted refund to the pro
+        toast.success(
+          t("start_end_service.finished_adjusted", { refund: data.refund_amount.toFixed(2) }),
+          { duration: 6000 }
+        );
       } else {
         toast.success(t(successKey));
       }
@@ -93,8 +99,23 @@ const StartEndServiceButtons = ({ booking, onUpdate, compact = false }) => {
     }
   };
 
-  const handleStart  = () => callAndHandle(`/api/bookings/${booking.id}/start-service-combined`, "start_end_service.started");
-  const handleFinish = () => callAndHandle(`/api/bookings/${booking.id}/checkout`,                "start_end_service.finished");
+  const handleStart = () => callAndHandle(`/api/bookings/${booking.id}/start-service-combined`, "start_end_service.started");
+
+  // Early-finalize confirmation — if more than 10 min before scheduled_end, warn
+  // the pro that the price will be adjusted (Change 23/30, enforced server-side).
+  const handleFinish = () => {
+    const schedEnd = booking.scheduled_end ? new Date(booking.scheduled_end) : null;
+    if (schedEnd && !isNaN(schedEnd.getTime())) {
+      const minutesEarly = (schedEnd.getTime() - Date.now()) / 60000;
+      if (minutesEarly > 10) {
+        const hh = String(schedEnd.getHours()).padStart(2, "0");
+        const mm = String(schedEnd.getMinutes()).padStart(2, "0");
+        const confirmMsg = t("start_end_service.early_finish_confirm", { time: `${hh}:${mm}` });
+        if (!window.confirm(confirmMsg)) return;
+      }
+    }
+    callAndHandle(`/api/bookings/${booking.id}/checkout`, "start_end_service.finished");
+  };
 
   const baseBtn = compact
     ? "text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 disabled:opacity-50"
