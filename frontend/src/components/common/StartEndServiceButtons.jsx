@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Play, CheckCircle, Loader, AlertTriangle } from "lucide-react";
+import { Play, CheckCircle, Loader, AlertTriangle, Clock } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
+// Rule #3 (21/11/2026): "Iniciar atendimento" is enabled only from this many
+// minutes before the scheduled start. Server is the source of truth — this
+// value is the client-side UX hint; backend `/start-service-combined` and
+// `/checkin` also enforce it and will 400 any attempt that beats the gate.
+const EARLY_START_WINDOW_MINUTES = 10;
 
 /** Change 44a — Start / End service buttons for the professional.
  *
@@ -32,19 +38,42 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const StartEndServiceButtons = ({ booking, onUpdate, compact = false }) => {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  // Drives re-renders of the time gate — ticked every 15s while the user is
+  // within the "almost able to start" window so the button auto-enables at
+  // T-10min without a manual refresh.
+  const [, setNowTick] = useState(0);
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
+  const status = booking?.status;
+  const startAt = booking?.scheduled_start ? new Date(booking.scheduled_start) : null;
+  const endAt   = booking?.scheduled_end   ? new Date(booking.scheduled_end)   : null;
+  const now     = Date.now();
+  const earliestStartMs = startAt && !isNaN(startAt.getTime())
+    ? startAt.getTime() - EARLY_START_WINDOW_MINUTES * 60 * 1000
+    : null;
+  const tooEarlyToStart = earliestStartMs !== null && now < earliestStartMs;
+  const minsUntilStart  = earliestStartMs !== null
+    ? Math.max(1, Math.ceil((earliestStartMs - now) / 60000))
+    : null;
+
+  // Keep the button fresh while we wait for the gate to open. 15 s resolution
+  // is fine — the user won't notice a <15 s drift and we avoid thrashing.
+  // The useEffect is declared BEFORE any early return so the hooks order is
+  // stable across renders (React rule).
+  useEffect(() => {
+    if (!tooEarlyToStart) return;
+    const h = setInterval(() => setNowTick(x => x + 1), 15000);
+    return () => clearInterval(h);
+  }, [tooEarlyToStart]);
+
   if (!booking || !booking.id || !booking.status) return null;
 
-  const status = booking.status;
   // Past-booking gate: once the service window is fully over, the pro can no
   // longer "start" a service that was never started. In-progress bookings
   // (canFinish) are unaffected — a pro who checked in must still be able to
   // check out even if the scheduled end has passed.
-  const now = new Date();
-  const endAt = booking.scheduled_end ? new Date(booking.scheduled_end) : null;
-  const isPast = endAt && !isNaN(endAt.getTime()) && endAt.getTime() < now.getTime();
+  const isPast = endAt && !isNaN(endAt.getTime()) && endAt.getTime() < now;
 
   const canStart  = status === "accepted" && !isPast;
   const canFinish = status === "checked_in" || status === "professional_arrived";
@@ -122,6 +151,43 @@ const StartEndServiceButtons = ({ booking, onUpdate, compact = false }) => {
     : "btn-primary w-full flex items-center justify-center gap-1.5 disabled:opacity-50";
 
   if (canStart) {
+    // Rule #3 — within 10 min of scheduled_start the button is enabled;
+    // before that it's disabled with a message ("Você poderá iniciar o
+    // atendimento 10 minutos antes do horário agendado"). The server enforces
+    // the same gate independently, so even a stale client clock can't bypass.
+    if (tooEarlyToStart) {
+      // compact (dashboard-row chip): no space for a second line — tooltip
+      // carries the hint. full: show a small helper line below the button.
+      const disabledBtn = (
+        <button
+          disabled
+          aria-disabled="true"
+          title={t("start_end_service.too_early_hint")}
+          className={compact
+            ? `${baseBtn} bg-slate-300 text-slate-600 cursor-not-allowed`
+            : `${baseBtn} opacity-60 cursor-not-allowed`}>
+          <Clock size={compact ? 12 : 14} />
+          {t("start_end_service.start")}
+        </button>
+      );
+      if (compact) return disabledBtn;
+      return (
+        <div className="w-full">
+          {disabledBtn}
+          <p className="mt-2 text-xs text-slate-500 flex items-center gap-1.5 leading-snug">
+            <Clock size={12} className="flex-shrink-0 text-amber-500" />
+            <span>
+              {t("start_end_service.too_early_hint")}
+              {minsUntilStart !== null && (
+                <span className="text-slate-400">
+                  {" "}· {t("start_end_service.minutes_left", { count: minsUntilStart })}
+                </span>
+              )}
+            </span>
+          </p>
+        </div>
+      );
+    }
     return (
       <button
         onClick={(e) => { e.stopPropagation(); handleStart(); }}

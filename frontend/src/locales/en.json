@@ -1,4 +1,15 @@
 {
+  "booking_redirect": {
+    "loading": "Loading booking...",
+    "not_found_title": "Booking not found",
+    "not_found_message": "This booking no longer exists or has been removed. It may have been cancelled or already moved to your history.",
+    "error_title": "Couldn't load booking",
+    "error_message": "Something went wrong while fetching this booking. Check your connection and try again.",
+    "retry": "Try again",
+    "go_notifications": "Go to notifications",
+    "go_history": "Go to history",
+    "go_dashboard": "Back to home"
+  },
   "nav": {
     "how_it_works": "How it works",
     "professionals": "Professionals",
@@ -2073,14 +2084,20 @@
     "gps_error": "Could not read your location.",
     "action_error": "Could not complete the action. Please try again.",
     "early_finish_confirm": "You are ending the service before the scheduled time ({{time}}). The amount will be adjusted based on actual time worked. Continue?",
-    "finished_adjusted": "Service ended. Amount adjusted — R$ {{refund}} refunded to the client."
+    "finished_adjusted": "Service ended. Amount adjusted — R$ {{refund}} refunded to the client.",
+    "too_early_hint": "You can start the service 10 minutes before the scheduled time.",
+    "minutes_left_one": "{{count}} min left",
+    "minutes_left_other": "{{count}} min left"
   },
   "history": {
     "title": "History",
     "loading": "Loading...",
     "empty": "No past bookings yet.",
     "service_default": "Home Care Service",
-    "expired": "Expired"
+    "expired": "Expired",
+    "rate_button": "Rate",
+    "rated": "Rated",
+    "rating_window_closed": "Rating window closed"
   },
   "quick_messages": {
     "on_the_way": "I'm on my way",

@@ -1,4 +1,15 @@
 {
+  "booking_redirect": {
+    "loading": "Carregando agendamento...",
+    "not_found_title": "Agendamento não encontrado",
+    "not_found_message": "Este agendamento não existe mais ou foi removido. Ele pode ter sido cancelado ou já estar no seu histórico.",
+    "error_title": "Não foi possível carregar",
+    "error_message": "Houve um problema ao buscar este agendamento. Verifique sua conexão e tente novamente.",
+    "retry": "Tentar novamente",
+    "go_notifications": "Ver notificações",
+    "go_history": "Ver histórico",
+    "go_dashboard": "Voltar ao início"
+  },
   "nav": {
     "how_it_works": "Como funciona",
     "professionals": "Profissionais",
@@ -2074,14 +2085,20 @@
     "gps_error": "Não foi possível ler sua localização.",
     "action_error": "Não foi possível concluir a ação. Tente novamente.",
     "early_finish_confirm": "Você está finalizando antes do horário previsto ({{time}}). O valor será ajustado de acordo com o tempo realizado. Deseja continuar?",
-    "finished_adjusted": "Atendimento finalizado. Valor ajustado — R$ {{refund}} reembolsados ao cliente."
+    "finished_adjusted": "Atendimento finalizado. Valor ajustado — R$ {{refund}} reembolsados ao cliente.",
+    "too_early_hint": "Você poderá iniciar o atendimento 10 minutos antes do horário agendado.",
+    "minutes_left_one": "faltam {{count}} min",
+    "minutes_left_other": "faltam {{count}} min"
   },
   "history": {
     "title": "Histórico",
     "loading": "Carregando...",
     "empty": "Nenhum agendamento anterior.",
     "service_default": "Serviço de Cuidado Domiciliar",
-    "expired": "Expirado"
+    "expired": "Expirado",
+    "rate_button": "Avaliar",
+    "rated": "Avaliado",
+    "rating_window_closed": "Prazo de avaliação encerrado"
   },
   "quick_messages": {
     "on_the_way": "Estou a caminho",

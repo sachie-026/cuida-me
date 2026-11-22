@@ -6,6 +6,55 @@ from datetime import datetime, timezone
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import Assessment, Booking, Professional, BookingStatus, User
+
+
+# ── Rating window helper ──────────────────────────────────────────────────────
+# Per the in-app rating rule: once a booking is completed, the reviewer has an
+# open window to rate the other party. That window stays open UNTIL the
+# reviewer's next booking request, at which point it expires. There is no
+# fixed day cap — if the user never books again, they keep the ability to
+# rate the last completed booking indefinitely. This replaces the previous
+# 7-day evaluation window.
+def _rating_window_open(booking: Booking, current: User, db: Session) -> bool:
+    """True iff `current` is still allowed to rate this completed booking.
+
+    - Client side (reviewer == booking.user_id): window closes once the client
+      has created ANY newer booking (created_at strictly greater than this
+      booking's completion anchor).
+    - Professional side (reviewer is the assigned pro): window closes once the
+      pro has been assigned ANY newer booking.
+
+    Completion anchor = actual_checkout → scheduled_end → created_at
+    (first non-null). The anchor is never user-tunable; it's derived from the
+    booking itself so the rule can't be gamed by editing timestamps client
+    side.
+    """
+    # Determine which side of the booking the reviewer is on.
+    side = None
+    pro_id = None
+    if booking.user_id and current.id == booking.user_id:
+        side = "client"
+    else:
+        pro = db.query(Professional).filter(Professional.user_id == current.id).first()
+        if pro and pro.id == booking.professional_id:
+            side = "pro"
+            pro_id = pro.id
+    if side is None:
+        return False  # reviewer isn't a party to this booking
+
+    anchor = booking.actual_checkout or booking.scheduled_end or booking.created_at
+    if anchor is None:
+        return True  # cannot evaluate; be permissive rather than blocking
+
+    q = db.query(Booking.id).filter(
+        Booking.id != booking.id,
+        Booking.created_at > anchor,
+    )
+    if side == "client":
+        q = q.filter(Booking.user_id == current.id)
+    else:
+        q = q.filter(Booking.professional_id == pro_id)
+    return q.first() is None
 from sqlalchemy import func
 from app.utils.notification_engine import fire_event
 
@@ -79,12 +128,14 @@ def create_rating(body: RatingCreate, db: Session = Depends(get_db), current: Us
     if booking.status != BookingStatus.completed:
         raise HTTPException(400, "Can only rate completed bookings")
 
-    # #42: 7-day evaluation window
-    if booking.actual_checkout:
-        checkout_time = booking.actual_checkout.replace(tzinfo=timezone.utc) if booking.actual_checkout.tzinfo is None else booking.actual_checkout
-        days_since = (datetime.now(timezone.utc) - checkout_time).days
-        if days_since > 7:
-            raise HTTPException(400, "O prazo de 7 dias para avaliação expirou.")
+    # Rating window: open until the reviewer's next booking request (see
+    # _rating_window_open docstring). Replaces the previous 7-day hard cap.
+    if not _rating_window_open(booking, current, db):
+        raise HTTPException(
+            400,
+            "O período para avaliar este atendimento já encerrou. "
+            "A avaliação fica disponível somente até o seu próximo agendamento."
+        )
 
     # Prevent duplicate rating from same reviewer for same booking
     existing = db.query(Assessment).filter(

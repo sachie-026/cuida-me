@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from app.core.database import get_db
 from app.core.auth_deps import get_current_user, require_admin
-from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus, DocStatus
+from app.models.models import Booking, BookingStatus, User, Professional, Patient, Payment, PaymentStatus, DocStatus, Assessment
 from app.utils.pricing import calculate_price, MINIMUM_PRICES, detect_shift, HOUR_RATES, INITIAL_SERVICE_FEE
 from app.utils.holidays import check_date_for_holiday
 from app.utils.notification_engine import fire_event
@@ -383,36 +383,25 @@ def _booking_to_dict(b: Booking, db: Session, enrich: bool = False) -> dict:
             row["longitude"] = patient.longitude if patient else None
     return row
 
-@router.get("/{booking_id}")
-def get_booking(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    b = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not b: raise HTTPException(404, "Booking not found")
-    _check_booking_access(b, current, db)
-    return _booking_to_dict(b, db, enrich=True)
+# ── STATIC single-segment routes MUST be declared BEFORE `/{booking_id}` ──
+# FastAPI matches routes in declaration order. Any `@router.get("/foo")` placed
+# AFTER `/{booking_id}` is silently intercepted (booking_id = "foo") and the
+# client gets a 404. Do NOT add a new single-segment GET below the catch-all.
 
-@router.get("/patient/{patient_or_user_id}")
-def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    patient = db.query(Patient).filter(Patient.id == patient_or_user_id).first()
-    if not patient:
-        patient = db.query(Patient).filter(Patient.user_id == patient_or_user_id).first()
-    if not patient: raise HTTPException(404, "Patient not found")
-    if patient.user_id != current.id and current.role.value != "admin":
-        raise HTTPException(403, "Access denied")
-    bookings = db.query(Booking).filter(
-        Booking.patient_id == patient.id
-    ).order_by(Booking.scheduled_start.desc()).all()
-    return [_booking_to_dict(b, db, enrich=True) for b in bookings]
+@router.get("/cancellation-reasons")
+def get_cancellation_reasons():
+    """Return list of valid cancellation reasons."""
+    return {"reasons": CANCELLATION_REASONS}
 
 @router.get("/my-bookings")
 def get_my_bookings(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Return all bookings for the current user, auto-scoped by their role.
     - Client: bookings where they created the booking (user_id match) or own the patient.
     - Professional: bookings where they are the assigned pro.
-    - Admin: empty list (admins use dedicated admin endpoints).
-    Earnings.jsx and client MyActivity.jsx both call this endpoint; previously
-    it did not exist and both screens silently fell back to empty arrays."""
+    MUST be declared BEFORE `/{booking_id}` or the dynamic route eats this
+    request and returns 404 (previous bug — Earnings and History both broke)."""
     bookings = []
-    # Try client side (via user_id snapshot first, patient fallback for older rows)
+    # Client side
     user_bookings = db.query(Booking).filter(Booking.user_id == current.id).all()
     for b in user_bookings:
         bookings.append(b)
@@ -438,6 +427,71 @@ def get_my_bookings(db: Session = Depends(get_db), current: User = Depends(get_c
             return datetime.min
         return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
     bookings.sort(key=_sort_key, reverse=True)
+
+    # ── Rating-window enrichment (History: "Avaliar" / "Avaliado" badges) ──
+    # Rule: once a booking is completed, the reviewer can rate the other
+    # party. The window stays open until the reviewer's NEXT booking request
+    # (any new Booking row created after this one's completion anchor),
+    # then it expires. Already-rated bookings show "Avaliado" and can't be
+    # re-rated (enforced server-side by the unique (booking_id, reviewer_id)
+    # guard on Assessment too — this is purely to drive UI).
+    booking_ids = [b.id for b in bookings]
+    rated_ids: set = set()
+    if booking_ids:
+        rated_rows = db.query(Assessment.booking_id).filter(
+            Assessment.booking_id.in_(booking_ids),
+            Assessment.reviewer_id == current.id,
+        ).all()
+        rated_ids = {r[0] for r in rated_rows}
+
+    # Pro's own id (if any), looked up once not per-booking.
+    pro_id_for_window = prof.id if prof else None
+
+    def _can_rate(b: Booking) -> bool:
+        # Must be a completed, not-yet-rated booking the user was part of.
+        if b.status != BookingStatus.completed: return False
+        if b.id in rated_ids: return False
+        side = None
+        if b.user_id and b.user_id == current.id:
+            side = "client"
+        elif pro_id_for_window and b.professional_id == pro_id_for_window:
+            side = "pro"
+        if side is None: return False
+        anchor = b.actual_checkout or b.scheduled_end or b.created_at
+        if anchor is None: return True  # permissive if we can't compute
+        q = db.query(Booking.id).filter(Booking.id != b.id, Booking.created_at > anchor)
+        if side == "client":
+            q = q.filter(Booking.user_id == current.id)
+        else:
+            q = q.filter(Booking.professional_id == pro_id_for_window)
+        return q.first() is None
+
+    result = []
+    for b in bookings:
+        d = _booking_to_dict(b, db, enrich=True)
+        d["current_user_has_rated"] = b.id in rated_ids
+        d["current_user_can_rate"]  = _can_rate(b)
+        result.append(d)
+    return result
+
+@router.get("/{booking_id}")
+def get_booking(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    b = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not b: raise HTTPException(404, "Booking not found")
+    _check_booking_access(b, current, db)
+    return _booking_to_dict(b, db, enrich=True)
+
+@router.get("/patient/{patient_or_user_id}")
+def get_patient_bookings(patient_or_user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    patient = db.query(Patient).filter(Patient.id == patient_or_user_id).first()
+    if not patient:
+        patient = db.query(Patient).filter(Patient.user_id == patient_or_user_id).first()
+    if not patient: raise HTTPException(404, "Patient not found")
+    if patient.user_id != current.id and current.role.value != "admin":
+        raise HTTPException(403, "Access denied")
+    bookings = db.query(Booking).filter(
+        Booking.patient_id == patient.id
+    ).order_by(Booking.scheduled_start.desc()).all()
     return [_booking_to_dict(b, db, enrich=True) for b in bookings]
 
 @router.get("/professional/{professional_id}")
@@ -837,7 +891,104 @@ class CheckInRequest(BaseModel):
     latitude:  float
     longitude: float
 
-CHECK_IN_RADIUS_METERS = 500  # configurable
+CHECK_IN_RADIUS_METERS = 500   # soft radius — beyond this, a booking is
+                               # flagged for audit but NOT blocked. Covers
+                               # ordinary mobile GPS drift (a pro parked across
+                               # the street, indoors in a tall building, etc.).
+CHECK_IN_HARD_BLOCK_METERS = 2000  # hard block — beyond this the pro is
+                                   # clearly not on site. Returns 400 and
+                                   # points the pro to the GPS-exception flow
+                                   # at /{id}/gps-exception for legitimate
+                                   # edge cases.
+
+# Rule #3 (21/11/2026): a professional can only hit "Iniciar atendimento"
+# starting 10 minutes before the scheduled start time. This replaces the
+# earlier always-available rule that let the pro start a service days in
+# advance. Server time is the source of truth.
+EARLY_START_WINDOW_MINUTES = 10
+
+
+def _check_start_time_gate(booking: "Booking") -> None:
+    """Enforce the 10-minute pre-start window. Raises 400 if too early.
+
+    Idempotent for already-started/finished bookings — callers should only
+    invoke this when the booking is still in `accepted` state (or legacy
+    `professional_arrived`). If scheduled_start is missing we don't block
+    — a booking without a scheduled time is a data problem, not a user
+    problem, and we don't want to lock the pro out of a real service.
+    """
+    sched = booking.scheduled_start
+    if sched is None:
+        return
+    # Normalize both sides to aware-UTC so the comparison is unambiguous.
+    # Scheduled times are stored and used as bare wall-clock values across
+    # the app, but datetimes coming out of Postgres with timezone=True may
+    # carry a tz. Treat naive values as UTC.
+    if sched.tzinfo is None:
+        sched = sched.replace(tzinfo=timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    earliest = sched - timedelta(minutes=EARLY_START_WINDOW_MINUTES)
+    if now_utc >= earliest:
+        return  # we're inside the start window
+    remaining = earliest - now_utc
+    mins_left = max(1, int(remaining.total_seconds() // 60) + 1)
+    # Message string matches the UI copy in StartEndServiceButtons and the
+    # locale key start_end_service.too_early_hint so pt-BR users see the
+    # same wording in both the toast and the button hint.
+    raise HTTPException(
+        400,
+        f"Você poderá iniciar o atendimento 10 minutos antes do horário agendado. "
+        f"Faltam {mins_left} min."
+    )
+
+
+def _check_start_gps(booking: "Booking", lat: float, lng: float, db: Session):
+    """Soft-flag + hard-block GPS check for start/check-in.
+
+    Returns (flagged: bool, distance_m: Optional[int]). Also mutates the
+    booking row: writes checkin_flagged / checkin_distance so the audit
+    trail is correct whether we flag or block.
+
+    - distance <= 500m          → ok, not flagged
+    - 500m < distance <= 2000m  → soft flag (allow), caller returns a
+                                  warning to the frontend
+    - distance > 2000m          → HTTPException(400), hard block, pro
+                                  must correct their location or submit a
+                                  GPS exception via /{id}/gps-exception
+    - target coords missing     → no check (returns False, None)
+    """
+    target_lat = booking.service_latitude
+    target_lng = booking.service_longitude
+    if target_lat is None or target_lng is None:
+        patient = db.query(Patient).filter(Patient.id == booking.patient_id).first()
+        if patient:
+            target_lat = getattr(patient, "latitude", None) or getattr(patient, "lat", None)
+            target_lng = getattr(patient, "longitude", None) or getattr(patient, "lng", None)
+    if target_lat is None or target_lng is None:
+        return (False, None)
+    try:
+        distance = _haversine_meters(lat, lng, target_lat, target_lng)
+    except Exception:
+        return (False, None)
+    rounded = round(distance)
+    if distance > CHECK_IN_HARD_BLOCK_METERS:
+        # Record on the row even though we're about to reject — so admin can
+        # see the attempt and the pro's reported coords.
+        booking.checkin_flagged = True
+        booking.checkin_distance = rounded
+        raise HTTPException(
+            400,
+            f"Você está a {rounded}m do endereço do atendimento, muito longe para "
+            f"iniciar. Aproxime-se do local ou registre uma exceção de GPS no aplicativo."
+        )
+    if distance > CHECK_IN_RADIUS_METERS:
+        booking.checkin_flagged = True
+        booking.checkin_distance = rounded
+        return (True, rounded)
+    booking.checkin_flagged = False
+    booking.checkin_distance = rounded
+    return (False, rounded)
+
 
 def _haversine_meters(lat1, lon1, lat2, lon2):
     """Calculate distance in meters between two GPS coordinates."""
@@ -863,20 +1014,16 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
     if booking.status.value != "accepted":
         raise HTTPException(400, "Só é possível fazer check-in em atendimentos aceitos")
 
-    # Store GPS
+    # Rule #3 — same 10-minute pre-start gate applied to the legacy two-step
+    # check-in path so it can't be used to bypass the one-shot start.
+    _check_start_time_gate(booking)
+
+    # Store GPS, validate via helper (soft flag 500–2000m, hard block > 2km).
     booking.checkin_lat = body.latitude
     booking.checkin_lng = body.longitude
     booking.actual_checkin = datetime.now(timezone.utc)
     booking.status = BookingStatus.professional_arrived
-    booking.checkin_flagged = False
-
-    # Validate proximity if patient has coordinates
-    patient = db.query(Patient).filter(Patient.id == booking.patient_id).first()
-    if patient and hasattr(patient, 'lat') and patient.lat and patient.lng:
-        distance = _haversine_meters(body.latitude, body.longitude, patient.lat, patient.lng)
-        if distance > CHECK_IN_RADIUS_METERS:
-            booking.checkin_flagged = True
-            booking.checkin_distance = round(distance)
+    _check_start_gps(booking, body.latitude, body.longitude, db)
 
     # Start 15-min arrival waiting timer
     booking.arrival_timer_start = datetime.now(timezone.utc)
@@ -1045,35 +1192,24 @@ def start_service_combined(booking_id: str, body: CheckInRequest, db: Session = 
     if status_now != "accepted":
         raise HTTPException(400, f"Não é possível iniciar um atendimento com status '{status_now}'.")
 
-    # Store GPS + validate proximity (soft)
+    # Rule #3 — time gate. Server time is the source of truth. Must be within
+    # the last 10 minutes before scheduled_start. Raises 400 if too early.
+    _check_start_time_gate(booking)
+
+    # Store GPS, validate proximity. The helper hard-blocks (raises 400) on
+    # extreme distances (>2 km), soft-flags on mid-range (500–2000 m), and
+    # writes the audit fields on the row regardless. If target coords are
+    # missing, we still store the pro's coords but can't validate — this
+    # preserves prior behaviour for bookings created before Change 44.
     booking.checkin_lat = body.latitude
     booking.checkin_lng = body.longitude
+    flagged, distance_m = _check_start_gps(booking, body.latitude, body.longitude, db)
+
     now_utc = datetime.now(timezone.utc)
     booking.actual_checkin = now_utc
     booking.service_started_at = now_utc
     booking.arrival_timer_start = now_utc
     booking.status = BookingStatus.checked_in
-    booking.checkin_flagged = False
-    flagged = False
-    distance_m = None
-
-    # Prefer booking snapshot coords (Change 44); fall back to patient
-    target_lat = booking.service_latitude
-    target_lng = booking.service_longitude
-    if target_lat is None or target_lng is None:
-        patient = db.query(Patient).filter(Patient.id == booking.patient_id).first()
-        if patient:
-            target_lat = patient.latitude
-            target_lng = patient.longitude
-    if target_lat is not None and target_lng is not None:
-        try:
-            distance_m = _haversine_meters(body.latitude, body.longitude, target_lat, target_lng)
-            if distance_m > CHECK_IN_RADIUS_METERS:
-                booking.checkin_flagged = True
-                booking.checkin_distance = round(distance_m)
-                flagged = True
-        except Exception:
-            pass  # bad coords — don't block the pro
 
     db.commit()
 
@@ -1113,6 +1249,10 @@ def start_service(booking_id: str, db: Session = Depends(get_db), current: User 
         raise HTTPException(403, "Only the assigned professional can start service")
     if booking.status.value not in ("checked_in", "professional_arrived"):
         raise HTTPException(400, "Check-in necessário antes de iniciar o serviço")
+
+    # Rule #3 — guard here too, so the legacy 2-step flow can't be used to
+    # skip the time gate by splitting check-in and start-service.
+    _check_start_time_gate(booking)
 
     booking.service_started_at = datetime.now(timezone.utc)
     booking.status = BookingStatus.checked_in
@@ -1670,11 +1810,6 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
                   (f" (mais de 12h)" if hours_until > 12 else f" ({hours_until:.0f}h antes)" if refund_pct > 0 else " (menos de 2h)"),
         "cancellation_reasons": CANCELLATION_REASONS,
     }
-
-@router.get("/cancellation-reasons")
-def get_cancellation_reasons():
-    """Return list of valid cancellation reasons."""
-    return {"reasons": CANCELLATION_REASONS}
 
 # ── #12: Professional Cancellation + Replacement ──────────────────────────────
 

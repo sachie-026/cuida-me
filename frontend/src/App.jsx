@@ -39,6 +39,7 @@ import NotificationsPage     from "./pages/notifications/NotificationsPage";
 import PayoutMethodsPanel    from "./pages/professional/PayoutMethods";
 import StripeConnect         from "./pages/professional/StripeConnect";
 import BookingHistory        from "./pages/common/BookingHistory";
+import BookingRedirect       from "./pages/common/BookingRedirect";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
@@ -100,6 +101,12 @@ function App() {
 
           {/* Change 44b — Booking history (read-only). Shared client + pro. */}
           <Route path="/history" element={<ProtectedRoute allowedRoles={ALL_ROLES}><BookingHistory /></ProtectedRoute>} />
+
+          {/* Target of every notification's /bookings/<id> link.
+              Fetches the booking and opens the right detail modal, or shows
+              a friendly "not found" screen if the booking is gone. Without
+              this route the catch-all below served a 404 for every click. */}
+          <Route path="/bookings/:bookingId" element={<ProtectedRoute allowedRoles={ALL_ROLES}><BookingRedirect /></ProtectedRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />
