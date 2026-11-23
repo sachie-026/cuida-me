@@ -2101,6 +2101,15 @@
     "block_cancel": "Cancelar",
     "finished_previous_and_started": "Atendimento anterior finalizado. Novo atendimento iniciado."
   },
+  "reviews": {
+    "title": "Avaliações",
+    "overall": "Avaliação geral",
+    "count_one": "{{count}} avaliação recebida",
+    "count_other": "{{count}} avaliações recebidas",
+    "empty": "Ainda não há avaliações. Após seus primeiros atendimentos concluídos, os clientes poderão avaliar seu trabalho aqui.",
+    "load_error": "Não foi possível carregar suas avaliações. Tente novamente.",
+    "client_fallback": "Cliente"
+  },
   "extend_service": {
     "title": "Estender atendimento",
     "subtitle": "Escolha quanto tempo a mais e confirme. O profissional precisa aceitar antes da cobrança.",
@@ -2209,7 +2218,9 @@
     "extension_pending": "Pedido de extensão enviado. Aguardando resposta do profissional.",
     "extension_declined": "O profissional recusou a extensão. O horário original permanece.",
     "extension_payment_failed": "O pagamento da extensão falhou. O horário original permanece — verifique seu método de pagamento.",
-    "extension_expired": "O pedido de extensão expirou sem resposta. O horário original permanece."
+    "extension_expired": "O pedido de extensão expirou sem resposta. O horário original permanece.",
+    "rate_professional": "Avaliar profissional",
+    "rating_sent": "Avaliação enviada"
   },
   "admin_availability": {
     "title": "Agenda do profissional",

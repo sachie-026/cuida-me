@@ -2100,6 +2100,15 @@
     "block_cancel": "Cancel",
     "finished_previous_and_started": "Previous service finished. New service started."
   },
+  "reviews": {
+    "title": "Reviews",
+    "overall": "Overall rating",
+    "count_one": "{{count}} review received",
+    "count_other": "{{count}} reviews received",
+    "empty": "No reviews yet. After your first completed services, clients will be able to review your work here.",
+    "load_error": "Could not load your reviews. Please try again.",
+    "client_fallback": "Client"
+  },
   "extend_service": {
     "title": "Extend service",
     "subtitle": "Choose how much more time and confirm. The professional must accept before you're charged.",
@@ -2208,7 +2217,9 @@
     "extension_pending": "Extension request sent. Waiting for the professional.",
     "extension_declined": "The professional declined the extension. Original schedule remains.",
     "extension_payment_failed": "Extension payment failed. Original schedule remains — please check your payment method.",
-    "extension_expired": "The extension request expired without a response. Original schedule remains."
+    "extension_expired": "The extension request expired without a response. Original schedule remains.",
+    "rate_professional": "Rate professional",
+    "rating_sent": "Rating sent"
   },
   "admin_availability": {
     "title": "Professional schedule",

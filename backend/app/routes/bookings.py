@@ -350,7 +350,10 @@ def _booking_to_dict(b: Booking, db: Session, enrich: bool = False) -> dict:
         row["client_verified"] = bool(client_user and client_user.phone_verified) if client_user else False
         pro = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
         pro_user = db.query(User).filter(User.id == pro.user_id).first() if pro else None
-        row["professional_name"] = pro_user.full_name if pro_user else None
+        row["professional_name"]    = pro_user.full_name if pro_user else None
+        # Expose the pro's user_id so the client-side rating flow knows who
+        # to rate (Assessment.reviewee_id must be a user_id, not a pro_id).
+        row["professional_user_id"] = pro_user.id if pro_user else None
         patient = db.query(Patient).filter(Patient.id == b.patient_id).first() if b.patient_id else None
         row["patient_name"] = patient.patient_name if patient else None
 
@@ -1706,11 +1709,27 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
         booking.actual_duration_minutes = round(actual_minutes)
 
     # Change 23/30 — early-finalize pricing recalc.
-    # Default: payment stays on scheduled_start → scheduled_end.
-    # If the pro finalises >10 min before scheduled_end: recalc per the
-    # existing pricing engine using the actual checkout time, and store the
-    # delta so the client can be refunded. 10 min tolerance avoids
-    # micro-adjustments when the pro is just tidying up slightly early.
+    #
+    # PAYMENT INVARIANTS (verified 23/11/2026):
+    #   1. Early check-in (T-10min window) NEVER changes total_price. Check-in
+    #      handlers only set actual_checkin and status; total_price was fixed
+    #      at booking creation from scheduled_start..scheduled_end.
+    #   2. Early finish ≤10 min → no recalc, full scheduled price (branch
+    #      below only fires when minutes_early > EARLY_TOLERANCE_MIN=10).
+    #   3. Early finish >10 min → recalc with sched_start..actual_checkout
+    #      (NEVER using actual_checkin — the 10-min early check-in window
+    #      must not inflate duration). Resulting discount is refunded.
+    #   4. Past scheduled_end (actual_checkout > sched_end → minutes_early
+    #      negative) → `minutes_early > 10` is False → no recalc. Staying
+    #      longer than scheduled WITHOUT the Extension flow never raises
+    #      the price automatically.
+    #
+    # Worked example: scheduled 10:00–14:00, check-in 09:52, check-out 13:55.
+    #   minutes_early = 14:00 − 13:55 = 5. `5 > 10` is False → no recalc.
+    #   Paid as exactly 4 h.
+    #
+    # actual_duration_minutes (audit only) is NEVER used for pricing — if it
+    # ever is, the "early check-in inflates duration" invariant will break.
     early_termination_delta = 0.0
     try:
         EARLY_TOLERANCE_MIN = 10

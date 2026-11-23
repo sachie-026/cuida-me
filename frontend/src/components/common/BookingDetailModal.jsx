@@ -318,12 +318,16 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onB
               <MessageSquare size={14} /> {t("booking_detail.chat_client")}
             </button>
           )}
-          {isCompleted && booking.user_id && !justRated && (
+          {/* Rating on the pro side. Hide if the pro has already rated this
+              booking — persisted via booking.current_user_has_rated from
+              /my-bookings; justRated handles the just-submitted case within
+              this open modal session. */}
+          {isCompleted && booking.user_id && !justRated && !booking.current_user_has_rated && (
             <button onClick={() => setShowRating(true)} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
               <Star size={14} /> {t("booking_detail.rate_client")}
             </button>
           )}
-          {isCompleted && booking.user_id && justRated && (
+          {isCompleted && booking.user_id && (justRated || booking.current_user_has_rated) && (
             <button disabled className="btn-outline flex-1 flex items-center justify-center gap-1.5 opacity-70 cursor-default">
               <Star size={14} className="fill-amber-400 text-amber-400" /> {t("rating_modal.already_rated")}
             </button>
