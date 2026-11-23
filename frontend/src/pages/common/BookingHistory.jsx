@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, Clock, CheckCircle, XCircle, History as HistoryIcon } from "lucide-react";
+import { ChevronLeft, Clock, CheckCircle, XCircle, History as HistoryIcon, Star } from "lucide-react";
 import axios from "axios";
 import Logo from "../../components/common/Logo";
 import ProfileMenu from "../../components/common/ProfileMenu";
 import BookingDetailModal from "../../components/common/BookingDetailModal";
 import ClientBookingDetailModal from "../../components/common/ClientBookingDetailModal";
+import RatingModal from "../../components/common/RatingModal";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -39,17 +40,25 @@ const BookingHistory = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  // When set, opens the RatingModal for this booking. Kept separate from
+  // `selectedBooking` so tapping the Rate chip does not also open the
+  // (larger) detail modal underneath it.
+  const [ratingBooking, setRatingBooking] = useState(null);
 
   // Role detection — picks the right detail modal
   const role = (localStorage.getItem("role") || "").toLowerCase();
   const isPro = PRO_ROLES.includes(role);
 
-  useEffect(() => {
+  const loadBookings = useCallback(() => {
+    setLoading(true);
     axios.get(`${API}/api/bookings/my-bookings`, { headers })
       .then(r => setBookings(Array.isArray(r.data) ? r.data : []))
       .catch(() => setBookings([]))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line
   }, []);
+
+  useEffect(() => { loadBookings(); }, [loadBookings]);
 
   const historyBookings = useMemo(() => {
     const now = Date.now();
@@ -132,6 +141,26 @@ const BookingHistory = () => {
                           {b.cancel_reason.substring(0, 30)}{b.cancel_reason.length > 30 ? "..." : ""}
                         </p>
                       )}
+                      {/* Rating chip — completed bookings only.
+                          - Already rated → "Avaliado" badge (static).
+                          - Can rate → "Avaliar" button; opens RatingModal.
+                          - Window closed (user made a newer request) → nothing.
+                          stopPropagation prevents the row's own onClick from
+                          also opening the detail modal underneath. */}
+                      {b.status === "completed" && b.current_user_has_rated && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          <Star size={10} className="fill-amber-500 text-amber-500" />
+                          {t("history.rated")}
+                        </span>
+                      )}
+                      {b.status === "completed" && !b.current_user_has_rated && b.current_user_can_rate && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setRatingBooking(b); }}
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                        >
+                          <Star size={11} /> {t("history.rate_button")}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -153,6 +182,18 @@ const BookingHistory = () => {
         <ClientBookingDetailModal
           booking={selectedBooking}
           onClose={() => setSelectedBooking(null)}
+        />
+      )}
+
+      {/* Rating flow — fired from the row's "Avaliar" chip. The backend
+          auto-resolves `reviewee_id` from the booking when it is omitted,
+          so we don't need to pass revieweeId here. On successful submit
+          we refetch the list so the chip flips to "Avaliado" live. */}
+      {ratingBooking && (
+        <RatingModal
+          booking={ratingBooking}
+          onClose={() => setRatingBooking(null)}
+          onDone={() => { setRatingBooking(null); loadBookings(); }}
         />
       )}
     </div>

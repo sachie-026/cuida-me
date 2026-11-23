@@ -60,7 +60,7 @@ const ExtendServiceModal = ({ booking, onClose, onUpdated }) => {
       })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [booking?.id]);
 
   const selectedOption = options.find(o => o.minutes === selected) || null;
