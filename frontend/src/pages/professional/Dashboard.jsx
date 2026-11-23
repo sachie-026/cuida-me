@@ -83,8 +83,16 @@ const ProfessionalDashboard = () => {
       await axios.patch(`${API}/api/bookings/${bookingId}/accept`, {}, { headers });
       setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: "accepted" } : b));
       toast.success(t("pro_dashboard.toast_accepted"));
-    } catch {
-      toast.error(t("pro_dashboard.toast_accept_error"));
+    } catch (err) {
+      // Rule #4 (23/11/2026) — 30-min travel buffer conflict. The server
+      // returns 409 with code=scheduling_conflict and a Portuguese
+      // `message` explaining which booking is too close. Prefer that
+      // message over the generic toast so the pro sees the real reason.
+      const detail = err?.response?.data?.detail;
+      const msg = (detail && typeof detail === "object" && detail.message)
+        || (typeof detail === "string" ? detail : null)
+        || t("pro_dashboard.toast_accept_error");
+      toast.error(msg);
     }
   };
 

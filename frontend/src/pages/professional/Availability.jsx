@@ -168,7 +168,14 @@ const CalendarTab = ({ userId, profId }) => {
       setSlots(prev => [...prev, data]);
       toast.success(t("pro_availability.toast_slot_added"));
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("pro_availability.toast_slot_add_error"));
+      // Rule #7 — backend returns a structured 409 with detail.message when
+      // the new slot overlaps an existing one. Read .message off detail
+      // when it's an object; fall back to detail-as-string or generic.
+      const detail = err?.response?.data?.detail;
+      const msg = (detail && typeof detail === "object" && detail.message)
+        || (typeof detail === "string" ? detail : null)
+        || t("pro_availability.toast_slot_add_error");
+      toast.error(msg);
     }
   };
 
@@ -537,7 +544,11 @@ const RecurringTab = ({ userId }) => {
       setAdding(null);
       toast.success(t("pro_availability.toast_recurring_added"));
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("pro_availability.toast_slot_add_error"));
+      const detail = err?.response?.data?.detail;
+      const msg = (detail && typeof detail === "object" && detail.message)
+        || (typeof detail === "string" ? detail : null)
+        || t("pro_availability.toast_slot_add_error");
+      toast.error(msg);
     } finally { setSaving(false); }
   };
 

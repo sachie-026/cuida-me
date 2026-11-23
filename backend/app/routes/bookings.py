@@ -584,6 +584,17 @@ def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Se
     if b.status != BookingStatus.pending:
         raise HTTPException(400, "Can only accept pending bookings")
 
+    # Rule #4 (23/11/2026) — 30-min travel buffer. A pro cannot accept a
+    # booking whose scheduled window is within 30 min of another of their
+    # commitments. 409 so the frontend can show a specific "too close to
+    # another booking" toast rather than the generic 400.
+    conflict = _has_scheduling_conflict(
+        b.professional_id, b.scheduled_start, b.scheduled_end, db,
+        exclude_booking_id=b.id,
+    )
+    if conflict is not None:
+        raise HTTPException(409, detail=_conflict_response_for(conflict, db))
+
     # V9-6/Change 43: Per-booking caregiver terms acceptance
     prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
     if prof and prof.active_category == "caregiver":
@@ -660,6 +671,8 @@ def checkout(booking_id: str, body: CheckInOut, db: Session = Depends(get_db), c
     b = db.query(Booking).filter(Booking.id == booking_id).first()
     if not b: raise HTTPException(404, "Booking not found")
     _check_booking_access(b, current, db)
+    # Rule (23/11/2026) — same 30-min cap applied to the legacy PATCH path.
+    _check_finish_time_gate(b, db)
     b.status = BookingStatus.completed
     b.actual_checkout = datetime.utcnow()
 
@@ -838,6 +851,66 @@ def confirm_checkin(booking_id: str, db: Session = Depends(get_db), current: Use
     db.commit()
     return {"booking_id": booking_id, "client_confirmed_start": True}
 
+# Rule #1 (23/11/2026): client-side GPS-failure exception. Unlocks the pro's
+# ability to start the service after the T+30 window has closed. Also flags
+# the booking for admin review so ops can look into why the normal start was
+# missed. Idempotent — safe to call more than once; the second call is a no-op
+# that still returns the current state.
+@router.post("/{booking_id}/confirm-pro-presence")
+def confirm_pro_presence(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Client confirms the professional is physically on site even though the
+    service hasn't been checked in yet (typically because T+30 passed and the
+    pro can't start on their own). The pro's start window reopens for this
+    booking only, and the row is flagged for admin review."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if _get_booking_client_id(booking, db) != current.id:
+        raise HTTPException(403, "Only the client can confirm the professional's presence.")
+    status_now = booking.status.value if hasattr(booking.status, "value") else str(booking.status)
+    if status_now not in ("accepted", "professional_arrived"):
+        raise HTTPException(
+            400,
+            "Esta confirmação só está disponível enquanto o atendimento ainda não foi iniciado."
+        )
+
+    already = bool(getattr(booking, "client_confirmed_pro_presence", False))
+    booking.client_confirmed_pro_presence = True
+    # Keep review_type sticky: don't overwrite if it already says something
+    # more specific (e.g. "serious_complaint"). "gps_exception" is the
+    # correct category for admin triage.
+    if not booking.review_type:
+        booking.review_type = "gps_exception"
+    if not booking.gps_exception_reason:
+        booking.gps_exception_reason = (
+            "Cliente confirmou presença do profissional após o prazo de 30 min."
+        )
+    db.commit()
+
+    if not already:
+        # Notify the pro so they know the client has unlocked start. Fallback
+        # quietly on failure — the state change above is the thing that
+        # matters; the notification is a convenience.
+        try:
+            prof = db.query(Professional).filter(Professional.id == booking.professional_id).first() if booking.professional_id else None
+            pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+            if pro_user:
+                fire_event(db, "service.client_confirmed_pro_presence", {
+                    "client_name": current.full_name or "Cliente",
+                    "service": booking.service_type or "Cuidado",
+                    "booking_code": f"#{booking.id[:6].upper()}",
+                    "booking_id": booking.id,
+                }, recipient_users={"professional": [pro_user]})
+                db.commit()
+        except Exception as e:
+            print(f"[CONFIRM-PRO-PRESENCE] notify failed for {booking.id}: {e}")
+
+    return {
+        "booking_id": booking_id,
+        "client_confirmed_pro_presence": True,
+        "review_type": booking.review_type,
+    }
+
 @router.patch("/{booking_id}/confirm-checkout")
 def confirm_checkout(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
     """Client confirms the service was completed satisfactorily.
@@ -891,6 +964,36 @@ class CheckInRequest(BaseModel):
     latitude:  float
     longitude: float
 
+# Rule #7 (23/11/2026) — time-gate values below are dynamic. The module-
+# level constants are fallback defaults; the real values come from
+# PlatformSettings via `_time_cfg()` on every request, so an admin edit in
+# the Admin Panel takes effect immediately with no redeploy.
+def _time_cfg(db: Session) -> dict:
+    """Return the current time-gate values from PlatformSettings, falling
+    back to the module-level constants if the settings row / helper is not
+    available (e.g. during very early boot). Keys match the Admin Panel's
+    field names."""
+    try:
+        from app.routes.settings import get_setting
+        return {
+            "start_before":   int(get_setting("start_window_before_min",  db) or EARLY_START_WINDOW_MINUTES),
+            "late_arrival":   int(get_setting("late_arrival_after_min",   db) or LATE_ARRIVAL_AFTER_MINUTES),
+            "start_after":    int(get_setting("start_window_after_min",   db) or MAX_START_LATE_MINUTES),
+            "finish_after":   int(get_setting("finish_window_after_min",  db) or MAX_FINISH_LATE_MINUTES),
+            "min_gap":        int(get_setting("min_gap_between_bookings_min", db) or MIN_GAP_MINUTES),
+            "ext_step":       int(get_setting("extension_step_min",       db) or EXTENSION_STEP_MINUTES),
+        }
+    except Exception:
+        return {
+            "start_before": EARLY_START_WINDOW_MINUTES,
+            "late_arrival": LATE_ARRIVAL_AFTER_MINUTES,
+            "start_after":  MAX_START_LATE_MINUTES,
+            "finish_after": MAX_FINISH_LATE_MINUTES,
+            "min_gap":      MIN_GAP_MINUTES,
+            "ext_step":     EXTENSION_STEP_MINUTES,
+        }
+
+
 CHECK_IN_RADIUS_METERS = 500   # soft radius — beyond this, a booking is
                                # flagged for audit but NOT blocked. Covers
                                # ordinary mobile GPS drift (a pro parked across
@@ -902,44 +1005,301 @@ CHECK_IN_HARD_BLOCK_METERS = 2000  # hard block — beyond this the pro is
                                    # edge cases.
 
 # Rule #3 (21/11/2026): a professional can only hit "Iniciar atendimento"
-# starting 10 minutes before the scheduled start time. This replaces the
-# earlier always-available rule that let the pro start a service days in
-# advance. Server time is the source of truth.
+# starting 10 minutes before the scheduled start time.
+# Rule #1 (23/11/2026): the start window closes 30 minutes AFTER the scheduled
+# start. Between +15 and +30 the start is still allowed but is logged as a
+# Late Arrival (late_arrival=True). Past +30 the pro is blocked UNLESS the
+# client has confirmed presence via /confirm-pro-presence (sets
+# client_confirmed_pro_presence=True on the booking + flags for admin review).
 EARLY_START_WINDOW_MINUTES = 10
+LATE_ARRIVAL_AFTER_MINUTES  = 15
+MAX_START_LATE_MINUTES      = 30
+# Rule (23/11/2026): the pro can finish up to 30 min past scheduled_end on
+# their own. Past that, the system auto-finishes at scheduled_end (payment
+# stays on scheduled time) and flags the row for admin review. Staying
+# longer requires the Service Extension flow — the 30-min grace is not free
+# extra time.
+MAX_FINISH_LATE_MINUTES    = 30
 
 
-def _check_start_time_gate(booking: "Booking") -> None:
-    """Enforce the 10-minute pre-start window. Raises 400 if too early.
+def _check_start_time_gate(booking: "Booking", db: Session = None) -> None:
+    """Enforce the start window. Raises 400 if outside it.
 
-    Idempotent for already-started/finished bookings — callers should only
-    invoke this when the booking is still in `accepted` state (or legacy
-    `professional_arrived`). If scheduled_start is missing we don't block
-    — a booking without a scheduled time is a data problem, not a user
-    problem, and we don't want to lock the pro out of a real service.
+    - too early (now < scheduled_start - start_before min) → block with "faltam N min"
+    - too late  (now > scheduled_start + start_after min)  → block UNLESS the
+      client has confirmed pro presence (overrides, flags for admin review).
+
+    Values default to module constants; if `db` is provided, PlatformSettings
+    override them so an admin edit takes effect immediately.
     """
     sched = booking.scheduled_start
     if sched is None:
         return
-    # Normalize both sides to aware-UTC so the comparison is unambiguous.
-    # Scheduled times are stored and used as bare wall-clock values across
-    # the app, but datetimes coming out of Postgres with timezone=True may
-    # carry a tz. Treat naive values as UTC.
     if sched.tzinfo is None:
         sched = sched.replace(tzinfo=timezone.utc)
     now_utc = datetime.now(timezone.utc)
-    earliest = sched - timedelta(minutes=EARLY_START_WINDOW_MINUTES)
-    if now_utc >= earliest:
-        return  # we're inside the start window
-    remaining = earliest - now_utc
-    mins_left = max(1, int(remaining.total_seconds() // 60) + 1)
-    # Message string matches the UI copy in StartEndServiceButtons and the
-    # locale key start_end_service.too_early_hint so pt-BR users see the
-    # same wording in both the toast and the button hint.
+
+    cfg = _time_cfg(db) if db is not None else None
+    before_min = cfg["start_before"] if cfg else EARLY_START_WINDOW_MINUTES
+    after_min  = cfg["start_after"]  if cfg else MAX_START_LATE_MINUTES
+
+    earliest = sched - timedelta(minutes=before_min)
+    if now_utc < earliest:
+        remaining = earliest - now_utc
+        mins_left = max(1, int(remaining.total_seconds() // 60) + 1)
+        raise HTTPException(
+            400,
+            f"Você poderá iniciar o atendimento {before_min} minutos antes do horário agendado. "
+            f"Faltam {mins_left} min."
+        )
+
+    latest = sched + timedelta(minutes=after_min)
+    if now_utc > latest:
+        if getattr(booking, "client_confirmed_pro_presence", False):
+            return
+        raise HTTPException(
+            400,
+            f"O prazo de {after_min} minutos para iniciar o atendimento expirou. "
+            "Peça ao cliente para confirmar sua presença no app, ou aguarde a "
+            "reatribuição automática."
+        )
+    return
+
+
+# Rule #4 (23/11/2026) — minimum gap between two bookings of the same pro.
+# A pro cannot accept, or be matched to, a booking whose scheduled window
+# comes within this many minutes of another of their bookings. 30 min is
+# the committed travel/handover buffer: if service A ends at 14:00, the
+# earliest start for service B is 14:30.
+MIN_GAP_MINUTES = 30
+
+
+def _has_scheduling_conflict(
+    pro_id,
+    new_start,
+    new_end,
+    db: Session,
+    exclude_booking_id=None,
+):
+    """Return a conflicting Booking of the pro, or None.
+
+    Two bookings conflict when their [start, end] windows (padded by
+    MIN_GAP_MINUTES) overlap — equivalent to "the gap between them is less
+    than 30 min". The symmetric form avoids edge-case bugs: for A(end=14:00)
+    and B(start=14:30) the gap is exactly 30 min → allowed (14:00+30 >
+    14:30 is False, so no conflict).
+
+    Only active future-ish statuses are considered a commitment:
+        pending, accepted, professional_arrived, checked_in.
+    cancelled / no_show / completed / under_review are not blocking — the
+    pro is no longer committed to those slots.
+
+    Scheduled times are compared as naive wall-clock (matches the rest of
+    the codebase's TZ discipline).
+    """
+    if not pro_id or new_start is None or new_end is None:
+        return None
+
+    def _naive(d):
+        return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+
+    ns = _naive(new_start)
+    ne = _naive(new_end)
+    if ne <= ns:
+        return None  # malformed window — defer to higher-level validation
+
+    active = [
+        BookingStatus.pending,
+        BookingStatus.accepted,
+        BookingStatus.professional_arrived,
+        BookingStatus.checked_in,
+    ]
+    q = db.query(Booking).filter(
+        Booking.professional_id == pro_id,
+        Booking.status.in_(active),
+        Booking.scheduled_start.isnot(None),
+        Booking.scheduled_end.isnot(None),
+    )
+    if exclude_booking_id:
+        q = q.filter(Booking.id != exclude_booking_id)
+
+    cfg = _time_cfg(db)
+    gap = timedelta(minutes=cfg["min_gap"])
+    for other in q.all():
+        os = _naive(other.scheduled_start)
+        oe = _naive(other.scheduled_end)
+        # Padded-interval overlap: a conflict iff
+        #   (other.end + gap > new.start) AND (new.end + gap > other.start)
+        if oe + gap > ns and ne + gap > os:
+            return other
+    return None
+
+
+def _conflict_response_for(other: "Booking", db: Session = None):
+    """Build the 409 detail payload for a scheduling conflict. Reads the
+    current min_gap from PlatformSettings via _time_cfg so the message and
+    payload match whatever the admin set in the panel."""
+    cfg = _time_cfg(db) if db is not None else {"min_gap": MIN_GAP_MINUTES}
+    gap = cfg["min_gap"]
+    start_iso = other.scheduled_start.isoformat() if other.scheduled_start else None
+    end_iso   = other.scheduled_end.isoformat()   if other.scheduled_end   else None
+    return {
+        "code": "scheduling_conflict",
+        "conflict_booking_id":    other.id,
+        "conflict_booking_code":  f"#{other.id[:6].upper()}",
+        "conflict_service_type":  other.service_type or "Cuidado",
+        "conflict_scheduled_start": start_iso,
+        "conflict_scheduled_end":   end_iso,
+        "min_gap_minutes":        gap,
+        "message": (
+            f"Este agendamento está muito perto de outro atendimento seu. "
+            f"É necessário um intervalo mínimo de {gap} minutos entre atendimentos."
+        ),
+    }
+
+
+def _find_blocking_booking(current_pro: "Professional", this_booking: "Booking", db: Session):
+    """Rule (23/11/2026) — a pro cannot start a new service while a previous
+    one is still open. "Open" = status in (checked_in, professional_arrived).
+
+    An open booking stops blocking once it's past its hard-sweep deadline
+    (T_end+30 for checked_in — auto-finish; or T_start+30 for
+    professional_arrived without a real check-in — auto-no-show), since the
+    scheduler would finalize it within the next 5 min anyway. That window
+    prevents the pro from being deadlocked if the sweep hasn't run yet.
+
+    Returns the blocking Booking (or None). The caller decides whether to
+    raise (start handlers do) or ignore (admin tools don't).
+    """
+    if not current_pro:
+        return None
+    now_utc = datetime.now(timezone.utc)
+    active = [BookingStatus.checked_in, BookingStatus.professional_arrived]
+    rows = db.query(Booking).filter(
+        Booking.professional_id == current_pro.id,
+        Booking.status.in_(active),
+        Booking.id != this_booking.id,
+    ).all()
+    for b in rows:
+        status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
+        if status_val == "checked_in":
+            # Would auto-finish at scheduled_end + 30.
+            end = b.scheduled_end
+            if end is not None:
+                if getattr(end, "tzinfo", None) is None:
+                    end = end.replace(tzinfo=timezone.utc)
+                if now_utc > end + timedelta(minutes=MAX_FINISH_LATE_MINUTES):
+                    continue  # effectively over, don't block
+        else:  # professional_arrived — legacy, would auto-no-show at start+30
+            start = b.scheduled_start
+            if start is not None:
+                if getattr(start, "tzinfo", None) is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                if now_utc > start + timedelta(minutes=MAX_START_LATE_MINUTES):
+                    continue
+        return b
+    return None
+
+
+def _block_response_for(b: "Booking", db: Session):
+    """Build the 409 detail payload for the frontend "Finish previous first?"
+    dialog. Includes just enough context for the pro to know which booking
+    they still owe and what service it was."""
+    # Resolve the patient's display name (best-effort — the pro has read
+    # access to this through their own booking, so no privacy concern).
+    patient_name = None
+    if b.patient_id:
+        patient = db.query(Patient).filter(Patient.id == b.patient_id).first()
+        if patient:
+            patient_name = getattr(patient, "full_name", None) or getattr(patient, "name", None)
+    status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
+    return {
+        "code": "pro_busy",
+        "blocking_booking_id":    b.id,
+        "blocking_service_type":  b.service_type or "Cuidado",
+        "blocking_booking_code":  f"#{b.id[:6].upper()}",
+        "blocking_scheduled_end": b.scheduled_end.isoformat() if b.scheduled_end else None,
+        "blocking_scheduled_start": b.scheduled_start.isoformat() if b.scheduled_start else None,
+        "blocking_patient_name":  patient_name,
+        "blocking_status":        status_val,
+        "message": (
+            "Você precisa finalizar o atendimento anterior primeiro. "
+            "Finalize agora para iniciar o próximo."
+        ),
+    }
+
+
+def _check_finish_time_gate(booking: "Booking", db: Session = None) -> None:
+    """Enforce the finish window. Raises 400 past scheduled_end + finish_after min.
+
+    Rationale:
+    - Checking out early is handled separately by the pricing-recalc block in
+      the checkout endpoint — this gate only cares about the upper bound.
+    - Past T_end+30 the scheduler's auto-finish sweep normally fires first
+      and flips status to completed, so /checkout would then 400 on status.
+      But the sweep runs every 5 min, so there is a small window where the
+      sweep hasn't run yet and the pro is way past the cutoff — that case
+      is what this gate guards against: block, tell them to use the
+      extension flow next time, and let the sweep catch up.
+    - No gate when scheduled_end is missing (data issue, don't lock pro out).
+    """
+    sched_end = booking.scheduled_end
+    if sched_end is None:
+        return
+    if sched_end.tzinfo is None:
+        sched_end = sched_end.replace(tzinfo=timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    cfg = _time_cfg(db) if db is not None else None
+    cap_min = cfg["finish_after"] if cfg else MAX_FINISH_LATE_MINUTES
+    cutoff = sched_end + timedelta(minutes=cap_min)
+    if now_utc <= cutoff:
+        return
     raise HTTPException(
         400,
-        f"Você poderá iniciar o atendimento 10 minutos antes do horário agendado. "
-        f"Faltam {mins_left} min."
+        f"O prazo de {cap_min} minutos para finalizar o atendimento expirou. "
+        "O sistema finalizará automaticamente com base no horário agendado. "
+        "Para estender o atendimento, use o fluxo de extensão antes do término."
     )
+
+
+def _mark_late_arrival_if_applicable(booking: "Booking", db: Session, current_user: "User") -> bool:
+    """If the service is being started 15+ min past scheduled_start, mark the
+    booking as a late arrival, bump the counter, and fire service.late_arrival
+    to both sides. Returns True iff it fired. Called from the start handlers
+    AFTER the time gate passes, so we know we're within [T+15, T+30] or the
+    client-confirmed override window."""
+    sched = booking.scheduled_start
+    if sched is None:
+        return False
+    if sched.tzinfo is None:
+        sched = sched.replace(tzinfo=timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    cfg = _time_cfg(db) if db is not None else None
+    late_after = cfg["late_arrival"] if cfg else LATE_ARRIVAL_AFTER_MINUTES
+    if now_utc < sched + timedelta(minutes=late_after):
+        return False
+    if booking.late_arrival:
+        return False  # already flagged (sweep may have beat us to it)
+    booking.late_arrival = True
+    booking.late_arrival_count = (booking.late_arrival_count or 0) + 1
+    try:
+        from app.utils.notification_engine import fire_event
+        prof = db.query(Professional).filter(Professional.id == booking.professional_id).first() if booking.professional_id else None
+        pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+        client_user = _get_booking_client_user(booking, db)
+        recipients = {}
+        if client_user: recipients["client"] = [client_user]
+        if pro_user:    recipients["professional"] = [pro_user]
+        if recipients:
+            fire_event(db, "service.late_arrival", {
+                "professional_name": (pro_user.full_name if pro_user else "Profissional"),
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+            }, recipient_users=recipients)
+    except Exception as e:
+        print(f"[LATE-ARRIVAL] inline notify failed for {booking.id}: {e}")
+    return True
 
 
 def _check_start_gps(booking: "Booking", lat: float, lng: float, db: Session):
@@ -1014,9 +1374,14 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
     if booking.status.value != "accepted":
         raise HTTPException(400, "Só é possível fazer check-in em atendimentos aceitos")
 
-    # Rule #3 — same 10-minute pre-start gate applied to the legacy two-step
+    # Rule (23/11/2026) — block if the pro still has another open service.
+    blocker = _find_blocking_booking(prof, booking, db)
+    if blocker is not None:
+        raise HTTPException(409, detail=_block_response_for(blocker, db))
+
+    # Rule #3 + Rule #1 — same time gate applied to the legacy two-step
     # check-in path so it can't be used to bypass the one-shot start.
-    _check_start_time_gate(booking)
+    _check_start_time_gate(booking, db)
 
     # Store GPS, validate via helper (soft flag 500–2000m, hard block > 2km).
     booking.checkin_lat = body.latitude
@@ -1024,6 +1389,9 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
     booking.actual_checkin = datetime.now(timezone.utc)
     booking.status = BookingStatus.professional_arrived
     _check_start_gps(booking, body.latitude, body.longitude, db)
+
+    # Late-arrival audit (matches start-service-combined behaviour).
+    _mark_late_arrival_if_applicable(booking, db, current)
 
     # Start 15-min arrival waiting timer
     booking.arrival_timer_start = datetime.now(timezone.utc)
@@ -1192,9 +1560,20 @@ def start_service_combined(booking_id: str, body: CheckInRequest, db: Session = 
     if status_now != "accepted":
         raise HTTPException(400, f"Não é possível iniciar um atendimento com status '{status_now}'.")
 
+    # Rule (23/11/2026) — block if the pro still has another open service.
+    # 409 so the frontend can distinguish this from the generic 400s and
+    # render the "Finalizar anterior e iniciar?" dialog. Must run BEFORE
+    # the time gate so a pro with a stuck old service gets the useful
+    # "finish previous" prompt rather than a confusing "too early" error.
+    blocker = _find_blocking_booking(prof, booking, db)
+    if blocker is not None:
+        raise HTTPException(409, detail=_block_response_for(blocker, db))
+
     # Rule #3 — time gate. Server time is the source of truth. Must be within
-    # the last 10 minutes before scheduled_start. Raises 400 if too early.
-    _check_start_time_gate(booking)
+    # [scheduled_start - 10 min, scheduled_start + 30 min]. Past +30 is only
+    # allowed if the client has confirmed presence (sets
+    # client_confirmed_pro_presence on the booking). Raises 400 otherwise.
+    _check_start_time_gate(booking, db)
 
     # Store GPS, validate proximity. The helper hard-blocks (raises 400) on
     # extreme distances (>2 km), soft-flags on mid-range (500–2000 m), and
@@ -1210,6 +1589,25 @@ def start_service_combined(booking_id: str, body: CheckInRequest, db: Session = 
     booking.service_started_at = now_utc
     booking.arrival_timer_start = now_utc
     booking.status = BookingStatus.checked_in
+
+    # Late-arrival audit: if past T+15, mark the row and fire the event. If we
+    # only got in because of a client-confirmed override past T+30, also flag
+    # the booking for admin review so the ops team can inspect.
+    was_late = _mark_late_arrival_if_applicable(booking, db, current)
+    sched = booking.scheduled_start
+    if sched is not None and getattr(sched, "tzinfo", None) is None:
+        sched = sched.replace(tzinfo=timezone.utc)
+    client_override_used = (
+        sched is not None
+        and now_utc > sched + timedelta(minutes=MAX_START_LATE_MINUTES)
+        and bool(getattr(booking, "client_confirmed_pro_presence", False))
+    )
+    if client_override_used:
+        booking.review_type = "gps_exception"
+        booking.gps_exception_reason = (
+            booking.gps_exception_reason
+            or "Atendimento iniciado após o prazo de 30 min — presença confirmada pelo cliente."
+        )
 
     db.commit()
 
@@ -1252,7 +1650,7 @@ def start_service(booking_id: str, db: Session = Depends(get_db), current: User 
 
     # Rule #3 — guard here too, so the legacy 2-step flow can't be used to
     # skip the time gate by splitting check-in and start-service.
-    _check_start_time_gate(booking)
+    _check_start_time_gate(booking, db)
 
     booking.service_started_at = datetime.now(timezone.utc)
     booking.status = BookingStatus.checked_in
@@ -1289,6 +1687,13 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
 
     if booking.status.value != "checked_in":
         raise HTTPException(400, "Só é possível fazer checkout de atendimentos em andamento")
+
+    # Rule (23/11/2026) — finish window gate: no manual checkout past
+    # scheduled_end + 30 min. Pro must have requested an extension before
+    # the service ended to legitimately stay longer; without one, the
+    # scheduler auto-finishes the booking at scheduled_end and this gate
+    # catches any tap that arrives before the sweep runs.
+    _check_finish_time_gate(booking, db)
 
     booking.checkout_lat = body.latitude
     booking.checkout_lng = body.longitude
@@ -1545,6 +1950,10 @@ def initiate_smart_match(booking_id: str, db: Session = Depends(get_db), current
     for p in pros:
         if p.rest_until and p.rest_until > now:
             continue
+        # Rule #4 — skip pros with an existing commitment within the 30-min
+        # travel buffer of this booking's window.
+        if _has_scheduling_conflict(p.id, booking.scheduled_start, booking.scheduled_end, db, exclude_booking_id=booking_id) is not None:
+            continue
         user = db.query(User).filter(User.id == p.user_id).first()
         if not user:
             continue
@@ -1604,6 +2013,9 @@ def expire_and_rematch(booking_id: str, db: Session = Depends(get_db), current: 
         if p.id in excluded:
             continue
         if p.rest_until and p.rest_until > now:
+            continue
+        # Rule #4 — 30-min travel buffer applies to rematch too.
+        if _has_scheduling_conflict(p.id, booking.scheduled_start, booking.scheduled_end, db, exclude_booking_id=booking_id) is not None:
             continue
         user = db.query(User).filter(User.id == p.user_id).first()
         if not user:
@@ -1836,6 +2248,11 @@ def replace_professional(booking_id: str, db: Session = Depends(get_db), _=Depen
             continue
         if p.rest_until and p.rest_until > now:
             continue
+        # Rule #4 — the admin's replacement pro must also respect the 30-min
+        # buffer; otherwise we'd hand a pro a booking that conflicts with
+        # their existing schedule.
+        if _has_scheduling_conflict(p.id, booking.scheduled_start, booking.scheduled_end, db, exclude_booking_id=booking_id) is not None:
+            continue
         user = db.query(User).filter(User.id == p.user_id).first()
         if not user:
             continue
@@ -2030,102 +2447,410 @@ def get_booking_audit(booking_id: str, db: Session = Depends(get_db), current: U
         "created_at": booking.created_at.isoformat() if booking.created_at else None,
     }
 
-# ── #9: Real-Time Service Extension ───────────────────────────────────────────
+# ── #9 + Rule #5 (23/11/2026): Client-initiated Service Extension ─────────────
+#
+# Flow:
+#   1. Client opens an in-progress booking, taps "Estender atendimento".
+#      Frontend first calls GET /extension-options which returns the allowed
+#      30-min increments (bounded by the pro's next booking's travel buffer)
+#      with each option's exact additional cost.
+#   2. Client picks an option, POSTs /request-extension with additional_minutes.
+#      Booking row is updated with extension_* fields, status="requested".
+#      Pro is notified.
+#   3. Pro accepts → PATCH /extension/confirm. Server attempts to charge
+#      the client the additional amount (updating the existing Payment row);
+#      on success scheduled_end is advanced and total_price updated. Payment
+#      failure sets status=payment_failed and notifies both — the extension
+#      does NOT take effect.
+#   4. Pro declines → PATCH /extension/decline. Client notified.
+#   5. If pro doesn't respond by scheduled_end, the scheduler sweep expires
+#      the request (extension_status="expired").
+#
+# Pricing: hourly rate for the role, day/night-split via pricing engine's
+# _count_day_night_minutes. NO Initial Service Fee is charged again.
 
-class ExtensionRequest(BaseModel):
-    new_end_time:  datetime
-    requested_by:  str  # "client" or "professional"
+EXTENSION_MIN_MINUTES   = 30
+EXTENSION_STEP_MINUTES  = 30
+EXTENSION_MAX_MINUTES   = 240  # 4 h — presented as 8 options; the real cap
+                                # is often the next-booking travel buffer.
 
-@router.post("/{booking_id}/request-extension")
-def request_extension(booking_id: str, body: ExtensionRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Request to extend an in-progress booking. Requires mutual confirmation."""
+
+def _compute_extension_cost(booking: "Booking", current_end: "datetime", new_end: "datetime", db: Session) -> float:
+    """Return the additional price for extending `booking` from current_end to
+    new_end. Uses the pricing engine's day/night split; no Initial Fee."""
+    from app.utils.pricing import _count_day_night_minutes, HOUR_RATES
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+    role = user.role.value if user and hasattr(user.role, "value") else "caregiver"
+    rates = HOUR_RATES.get(role) or HOUR_RATES["caregiver"]
+    split = _count_day_night_minutes(current_end, new_end)
+    day_cost   = round(split["day"]   / 60 * rates["day"],   2)
+    night_cost = round(split["night"] / 60 * rates["night"], 2)
+    return round(day_cost + night_cost, 2)
+
+
+def _next_booking_start_for_pro(pro_id, after_dt, db: Session, exclude_booking_id=None):
+    """Return the earliest scheduled_start of the pro's NEXT active booking
+    after `after_dt`, or None. Used to cap the extension length so the
+    30-min travel buffer is preserved."""
+    if not pro_id or after_dt is None:
+        return None
+    active = [
+        BookingStatus.pending, BookingStatus.accepted,
+        BookingStatus.professional_arrived, BookingStatus.checked_in,
+    ]
+    def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    after_n = _n(after_dt)
+    q = db.query(Booking).filter(
+        Booking.professional_id == pro_id,
+        Booking.status.in_(active),
+        Booking.scheduled_start.isnot(None),
+    )
+    if exclude_booking_id:
+        q = q.filter(Booking.id != exclude_booking_id)
+    earliest = None
+    for b in q.all():
+        s = _n(b.scheduled_start)
+        if s > after_n and (earliest is None or s < earliest):
+            earliest = s
+    return earliest
+
+
+def _extension_max_minutes_for(booking: "Booking", db: Session) -> int:
+    """How much more time the pro can take on this booking before bumping
+    into their next commitment (minus the min_gap_between_bookings_min
+    travel buffer). Capped at EXTENSION_MAX_MINUTES."""
+    current_end = booking.scheduled_end
+    if current_end is None:
+        return 0
+    next_start = _next_booking_start_for_pro(booking.professional_id, current_end, db, exclude_booking_id=booking.id)
+    cfg = _time_cfg(db)
+    if next_start is None:
+        return EXTENSION_MAX_MINUTES
+    def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    gap = (next_start - _n(current_end)).total_seconds() / 60
+    available = int(gap - cfg["min_gap"])
+    return max(0, min(EXTENSION_MAX_MINUTES, available))
+
+
+@router.get("/{booking_id}/extension-options")
+def get_extension_options(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """List the extension options the CLIENT can pick for this booking.
+
+    Each option is {minutes, additional_cost, new_end, available}. 30-min
+    increments from 30 up to EXTENSION_MAX_MINUTES, capped by the pro's
+    next booking (minus the travel buffer). Unavailable options are
+    omitted so the frontend doesn't render them."""
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
-    if booking.status.value != "checked_in":
-        raise HTTPException(400, "Extensão só é possível para atendimentos em andamento")
+    if _get_booking_client_id(booking, db) != current.id and current.role.value != "admin":
+        raise HTTPException(403, "Apenas o cliente pode solicitar extensão.")
+    status_now = booking.status.value if hasattr(booking.status, "value") else str(booking.status)
+    if status_now not in ("checked_in", "professional_arrived"):
+        raise HTTPException(400, "Extensão só é possível durante o atendimento em andamento.")
+    if booking.extension_status == "requested":
+        raise HTTPException(400, "Já existe uma solicitação de extensão pendente para este atendimento.")
 
-    # Calculate additional time and cost. All times are wall-clock Brazilian
-    # time stored naively; pass through without TZ conversion.
     current_end = booking.scheduled_end
-    new_end = body.new_end_time
-    # Align tz-awareness for the comparison without changing the stored meaning.
-    if (current_end is not None and new_end is not None
-            and (current_end.tzinfo is None) != (new_end.tzinfo is None)):
-        if current_end.tzinfo is not None:
-            current_end = current_end.replace(tzinfo=None)
-        else:
-            new_end = new_end.replace(tzinfo=None)
-    if new_end <= current_end:
-        raise HTTPException(400, "Novo horário deve ser após o término atual")
+    if current_end is None:
+        raise HTTPException(400, "Atendimento sem horário de término definido.")
+    def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    end_n = _n(current_end)
 
-    additional_minutes = (new_end - current_end).total_seconds() / 60
+    max_minutes = _extension_max_minutes_for(booking, db)
+    cfg = _time_cfg(db)
+    step = cfg["ext_step"]
+    options = []
+    for m in range(step, EXTENSION_MAX_MINUTES + 1, step):
+        if m > max_minutes:
+            break
+        new_end = end_n + timedelta(minutes=m)
+        cost = _compute_extension_cost(booking, end_n, new_end, db)
+        options.append({
+            "minutes": m,
+            "additional_cost": cost,
+            "new_end": new_end.isoformat(),
+        })
+    return {
+        "booking_id": booking_id,
+        "current_end": end_n.isoformat(),
+        "min_minutes": step,
+        "step_minutes": step,
+        "max_minutes": max_minutes,
+        "options": options,
+    }
 
-    # Calculate additional cost using pricing engine (no new Initial Fee)
+
+class ExtensionRequest(BaseModel):
+    # Prefer `additional_minutes` for the Rule #5 flow (30-min increments).
+    # `new_end_time` is kept for backward compatibility with the earlier
+    # "pro-initiated or either side" flow — if provided, it overrides.
+    additional_minutes: Optional[int] = None
+    new_end_time:       Optional[datetime] = None
+    requested_by:       Optional[str] = None  # "client" | "professional"; auto-detected if omitted
+
+
+@router.post("/{booking_id}/request-extension")
+def request_extension(booking_id: str, body: ExtensionRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Request to extend an in-progress booking. Rule #5 — client-initiated.
+
+    Validates: min 30 min, multiple of 30 min, within the pro's travel-buffer
+    window. Stores the request + computed cost; notifies the pro. Charging
+    happens on /extension/confirm (pro accepts).
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    status_now = booking.status.value if hasattr(booking.status, "value") else str(booking.status)
+    if status_now not in ("checked_in", "professional_arrived"):
+        raise HTTPException(400, "Extensão só é possível durante o atendimento em andamento.")
+    if booking.extension_status == "requested":
+        raise HTTPException(400, "Já existe uma solicitação de extensão pendente para este atendimento.")
+
+    # Auto-detect requester role from the auth'd user (the body field is now
+    # optional and informational; the server decides authoritatively).
+    client_id = _get_booking_client_id(booking, db)
     prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
-    user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
-    role = user.role.value if user and hasattr(user.role, 'value') else "caregiver"
+    requested_by = None
+    if current.id == client_id:
+        requested_by = "client"
+    elif prof and prof.user_id == current.id:
+        requested_by = "professional"
+    else:
+        raise HTTPException(403, "Apenas o cliente ou o profissional podem solicitar extensão.")
 
-    from app.utils.pricing import _count_day_night_minutes, HOUR_RATES
-    split = _count_day_night_minutes(current_end, new_end)
-    additional_day = round(split["day"] / 60 * HOUR_RATES[role]["day"], 2)
-    additional_night = round(split["night"] / 60 * HOUR_RATES[role]["night"], 2)
-    additional_cost = round(additional_day + additional_night, 2)
+    # Resolve additional_minutes
+    current_end = booking.scheduled_end
+    def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    end_n = _n(current_end)
+    if body.additional_minutes is not None:
+        add_min = int(body.additional_minutes)
+    elif body.new_end_time is not None:
+        add_min = int((_n(body.new_end_time) - end_n).total_seconds() / 60)
+    else:
+        raise HTTPException(400, "Informe additional_minutes (30, 60, 90…) ou new_end_time.")
 
-    # Check for schedule conflict
-    conflicting = db.query(Booking).filter(
-        Booking.professional_id == booking.professional_id,
-        Booking.id != booking_id,
-        Booking.status.in_(["accepted", "checked_in", "professional_arrived"]),
-        Booking.scheduled_start < new_end,
-        Booking.scheduled_end > current_end,
-    ).first()
+    # Validate increment + minimum + max (step configured via Admin Panel)
+    cfg = _time_cfg(db)
+    step = cfg["ext_step"]
+    if add_min < step:
+        raise HTTPException(400, f"A extensão mínima é de {step} minutos.")
+    if add_min % step != 0:
+        raise HTTPException(400, f"A extensão deve ser em múltiplos de {step} minutos.")
+    max_min = _extension_max_minutes_for(booking, db)
+    if max_min <= 0:
+        raise HTTPException(
+            400,
+            "Sem tempo disponível para extensão: o profissional tem outro atendimento logo após este."
+        )
+    if add_min > max_min:
+        raise HTTPException(
+            400,
+            f"O profissional tem outro atendimento em sequência. A extensão máxima disponível é de {max_min} minutos."
+        )
 
-    booking.extension_new_end = new_end
-    booking.extension_requested_by = body.requested_by
-    booking.extension_additional_cost = additional_cost
-    booking.extension_status = "requested"
+    new_end = end_n + timedelta(minutes=add_min)
+    cost = _compute_extension_cost(booking, end_n, new_end, db)
+
+    booking.extension_new_end        = new_end
+    booking.extension_requested_by   = requested_by
+    booking.extension_additional_cost = cost
+    booking.extension_status         = "requested"
     db.commit()
+
+    # Notify the OTHER party.
+    try:
+        pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+        client_user = _get_booking_client_user(booking, db)
+        vars_ = {
+            "service": booking.service_type or "Cuidado",
+            "booking_code": f"#{booking.id[:6].upper()}",
+            "booking_id": booking.id,
+            "additional_minutes": str(add_min),
+            "additional_cost": f"{cost:.2f}",
+        }
+        if requested_by == "client" and pro_user:
+            fire_event(db, "service.extension_requested_pro", vars_, recipient_users={"professional": [pro_user]})
+        elif requested_by == "professional" and client_user:
+            # Legacy path — pro-initiated extension (kept so existing callers
+            # don't break). Rule #5 is client-initiated, but we still notify
+            # cleanly if the other code path is used.
+            fire_event(db, "service.extension_requested_client", vars_, recipient_users={"client": [client_user]})
+        db.commit()
+    except Exception as e:
+        print(f"[EXTENSION] notify failed for {booking.id}: {e}")
 
     return {
         "booking_id": booking_id,
         "extension_status": "requested",
-        "additional_minutes": round(additional_minutes),
-        "additional_cost": additional_cost,
-        "has_conflict": conflicting is not None,
-        "conflict_warning": "⚠️ Profissional tem outro atendimento agendado após este horário." if conflicting else None,
-        "message": "Extensão solicitada. Aguardando confirmação da outra parte.",
+        "additional_minutes": add_min,
+        "additional_cost": cost,
+        "new_end": new_end.isoformat(),
+        "message": "Extensão solicitada. Aguardando resposta do profissional.",
     }
+
 
 @router.patch("/{booking_id}/extension/confirm")
 def confirm_extension(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Other party confirms the extension request."""
+    """Pro accepts the client's extension request. Charges the client the
+    additional amount (updates the existing Payment row for this booking).
+    On success scheduled_end is advanced and total_price updated. On payment
+    failure, extension_status flips to "payment_failed", both sides are
+    notified, and the original schedule stays in place.
+    """
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
     if booking.extension_status != "requested":
-        raise HTTPException(400, "Nenhuma extensão pendente")
+        raise HTTPException(400, "Nenhuma extensão pendente para este atendimento.")
 
-    booking.scheduled_end = booking.extension_new_end
+    # Only the counterpart of the requester may confirm. For Rule #5
+    # (client-initiated) the accepter is the professional. We keep the
+    # legacy direction too for backward compatibility.
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    client_id = _get_booking_client_id(booking, db)
+    if booking.extension_requested_by == "client":
+        if not prof or prof.user_id != current.id:
+            raise HTTPException(403, "Apenas o profissional pode confirmar esta extensão.")
+    else:  # "professional"
+        if current.id != client_id:
+            raise HTTPException(403, "Apenas o cliente pode confirmar esta extensão.")
+
+    new_end = booking.extension_new_end
+    add_cost = float(booking.extension_additional_cost or 0)
+
+    # Re-check the travel buffer — a conflicting booking might have been
+    # accepted by the pro while this request was waiting.
+    if new_end is not None:
+        max_min = _extension_max_minutes_for(booking, db)
+        def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+        requested_min = int((_n(new_end) - _n(booking.scheduled_end)).total_seconds() / 60)
+        if requested_min > max_min:
+            booking.extension_status = "declined"
+            db.commit()
+            raise HTTPException(
+                400,
+                "A extensão não pode mais ser confirmada: há outro atendimento conflitante. "
+                "Peça ao cliente para solicitar uma nova extensão com duração menor."
+            )
+
+    # Attempt to charge. In this codebase the Payment row is the system of
+    # record for the booking's payment state; a real gateway charge is a
+    # follow-up. We update the row's amount and append a note. If anything
+    # here fails, we flip to payment_failed and leave the schedule alone.
+    payment_ok = True
+    try:
+        from app.models.models import Payment, PaymentStatus
+        payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+        if payment is None:
+            # No payment yet — unusual for a checked_in booking but not fatal.
+            # Just add it to the row total and let reconciliation sort it out.
+            pass
+        else:
+            payment.amount = round(float(payment.amount or 0) + add_cost, 2)
+            # Keep status as-is (held/authorized); the add is part of the
+            # same authorization pattern. A real gateway hook would charge
+            # here and raise on failure.
+    except Exception as pay_err:
+        payment_ok = False
+        print(f"[EXTENSION] payment update failed for {booking_id}: {pay_err}")
+
+    if not payment_ok:
+        booking.extension_status = "payment_failed"
+        db.commit()
+        # Notify both sides that payment failed and original schedule stays.
+        try:
+            pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+            client_user = _get_booking_client_user(booking, db)
+            vars_ = {
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "additional_cost": f"{add_cost:.2f}",
+            }
+            recipients = {}
+            if client_user: recipients["client"] = [client_user]
+            if pro_user:    recipients["professional"] = [pro_user]
+            if recipients:
+                fire_event(db, "service.extension_payment_failed", vars_, recipient_users=recipients)
+            db.commit()
+        except Exception as e:
+            print(f"[EXTENSION] payment-fail notify error: {e}")
+        return {
+            "booking_id": booking_id,
+            "extension_status": "payment_failed",
+            "message": "O pagamento da extensão falhou. O horário original permanece.",
+        }
+
+    # Payment succeeded (or deferred cleanly) — apply the extension.
+    booking.scheduled_end = new_end
     booking.extension_status = "confirmed"
-    # Add cost to booking total
-    if booking.extension_additional_cost:
-        booking.total_price = (booking.total_price or 0) + booking.extension_additional_cost
+    booking.total_price = round(float(booking.total_price or 0) + add_cost, 2)
     db.commit()
 
+    # Notify the client.
+    try:
+        client_user = _get_booking_client_user(booking, db)
+        if client_user:
+            fire_event(db, "service.extension_confirmed", {
+                "service": booking.service_type or "Cuidado",
+                "booking_code": f"#{booking.id[:6].upper()}",
+                "booking_id": booking.id,
+                "new_end": booking.scheduled_end.strftime("%H:%M"),
+                "additional_cost": f"{add_cost:.2f}",
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[EXTENSION] confirm notify error: {e}")
+
     return {
-        "booking_id": booking_id, "extension_status": "confirmed",
+        "booking_id": booking_id,
+        "extension_status": "confirmed",
         "new_end": booking.scheduled_end.isoformat(),
         "new_total": booking.total_price,
+        "additional_cost": add_cost,
         "message": "Extensão confirmada. Horário e valor atualizados.",
     }
 
+
 @router.patch("/{booking_id}/extension/decline")
 def decline_extension(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Other party declines the extension."""
+    """Pro declines the client's extension (or vice versa). Notifies the
+    other side; original schedule stays."""
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
+    if booking.extension_status != "requested":
+        raise HTTPException(400, "Nenhuma extensão pendente para este atendimento.")
+
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    client_id = _get_booking_client_id(booking, db)
+    # The non-requester declines.
+    if booking.extension_requested_by == "client":
+        if not prof or prof.user_id != current.id:
+            raise HTTPException(403, "Apenas o profissional pode recusar esta extensão.")
+    else:
+        if current.id != client_id:
+            raise HTTPException(403, "Apenas o cliente pode recusar esta extensão.")
+
     booking.extension_status = "declined"
     db.commit()
+
+    try:
+        pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+        client_user = _get_booking_client_user(booking, db)
+        vars_ = {
+            "service": booking.service_type or "Cuidado",
+            "booking_code": f"#{booking.id[:6].upper()}",
+            "booking_id": booking.id,
+        }
+        if booking.extension_requested_by == "client" and client_user:
+            fire_event(db, "service.extension_declined", vars_, recipient_users={"client": [client_user]})
+        elif pro_user:
+            fire_event(db, "service.extension_declined", vars_, recipient_users={"professional": [pro_user]})
+        db.commit()
+    except Exception as e:
+        print(f"[EXTENSION] decline notify error: {e}")
+
     return {"booking_id": booking_id, "extension_status": "declined", "message": "Extensão recusada."}

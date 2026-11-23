@@ -108,6 +108,8 @@ def run_migrations():
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_start BOOLEAN DEFAULT FALSE",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_end BOOLEAN DEFAULT FALSE",
+        # Rule #1 (23/11/2026) — client-confirmed pro presence unlocks start past T+30.
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_pro_presence BOOLEAN DEFAULT FALSE",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_dispute BOOLEAN DEFAULT FALSE",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS dispute_reason TEXT",
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_amount FLOAT",

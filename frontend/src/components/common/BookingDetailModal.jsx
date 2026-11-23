@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertCircle, Navigation, Timer } from "lucide-react";
+import { X, MapPin, Clock, User, Star, Phone, MessageSquare, CheckCircle, AlertCircle, Navigation, Timer, Hourglass, XCircle, Loader } from "lucide-react";
+import axios from "axios";
+import toast from "react-hot-toast";
 import CareBadges from "./CareBadges";
 import VerifiedBadge from "./VerifiedBadge";
 import RatingModal from "./RatingModal";
@@ -8,11 +10,41 @@ import StartEndServiceButtons from "./StartEndServiceButtons";
 import QuickMessagesButtons from "./QuickMessagesButtons";
 import { formatBRL } from "../../utils/format";
 
+const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onBookingChanged }) => {
   const { t } = useTranslation();
   const [countdown, setCountdown] = useState(null);
   const [showRating, setShowRating] = useState(false);
   const [justRated, setJustRated] = useState(false);
+  // Rule #5 — accept/decline the client's extension request (pro side).
+  const [respondingExt, setRespondingExt] = useState(false);
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const extHeaders = { Authorization: `Bearer ${token}` };
+
+  const respondToExtension = async (action) => {
+    // action: "confirm" | "decline"
+    if (respondingExt) return;
+    setRespondingExt(true);
+    try {
+      await axios.patch(
+        `${API}/api/bookings/${booking.id}/extension/${action}`,
+        {},
+        { headers: extHeaders }
+      );
+      toast.success(action === "confirm"
+        ? t("booking_detail.extension_confirmed_toast")
+        : t("booking_detail.extension_declined_toast"));
+      onBookingChanged?.();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const msg = (detail && typeof detail === "object" && detail.message)
+        || (typeof detail === "string" ? detail : t("booking_detail.extension_response_error"));
+      toast.error(msg);
+    } finally {
+      setRespondingExt(false);
+    }
+  };
 
   // #39: Countdown timer for pending requests
   useEffect(() => {
@@ -211,6 +243,47 @@ const BookingDetailModal = ({ booking, onClose, onAccept, onDecline, onChat, onB
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors">
               <Phone size={14} /> {t("booking_detail.call")}
             </a>
+          </div>
+        )}
+
+        {/* Rule #5 — Pending extension request from the client: pro accepts
+            or declines. The card is only rendered when there's something
+            actionable (status === "requested" AND the request came from the
+            client). */}
+        {booking.extension_status === "requested" && booking.extension_requested_by === "client" && (
+          <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <div className="flex items-start gap-2 mb-3">
+              <Hourglass size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-900 leading-tight">
+                  {t("booking_detail.extension_title")}
+                </p>
+                <p className="text-xs text-slate-700 mt-1 leading-snug">
+                  {t("booking_detail.extension_message", {
+                    cost: formatBRL(booking.extension_additional_cost || 0),
+                    newEnd: booking.extension_new_end
+                      ? new Date(booking.extension_new_end).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                      : "—"
+                  })}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => respondToExtension("confirm")}
+                disabled={respondingExt}
+                className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-emerald-500 text-white font-semibold text-xs hover:bg-emerald-600 disabled:opacity-60">
+                {respondingExt ? <Loader size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                {t("booking_detail.extension_accept")}
+              </button>
+              <button
+                onClick={() => respondToExtension("decline")}
+                disabled={respondingExt}
+                className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 disabled:opacity-60">
+                <XCircle size={12} />
+                {t("booking_detail.extension_decline")}
+              </button>
+            </div>
           </div>
         )}
 

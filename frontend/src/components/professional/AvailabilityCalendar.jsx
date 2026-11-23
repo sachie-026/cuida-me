@@ -44,7 +44,12 @@ const AvailabilityCalendar = ({ userId }) => {
       setShowForm(false);
       toast.success(t("availability_calendar.slot_added"));
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("availability_calendar.slot_add_error"));
+      // Rule #7 — structured 409 on overlap; read detail.message.
+      const detail = err?.response?.data?.detail;
+      const msg = (detail && typeof detail === "object" && detail.message)
+        || (typeof detail === "string" ? detail : null)
+        || t("availability_calendar.slot_add_error");
+      toast.error(msg);
     }
   };
 

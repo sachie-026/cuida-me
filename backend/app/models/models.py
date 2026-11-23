@@ -249,6 +249,12 @@ class Booking(Base):
     # Client confirmation
     client_confirmed_start = Column(Boolean, default=False)
     client_confirmed_end   = Column(Boolean, default=False)
+    # Rule #1 (23/11/2026): once the service is more than 30 min late, the
+    # pro can no longer start on their own. The client can confirm the pro
+    # is actually on site, which unlocks start + flags the row for admin
+    # review (review_type = "gps_exception"). Default FALSE; set only by
+    # POST /{id}/confirm-pro-presence.
+    client_confirmed_pro_presence = Column(Boolean, default=False)
     has_dispute     = Column(Boolean, default=False)
     dispute_reason  = Column(Text, nullable=True)
     # GPS checkout

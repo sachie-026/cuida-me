@@ -42,6 +42,28 @@ DEFAULTS = {
     "gps_radius_meters":            500,
     "checkin_reminder_minutes":     25,
     "client_confirm_timeout_hours": 24,
+    # Rule #7 (23/11/2026) — editable time-gate values used by the
+    # start/finish/extension flows. Changes take effect immediately.
+    # start_window_before_min — minutes BEFORE scheduled_start the pro can
+    # tap "Iniciar atendimento" (default 10).
+    "start_window_before_min":      10,
+    # late_arrival_after_min — minutes AFTER scheduled_start past which a
+    # successful start is flagged as late arrival (default 15).
+    "late_arrival_after_min":       15,
+    # start_window_after_min — hard cutoff minutes AFTER scheduled_start for
+    # a self-service start (default 30). Past this the pro needs the client
+    # to confirm presence (Rule #1).
+    "start_window_after_min":       30,
+    # finish_window_after_min — hard cutoff minutes AFTER scheduled_end for
+    # a manual finish (default 30). Past this the auto-finish sweep applies.
+    "finish_window_after_min":      30,
+    # min_gap_between_bookings_min — required travel buffer between any two
+    # of the same pro's bookings (default 30). Enforced on accept + match
+    # filtering.
+    "min_gap_between_bookings_min": 30,
+    # extension_step_min — granularity of the client-initiated service
+    # extension options (default 30 → 30/60/90/… minutes).
+    "extension_step_min":           30,
     # Rest
     "rest_after_24h_hours":         11,
     # Day/Night
@@ -165,6 +187,13 @@ VALIDATION = {
     "late_arrival_public_threshold":(1, 10, "int"),
     "gps_radius_meters":           (100, 5000, "int"),
     "checkin_reminder_minutes":     (10, 60, "int"),
+    # Rule #7 (23/11/2026) — editable time-gate values.
+    "start_window_before_min":      (1, 60, "int"),
+    "late_arrival_after_min":       (5, 60, "int"),
+    "start_window_after_min":       (10, 120, "int"),
+    "finish_window_after_min":      (10, 120, "int"),
+    "min_gap_between_bookings_min": (0, 240, "int"),
+    "extension_step_min":           (10, 60, "int"),
     "client_confirm_timeout_hours": (1, 72, "int"),
     "rest_after_24h_hours":         (6, 24, "int"),
     "day_start_hour":               (0, 23, "int"),
@@ -266,6 +295,14 @@ def get_public_settings(db: Session = Depends(get_db)):
         "grace_period_minutes",
         "refund_full_hours",
         "refund_partial_hours",
+        # Rule #7 — frontends need these to render the button gates with the
+        # same thresholds the backend enforces.
+        "start_window_before_min",
+        "late_arrival_after_min",
+        "start_window_after_min",
+        "finish_window_after_min",
+        "min_gap_between_bookings_min",
+        "extension_step_min",
     ]
     return {k: current.get(k, DEFAULTS.get(k)) for k in PUBLIC_KEYS}
 
@@ -284,6 +321,10 @@ def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
                             "grace_period_minutes", "grace_max_uses_30d", "penalty_reset_days"],
             "arrival_gps":  ["late_arrival_tolerance_min", "late_arrival_public_threshold",
                             "gps_radius_meters", "checkin_reminder_minutes", "client_confirm_timeout_hours"],
+            # Rule #7 — editable time-gate values (start/finish/extension).
+            "time_gates":   ["start_window_before_min", "late_arrival_after_min",
+                            "start_window_after_min", "finish_window_after_min",
+                            "min_gap_between_bookings_min", "extension_step_min"],
             "pricing":      [f"{p}_{r}" for p in ["initial_fee", "day_rate", "night_rate"]
                             for r in ["caregiver", "nursing_assistant", "technician", "nurse"]],
             "commission":   ["platform_commission_pct", "holiday_surcharge_pct"],
@@ -338,7 +379,7 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db), current
 
     # 50-34: Enforce sub-role permissions
     FINANCE_FIELDS = {"initial_fee_", "day_rate_", "night_rate_", "platform_commission", "holiday_surcharge", "urgent_surcharge", "holiday_pricing", "urgent_booking", "urgent_fee", "urgent_fixed", "payment_"}
-    OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait"}
+    OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait", "start_window_", "finish_window_", "min_gap_between_bookings", "extension_step_"}
     admin_role = getattr(current, 'admin_role', None) or "super_admin"
     if admin_role != "super_admin":
         for field in body.updates:

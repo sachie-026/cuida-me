@@ -559,11 +559,140 @@ ADDITIONAL_EVENTS = [
     ("service.checkin_reminder", "service", "Checkin reminder to client — service not started yet",
      ["professional_name", "service", "booking_code"], [
         ("client", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
-            ("in_app", "O atendimento já foi iniciado?",
-             "O horário do serviço de {{service}} com {{professional_name}} já começou e ainda não há check-in. Código: {{booking_code}}. Está tudo bem?"),
+            ("in_app", "O profissional já chegou?",
+             "O profissional ainda não iniciou o atendimento de {{service}}. Código: {{booking_code}}. Ele está com você? Confirme no app ou aguarde a reatribuição automática."),
         ], [
             (25, "booking_start"),  # +25 min after booking.scheduled_start
         ]),
+    ]),
+
+    # Rule #1 (23/11/2026) — mirror +25 min reminder to the PROFESSIONAL so
+    # both sides are nudged at the same moment: the pro gets a "start now or
+    # lose this booking" prompt; the client gets the "is the pro with you?"
+    # prompt above. 5 min after this reminder (= T+30) the auto no-show
+    # sweep flips un-started bookings to no_show.
+    ("service.checkin_reminder_pro", "service", "Checkin reminder to professional — start now or risk no-show",
+     ["service", "booking_code"], [
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Inicie o atendimento agora",
+             "Você ainda não iniciou o atendimento de {{service}} (código {{booking_code}}). Em 5 min o sistema registrará como não comparecimento e o pagamento não será liberado."),
+        ], [
+            (25, "booking_start"),
+        ]),
+    ]),
+
+    # Rule #1 (23/11/2026) — client has confirmed pro presence past T+30, so
+    # the pro can start under admin review. Non-scheduled (fires inline from
+    # the confirm-pro-presence endpoint).
+    ("service.client_confirmed_pro_presence", "service", "Client confirmed professional is on site after the +30 min cutoff",
+     ["client_name", "service", "booking_code"], [
+        ("professional", ["in_app"], "urgent", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Cliente confirmou sua presença ✓",
+             "{{client_name}} confirmou que você está no local. Você já pode iniciar o atendimento de {{service}} (código {{booking_code}}). Este caso será revisado pelo suporte."),
+        ], []),
+    ]),
+
+    # Rule (23/11/2026) — system auto-finished a booking the pro left in
+    # checked_in past scheduled_end + 30 min. Payment stays based on the
+    # scheduled time; the row is flagged for admin review.
+    ("service.auto_finished", "service", "Service auto-finished at scheduled end (pro did not finalize within 30 min cutoff)",
+     ["professional_name", "service", "booking_code"], [
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Atendimento encerrado automaticamente",
+             "O atendimento de {{service}} (código {{booking_code}}) foi finalizado automaticamente pelo sistema, pois o checkout não foi feito dentro do prazo de 30 min. O pagamento considera o horário agendado. Este caso será revisado pelo suporte."),
+        ], []),
+        ("client", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Atendimento finalizado",
+             "O atendimento de {{service}} com {{professional_name}} (código {{booking_code}}) foi finalizado automaticamente no horário agendado. Se algo estiver incorreto, nossa equipe entrará em contato."),
+        ], []),
+    ]),
+
+    # Rule #5 (23/11/2026) — client requested a service extension.
+    ("service.extension_requested_pro", "service", "Client requested a service extension — professional must accept or decline",
+     ["service", "booking_code", "additional_minutes", "additional_cost"], [
+        ("professional", ["in_app"], "urgent", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Pedido de extensão do atendimento",
+             "O cliente pediu uma extensão de {{additional_minutes}} min no atendimento de {{service}} (código {{booking_code}}). Valor adicional: R$ {{additional_cost}}. Aceite ou recuse no app antes do término do atendimento."),
+        ], []),
+    ]),
+    # Legacy path — pro-initiated extension (kept for backward compatibility).
+    ("service.extension_requested_client", "service", "Professional proposed a service extension — client must accept or decline",
+     ["service", "booking_code", "additional_minutes", "additional_cost"], [
+        ("client", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Profissional pediu extensão",
+             "O profissional pediu uma extensão de {{additional_minutes}} min no atendimento de {{service}} (código {{booking_code}}). Valor adicional: R$ {{additional_cost}}."),
+        ], []),
+    ]),
+
+    # Rule #5 — pro accepted; extension confirmed and payment went through.
+    ("service.extension_confirmed", "service", "Service extension confirmed — new end time and charge applied",
+     ["service", "booking_code", "new_end", "additional_cost"], [
+        ("client", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Extensão confirmada ✓",
+             "A extensão do atendimento de {{service}} (código {{booking_code}}) foi confirmada. Novo término: {{new_end}}. Valor adicional cobrado: R$ {{additional_cost}}."),
+        ], []),
+    ]),
+
+    # Rule #5 — pro declined; original schedule stays.
+    ("service.extension_declined", "service", "Service extension declined — original schedule stays",
+     ["service", "booking_code"], [
+        ("client", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Extensão recusada",
+             "O profissional recusou a extensão do atendimento de {{service}} (código {{booking_code}}). O horário original permanece."),
+        ], []),
+        ("professional", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Extensão recusada",
+             "A extensão do atendimento de {{service}} (código {{booking_code}}) foi recusada. O horário original permanece."),
+        ], []),
+    ]),
+
+    # Rule #5 — payment failed on the extension; original schedule stays.
+    ("service.extension_payment_failed", "service", "Service extension payment failed — original schedule stays",
+     ["service", "booking_code", "additional_cost"], [
+        ("client", ["in_app"], "urgent", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Falha no pagamento da extensão",
+             "O pagamento de R$ {{additional_cost}} da extensão falhou. O atendimento de {{service}} (código {{booking_code}}) segue com o horário original. Verifique seu método de pagamento."),
+        ], []),
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Extensão não efetivada",
+             "O pagamento da extensão do atendimento de {{service}} (código {{booking_code}}) não foi concluído. O horário original permanece."),
+        ], []),
+    ]),
+
+    # Rule #5 — extension request expired (pro didn't answer by scheduled_end).
+    ("service.extension_expired", "service", "Service extension request expired without professional response",
+     ["service", "booking_code"], [
+        ("client", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Pedido de extensão expirou",
+             "O profissional não respondeu ao pedido de extensão do atendimento de {{service}} (código {{booking_code}}) a tempo. O horário original permanece."),
+        ], []),
+        ("professional", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Pedido de extensão expirou",
+             "O pedido de extensão do atendimento de {{service}} (código {{booking_code}}) expirou sem resposta."),
+        ], []),
+    ]),
+
+    # Rule #6 (23/11/2026) — at scheduled_end, if the service is still open,
+    # nudge the pro to finish it so payment can be released. Precedes the
+    # hard auto-finish sweep at T_end + 30 min.
+    ("service.finish_reminder", "service", "Service ended — reminder for the professional to tap Finish",
+     ["service", "booking_code", "end_time"], [
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Finalize o atendimento no app",
+             "Seu atendimento terminou às {{end_time}}. Finalize-o no app para receber o pagamento. Código: {{booking_code}}."),
+        ], []),
+    ]),
+
+    # Rule #6 — the pro's next booking starts within 10 min and the current
+    # one is still in progress. Soft nudge so they can finish before tapping
+    # Start on the next one (which would also trigger the "Finalizar anterior
+    # e iniciar?" dialog from Rule #3).
+    ("service.finish_before_next", "service", "Next booking in 10 min — finish the current one first",
+     ["service", "booking_code", "next_service", "next_booking_code", "next_start_time"], [
+        ("professional", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Finalize para iniciar o próximo",
+             "Seu próximo atendimento ({{next_service}} — {{next_booking_code}}) começa às {{next_start_time}}. Finalize o atendimento atual ({{booking_code}}) para poder iniciar o próximo."),
+        ], []),
     ]),
 ]
 
