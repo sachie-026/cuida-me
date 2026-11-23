@@ -229,7 +229,41 @@ def get_booking_ratings(booking_id: str, db: Session = Depends(get_db), current:
 
 @router.get("/professional/{user_id}")
 def get_professional_ratings(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    return db.query(Assessment).filter(Assessment.reviewee_id == user_id).all()
+    """Reviews a professional has RECEIVED. Enriched with reviewer first-name
+    (privacy — never full names), service type, booking code, avg + count.
+
+    This powers the pro's "/reviews" page. Any authenticated user can read
+    another pro's reviews (reputation is public), but the enrichment only
+    adds non-sensitive fields."""
+    rows = db.query(Assessment).filter(Assessment.reviewee_id == user_id).order_by(Assessment.created_at.desc()).all()
+    reviews = []
+    total = 0
+    count = 0
+    for r in rows:
+        reviewer = db.query(User).filter(User.id == r.reviewer_id).first() if r.reviewer_id else None
+        booking = db.query(Booking).filter(Booking.id == r.booking_id).first() if r.booking_id else None
+        # LGPD — first name only; never expose last names or contact info.
+        reviewer_display = None
+        if reviewer and reviewer.full_name:
+            reviewer_display = reviewer.full_name.split(" ")[0]
+        reviews.append({
+            "id":            r.id,
+            "booking_id":    r.booking_id,
+            "booking_code":  f"#{r.booking_id[:6].upper()}" if r.booking_id else None,
+            "reviewer_name": reviewer_display or "Cliente",
+            "service_type":  booking.service_type if booking else None,
+            "rating":        r.rating,
+            "comment":       r.comment,
+            "created_at":    r.created_at.isoformat() if r.created_at else None,
+        })
+        if r.rating is not None:
+            total += r.rating
+            count += 1
+    return {
+        "reviews":  reviews,
+        "count":    count,
+        "average":  round(total / count, 1) if count > 0 else 0,
+    }
 
 @router.get("/user/{user_id}/given")
 def get_ratings_given(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):

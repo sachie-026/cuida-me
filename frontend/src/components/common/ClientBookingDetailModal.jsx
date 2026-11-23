@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { X, MapPin, Clock, User, Phone, MessageSquare, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass } from "lucide-react";
+import { X, MapPin, Clock, User, Phone, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass, Star } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import CareBadges from "./CareBadges";
 import QuickMessagesButtons from "./QuickMessagesButtons";
 import ExtendServiceModal from "./ExtendServiceModal";
+import RatingModal from "./RatingModal";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -39,6 +40,12 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
   const [confirmingPresence, setConfirmingPresence] = useState(false);
   // Rule #5 — "Estender atendimento" modal state.
   const [showExtend, setShowExtend] = useState(false);
+  // Rating flow — matches BookingDetailModal's pro-side pattern. `justRated`
+  // tracks local state within this open modal; `current_user_has_rated` on
+  // the booking row is the persistent flag (set by GET /my-bookings when the
+  // Assessment row exists). Either being true hides the Rate button.
+  const [showRating, setShowRating] = useState(false);
+  const [justRated, setJustRated] = useState(false);
   // Local optimistic flag — the booking object is immutable from this
   // modal's perspective (parent owns refetch), so we mirror the state
   // after a successful POST so the button hides until the parent refreshes.
@@ -60,6 +67,7 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
     setEmPhone(booking?.emergency_phone || "");
     setEditing(false);
     setPresenceConfirmedLocal(Boolean(booking?.client_confirmed_pro_presence));
+    setJustRated(false);
   }, [booking?.id, booking?.client_confirmed_pro_presence]);
 
   // Rule #1 — "Confirmar presença do profissional" button is offered while
@@ -381,13 +389,52 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
           )}
         </div>
 
-        {/* Close */}
+        {/* Actions row — matches the pro's modal layout.
+            Rate button is shown only for completed bookings. Cancelled /
+            no_show / under_review intentionally get no rating option.
+            Persistence: booking.current_user_has_rated comes from
+            /my-bookings; justRated covers the "just submitted" case within
+            this open modal. Either hides the Rate button. */}
         {!editing && (
-          <button onClick={onClose} className="btn-outline w-full flex items-center justify-center gap-1.5">
-            <MessageSquare size={14} /> {t("client_booking_detail.close")}
-          </button>
+          <div className="flex gap-2">
+            {booking.status === "completed" && !justRated && !booking.current_user_has_rated && (
+              <button
+                onClick={() => setShowRating(true)}
+                className="btn-primary flex-1 flex items-center justify-center gap-1.5">
+                <Star size={14} />
+                {t("client_booking_detail.rate_professional")}
+              </button>
+            )}
+            {booking.status === "completed" && (justRated || booking.current_user_has_rated) && (
+              <button
+                disabled
+                className="btn-outline flex-1 flex items-center justify-center gap-1.5 opacity-70 cursor-default">
+                <Star size={14} className="fill-amber-400 text-amber-400" />
+                {t("client_booking_detail.rating_sent")}
+              </button>
+            )}
+            <button onClick={onClose} className="btn-outline flex-1">
+              {t("client_booking_detail.close")}
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Rating modal — client rates the professional. The RatingModal
+          auto-resolves the reviewee if revieweeId is omitted, but we pass
+          it explicitly from the enriched booking so there's no round-trip. */}
+      {showRating && (
+        <RatingModal
+          booking={booking}
+          revieweeId={booking.professional_user_id || undefined}
+          onClose={() => setShowRating(false)}
+          onDone={() => {
+            setShowRating(false);
+            setJustRated(true);
+            onUpdated?.({ ...booking, current_user_has_rated: true });
+          }}
+        />
+      )}
     </div>
   );
 };

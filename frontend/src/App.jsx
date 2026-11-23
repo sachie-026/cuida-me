@@ -40,6 +40,7 @@ import PayoutMethodsPanel    from "./pages/professional/PayoutMethods";
 import StripeConnect         from "./pages/professional/StripeConnect";
 import BookingHistory        from "./pages/common/BookingHistory";
 import BookingRedirect       from "./pages/common/BookingRedirect";
+import Reviews               from "./pages/common/Reviews";
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 const CLIENT_ROLES     = ["client"];
@@ -101,6 +102,9 @@ function App() {
 
           {/* Change 44b — Booking history (read-only). Shared client + pro. */}
           <Route path="/history" element={<ProtectedRoute allowedRoles={ALL_ROLES}><BookingHistory /></ProtectedRoute>} />
+
+          {/* Pro's received reviews (ProfileMenu → "Avaliações"). */}
+          <Route path="/reviews" element={<ProtectedRoute allowedRoles={ALL_ROLES}><Reviews /></ProtectedRoute>} />
 
           {/* Target of every notification's /bookings/<id> link.
               Fetches the booking and opens the right detail modal, or shows
