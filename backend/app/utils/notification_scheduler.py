@@ -177,6 +177,10 @@ def run_scheduled_notifications():
     # errors in one job don't poison the others.
     _run_late_arrival_sweep()
     _run_auto_no_show_sweep()
+    _run_auto_finish_sweep()
+    _run_extension_expiry_sweep()
+    _run_finish_reminder_sweep()
+    _run_finish_before_next_sweep()
 
     # Trim cache if too large
     if len(_processed_cache) > _MAX_CACHE:
@@ -240,24 +244,48 @@ def _run_late_arrival_sweep():
 
 
 def _run_auto_no_show_sweep():
-    """When scheduled_end passes without a check-in, mark the booking as
-    professional no-show: refund the client, apply the penalty counter, and
-    notify both sides. Only touches bookings still in accepted or
-    professional_arrived (not checked_in / completed / cancelled)."""
+    """Rule #1 (23/11/2026): a booking in `accepted` state at T+30 min past
+    scheduled_start, without any check-in, is marked professional-no-show —
+    client refunded, pro's no-show counter bumped (feeds progressive
+    penalties), both sides notified. If the client has confirmed presence
+    via /confirm-pro-presence (client_confirmed_pro_presence=True), the
+    booking is skipped so the pro can still start under admin review.
+
+    For legacy bookings sitting in `professional_arrived` (two-step check-in
+    flow) we fall back to the older `scheduled_end` threshold — a pro who
+    *did* arrive but never transitioned to checked_in isn't a strict
+    no-show, and the service window being fully over is a clearer signal.
+    """
     from app.models.models import Payment, PaymentStatus
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
         bookings = db.query(Booking).filter(
             Booking.status.in_([BookingStatus.accepted, BookingStatus.professional_arrived]),
-            Booking.scheduled_end.isnot(None),
+            Booking.scheduled_start.isnot(None),
         ).all()
         for b in bookings:
+            # Skip when the client has already unlocked a late start.
+            if getattr(b, "client_confirmed_pro_presence", False):
+                continue
+
+            start = b.scheduled_start
+            if getattr(start, "tzinfo", None) is None:
+                start = start.replace(tzinfo=timezone.utc)
             end = b.scheduled_end
-            if getattr(end, "tzinfo", None) is None:
+            if end and getattr(end, "tzinfo", None) is None:
                 end = end.replace(tzinfo=timezone.utc)
-            if end >= now:
-                continue  # service window not fully over
+
+            status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
+            if status_val == "accepted":
+                # Primary rule: T+30 min from scheduled_start without check-in.
+                threshold = start + timedelta(minutes=30)
+                if now < threshold:
+                    continue
+            else:  # professional_arrived — legacy fallback: scheduled_end
+                if not end or now < end:
+                    continue
+
             cache_key = ("noshow", b.id)
             if cache_key in _processed_cache:
                 continue
@@ -265,7 +293,13 @@ def _run_auto_no_show_sweep():
             b.status = BookingStatus.no_show
             b.no_show_who = "professional"
             b.cancelled_at = now
-            b.cancel_reason = "Auto: profissional não compareceu (sem check-in até o fim do horário agendado)."
+            b.cancel_reason = (
+                "Auto: profissional não compareceu (sem check-in até 30 min após o horário agendado)."
+                if status_val == "accepted"
+                else "Auto: profissional não compareceu (sem check-in até o fim do horário agendado)."
+            )
+            # Explicitly zero the pro payout — professional is not paid on no-show.
+            b.pro_payout = 0.0
             # Bump pro's no-show counter
             if b.professional_id:
                 prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
@@ -302,6 +336,238 @@ def _run_auto_no_show_sweep():
         db.commit()
     except Exception as e:
         print(f"[NO-SHOW] sweep error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _run_auto_finish_sweep():
+    """Rule (23/11/2026): a booking still in `checked_in` at scheduled_end
+    + 30 min is auto-finished.
+      - actual_checkout is set to scheduled_end (payment stays on the
+        scheduled time — the 30-min grace is NOT paid extra time).
+      - status → completed; review_type → "auto_finish" for admin triage.
+      - Both sides are notified via service.auto_finished.
+    An approved extension updates scheduled_end, so the cutoff moves with
+    it automatically — no special case needed.
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        bookings = db.query(Booking).filter(
+            Booking.status == BookingStatus.checked_in,
+            Booking.scheduled_end.isnot(None),
+        ).all()
+        for b in bookings:
+            end = b.scheduled_end
+            if getattr(end, "tzinfo", None) is None:
+                end = end.replace(tzinfo=timezone.utc)
+            threshold = end + timedelta(minutes=30)
+            if now < threshold:
+                continue
+            cache_key = ("autofinish", b.id)
+            if cache_key in _processed_cache:
+                continue
+
+            # Payment based on scheduled time — set actual_checkout exactly
+            # to scheduled_end (not "now") so the duration-based duration
+            # audit reflects the agreed service window.
+            b.actual_checkout = end
+            b.status = BookingStatus.completed
+            if b.actual_checkin:
+                checkin_val = b.actual_checkin
+                if getattr(checkin_val, "tzinfo", None) is None:
+                    checkin_val = checkin_val.replace(tzinfo=timezone.utc)
+                b.actual_duration_minutes = max(0, round((end - checkin_val).total_seconds() / 60))
+            # Flag for admin review — matches the review_type vocabulary
+            # used elsewhere (checkouts via confirm-checkout do not set
+            # this, so admin sees exactly the auto-finished ones).
+            b.review_type = "auto_finish"
+
+            try:
+                from app.utils.notification_engine import fire_event
+                prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
+                vars_ = {
+                    "professional_name": pro_user.full_name if pro_user else "Profissional",
+                    "service": b.service_type or "Cuidado",
+                    "booking_code": f"#{b.id[:6].upper()}",
+                    "booking_id": b.id,
+                }
+                recipients = {}
+                if client_user: recipients["client"] = [client_user]
+                if pro_user:    recipients["professional"] = [pro_user]
+                if recipients:
+                    fire_event(db, "service.auto_finished", vars_, recipient_users=recipients)
+            except Exception as e:
+                print(f"[AUTO-FINISH] notify failed for {b.id}: {e}")
+
+            _processed_cache.add(cache_key)
+        db.commit()
+    except Exception as e:
+        print(f"[AUTO-FINISH] sweep error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _run_extension_expiry_sweep():
+    """Rule #5 (23/11/2026): a pending extension (status="requested") expires
+    automatically when the booking's scheduled_end passes without the pro
+    responding. Both sides are notified; the original schedule stays."""
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        bookings = db.query(Booking).filter(
+            Booking.extension_status == "requested",
+            Booking.scheduled_end.isnot(None),
+        ).all()
+        for b in bookings:
+            end = b.scheduled_end
+            if getattr(end, "tzinfo", None) is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if now < end:
+                continue
+            cache_key = ("extexpire", b.id)
+            if cache_key in _processed_cache:
+                continue
+            b.extension_status = "expired"
+            try:
+                from app.utils.notification_engine import fire_event
+                prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                client_user = db.query(User).filter(User.id == b.user_id).first() if b.user_id else None
+                vars_ = {
+                    "service": b.service_type or "Cuidado",
+                    "booking_code": f"#{b.id[:6].upper()}",
+                    "booking_id": b.id,
+                }
+                recipients = {}
+                if client_user: recipients["client"] = [client_user]
+                if pro_user:    recipients["professional"] = [pro_user]
+                if recipients:
+                    fire_event(db, "service.extension_expired", vars_, recipient_users=recipients)
+            except Exception as e:
+                print(f"[EXT-EXPIRY] notify failed for {b.id}: {e}")
+            _processed_cache.add(cache_key)
+        db.commit()
+    except Exception as e:
+        print(f"[EXT-EXPIRY] sweep error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _run_finish_reminder_sweep():
+    """Rule #6 (23/11/2026) — at scheduled_end for a still-in-progress booking
+    (status=checked_in), nudge the pro to finish in the app so payment can be
+    released. Fires once per booking (cached by id). The hard auto-finish at
+    scheduled_end+30 is handled separately by _run_auto_finish_sweep — this
+    reminder is the soft nudge that precedes it."""
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        bookings = db.query(Booking).filter(
+            Booking.status == BookingStatus.checked_in,
+            Booking.scheduled_end.isnot(None),
+        ).all()
+        for b in bookings:
+            end = b.scheduled_end
+            if getattr(end, "tzinfo", None) is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if now < end:
+                continue  # service hasn't reached its scheduled end yet
+            cache_key = ("finishreminder", b.id)
+            if cache_key in _processed_cache:
+                continue
+            try:
+                from app.utils.notification_engine import fire_event
+                prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                if pro_user:
+                    fire_event(db, "service.finish_reminder", {
+                        "service": b.service_type or "Cuidado",
+                        "booking_code": f"#{b.id[:6].upper()}",
+                        "booking_id": b.id,
+                        # Format the wall-clock scheduled end — the whole app treats
+                        # these as wall-clock Brazilian time, no TZ conversion.
+                        "end_time": (end.replace(tzinfo=None) if end.tzinfo else end).strftime("%H:%M"),
+                    }, recipient_users={"professional": [pro_user]})
+            except Exception as e:
+                print(f"[FINISH-REMINDER] notify failed for {b.id}: {e}")
+            _processed_cache.add(cache_key)
+        db.commit()
+    except Exception as e:
+        print(f"[FINISH-REMINDER] sweep error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _run_finish_before_next_sweep():
+    """Rule #6 (23/11/2026) — when the pro's NEXT booking's scheduled_start is
+    10 min away (or less) and the current booking is still in progress, nudge
+    them to finish the current one first. The actual block happens later via
+    the 409 "pro_busy" response and the "Finalizar anterior e iniciar?"
+    dialog (Rule #3). This sweep is just the proactive reminder.
+
+    Pairs are (current, next):
+      current: status in (checked_in, professional_arrived) — in-progress
+      next:    status in (accepted, pending) — not yet started by this pro
+               scheduled_start between now and now + 10 min
+    Cache key covers the pair so each threshold crossing fires once.
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        window = now + timedelta(minutes=10)
+        # Find all pros with at least one in-progress booking.
+        in_progress = db.query(Booking).filter(
+            Booking.status.in_([BookingStatus.checked_in, BookingStatus.professional_arrived]),
+            Booking.professional_id.isnot(None),
+        ).all()
+        for cur in in_progress:
+            # Is there a next booking of this pro starting within 10 min?
+            upcoming = db.query(Booking).filter(
+                Booking.professional_id == cur.professional_id,
+                Booking.id != cur.id,
+                Booking.status.in_([BookingStatus.accepted, BookingStatus.pending]),
+                Booking.scheduled_start.isnot(None),
+            ).all()
+            next_near = None
+            for nb in upcoming:
+                s = nb.scheduled_start
+                if getattr(s, "tzinfo", None) is None:
+                    s = s.replace(tzinfo=timezone.utc)
+                if now <= s <= window:
+                    if next_near is None or s < next_near[1]:
+                        next_near = (nb, s)
+            if next_near is None:
+                continue
+            nb, start_dt = next_near
+            cache_key = ("finishbeforenext", cur.id, nb.id)
+            if cache_key in _processed_cache:
+                continue
+            try:
+                from app.utils.notification_engine import fire_event
+                prof = db.query(Professional).filter(Professional.id == cur.professional_id).first()
+                pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+                if pro_user:
+                    fire_event(db, "service.finish_before_next", {
+                        "service": cur.service_type or "Cuidado",
+                        "booking_code": f"#{cur.id[:6].upper()}",
+                        "booking_id": cur.id,
+                        "next_service": nb.service_type or "Cuidado",
+                        "next_booking_code": f"#{nb.id[:6].upper()}",
+                        "next_start_time": (start_dt.replace(tzinfo=None) if start_dt.tzinfo else start_dt).strftime("%H:%M"),
+                    }, recipient_users={"professional": [pro_user]})
+            except Exception as e:
+                print(f"[FINISH-BEFORE-NEXT] notify failed for {cur.id} -> {nb.id}: {e}")
+            _processed_cache.add(cache_key)
+        db.commit()
+    except Exception as e:
+        print(f"[FINISH-BEFORE-NEXT] sweep error: {e}")
         db.rollback()
     finally:
         db.close()

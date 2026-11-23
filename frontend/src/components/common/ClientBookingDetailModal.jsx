@@ -1,15 +1,21 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { X, MapPin, Clock, User, Phone, MessageSquare, Edit2, Save, AlertCircle, Loader } from "lucide-react";
+import { X, MapPin, Clock, User, Phone, MessageSquare, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import CareBadges from "./CareBadges";
 import QuickMessagesButtons from "./QuickMessagesButtons";
+import ExtendServiceModal from "./ExtendServiceModal";
 import { formatBRL } from "../../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const FINALIZED = new Set(["completed", "cancelled", "no_show"]);
+
+// Rule #1 (23/11/2026): after T+30 min the pro can't start on their own.
+// Client can confirm presence past this point, which unlocks start under
+// admin review.
+const MAX_START_LATE_MINUTES = 30;
 
 // Backend returns naive ISO strings (no TZ offset). Browsers parse them as
 // local time, so the displayed hour matches what was originally stored — no
@@ -30,6 +36,22 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
   const [notes, setNotes] = useState(booking?.notes || "");
   const [emName, setEmName] = useState(booking?.emergency_name || "");
   const [emPhone, setEmPhone] = useState(booking?.emergency_phone || "");
+  const [confirmingPresence, setConfirmingPresence] = useState(false);
+  // Rule #5 — "Estender atendimento" modal state.
+  const [showExtend, setShowExtend] = useState(false);
+  // Local optimistic flag — the booking object is immutable from this
+  // modal's perspective (parent owns refetch), so we mirror the state
+  // after a successful POST so the button hides until the parent refreshes.
+  const [presenceConfirmedLocal, setPresenceConfirmedLocal] = useState(
+    Boolean(booking?.client_confirmed_pro_presence)
+  );
+  // Keep a live tick so the "Confirmar presença" button appears on time
+  // without the user having to reopen the modal.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const h = setInterval(() => setNowTick(x => x + 1), 15000);
+    return () => clearInterval(h);
+  }, []);
 
   // Resync local draft if the parent passes a different booking in
   useEffect(() => {
@@ -37,7 +59,38 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
     setEmName(booking?.emergency_name || "");
     setEmPhone(booking?.emergency_phone || "");
     setEditing(false);
-  }, [booking?.id]);
+    setPresenceConfirmedLocal(Boolean(booking?.client_confirmed_pro_presence));
+  }, [booking?.id, booking?.client_confirmed_pro_presence]);
+
+  // Rule #1 — "Confirmar presença do profissional" button is offered while
+  // the booking is still in accepted (pro hasn't started) AND we are past
+  // T+30 min from scheduled_start. We render it a bit early (T+25 min) so
+  // the client sees it when the +25 min reminder fires; the server still
+  // only treats it as a true override after T+30.
+  const schedStartMs = booking?.scheduled_start ? new Date(booking.scheduled_start).getTime() : null;
+  const past25m = schedStartMs !== null && Date.now() >= schedStartMs + 25 * 60 * 1000;
+  const past30m = schedStartMs !== null && Date.now() >  schedStartMs + MAX_START_LATE_MINUTES * 60 * 1000;
+  const showConfirmPresence = (
+    booking &&
+    booking.status === "accepted" &&
+    past25m &&
+    !presenceConfirmedLocal
+  );
+
+  const handleConfirmPresence = async () => {
+    if (confirmingPresence) return;
+    setConfirmingPresence(true);
+    try {
+      await axios.post(`${API}/api/bookings/${booking.id}/confirm-pro-presence`, {}, { headers });
+      setPresenceConfirmedLocal(true);
+      toast.success(t("client_booking_detail.presence_confirmed_toast"));
+      onUpdated?.({ ...booking, client_confirmed_pro_presence: true, review_type: "gps_exception" });
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || t("client_booking_detail.presence_confirm_error"));
+    } finally {
+      setConfirmingPresence(false);
+    }
+  };
 
   if (!booking) return null;
 
@@ -158,6 +211,90 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
         <div className="mb-4">
           <QuickMessagesButtons booking={booking} side="client" />
         </div>
+
+        {/* Rule #1 — Confirmar presença do profissional. Shown from T+25 min
+            onwards for bookings still in `accepted` where the client has not
+            yet confirmed. Posts to /confirm-pro-presence, which flips the
+            booking's client_confirmed_pro_presence flag and unlocks the
+            pro's Start button past T+30. The amber "past 30 min" variant
+            emphasises it; before +30 it's a softer prompt. */}
+        {showConfirmPresence && (
+          <div className={`mb-4 p-3 rounded-xl border ${past30m ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-100"}`}>
+            <p className={`text-sm font-semibold mb-1 ${past30m ? "text-amber-800" : "text-blue-800"}`}>
+              {past30m
+                ? t("client_booking_detail.presence_prompt_title_past30")
+                : t("client_booking_detail.presence_prompt_title")}
+            </p>
+            <p className="text-xs text-slate-600 mb-3 leading-snug">
+              {past30m
+                ? t("client_booking_detail.presence_prompt_message_past30")
+                : t("client_booking_detail.presence_prompt_message")}
+            </p>
+            <button
+              onClick={handleConfirmPresence}
+              disabled={confirmingPresence}
+              className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold py-2 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">
+              {confirmingPresence
+                ? <Loader size={14} className="animate-spin" />
+                : <CheckCircle2 size={14} />}
+              {t("client_booking_detail.confirm_presence_button")}
+            </button>
+          </div>
+        )}
+        {presenceConfirmedLocal && booking?.status === "accepted" && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+            <p className="text-xs text-emerald-800 leading-snug">
+              {t("client_booking_detail.presence_confirmed_banner")}
+            </p>
+          </div>
+        )}
+
+        {/* Rule #5 (23/11/2026) — Service extension.
+            - In-progress service with no pending/confirmed extension:
+              show "Estender atendimento" button.
+            - extension_status === "requested": waiting-for-pro banner (no
+              action here since the pro acts from their side).
+            - "declined" / "payment_failed" / "expired": one-line banner + the
+              button again so the client can try a different duration.
+            Confirmed extensions don't need a banner — scheduled_end has
+            already moved; the regular time row shows the new end. */}
+        {(booking?.status === "checked_in" || booking?.status === "professional_arrived") && (
+          <>
+            {booking.extension_status === "requested" ? (
+              <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-100 flex items-start gap-2">
+                <Hourglass size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 leading-snug">
+                  {t("client_booking_detail.extension_pending")}
+                </p>
+              </div>
+            ) : (
+              <>
+                {["declined", "payment_failed", "expired"].includes(booking.extension_status) && (
+                  <div className="mb-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
+                    <AlertCircle size={16} className="text-slate-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-slate-700 leading-snug">
+                      {t(`client_booking_detail.extension_${booking.extension_status}`)}
+                    </p>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowExtend(true)}
+                  className="mb-4 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white border border-blue-200 text-blue-600 font-semibold text-sm hover:bg-blue-50">
+                  <Clock size={14} /> {t("client_booking_detail.extend_button")}
+                </button>
+              </>
+            )}
+          </>
+        )}
+
+        {showExtend && (
+          <ExtendServiceModal
+            booking={booking}
+            onClose={() => setShowExtend(false)}
+            onUpdated={(partial) => { onUpdated?.(partial); setShowExtend(false); }}
+          />
+        )}
 
         {/* ── Editable section ───────────────────────────────────────────── */}
         <div className="border-t border-slate-100 pt-4 mb-4">

@@ -24,6 +24,81 @@ def _is_overnight(start_time: str, end_time: str) -> bool:
     return start_time > end_time
 
 
+def _hhmm_to_minutes(t: str) -> int:
+    """Parse "HH:MM" into minutes-since-midnight. Raises ValueError on garbage."""
+    h, m = t.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _slot_range_minutes(start: str, end: str):
+    """Return (start_min, end_min) for overlap math, expanding overnight end
+    by 24 h so the window is monotonic on a single timeline."""
+    s = _hhmm_to_minutes(start)
+    e = _hhmm_to_minutes(end)
+    if e <= s:
+        e += 24 * 60  # overnight: 22:00 -> 02:00 becomes 1320 -> 1560
+    return s, e
+
+
+# Rule #7 (23/11/2026) — a pro's two availability slots in the same bucket
+# (same recurring weekday+type, or same specific_date+type) cannot overlap.
+# Blocked vs available of the same bucket CAN coexist (blocked-inside-available
+# is a legitimate "I'm available 8–12 but blocked 10–10:30" pattern), so we
+# only compare slots of the SAME type.
+def _find_overlap(prof_id: str, body_type: str, is_recurring: bool, day_of_week, specific_date,
+                  start_time: str, end_time: str, db: Session, exclude_slot_id=None):
+    """Return the Availability row that overlaps with the given window, or None.
+
+    - Same professional + same bucket (recurring weekday vs specific date)
+    - Same AvailabilityType (available/blocked)
+    - Interval overlap with overnight-safe math
+    """
+    q = db.query(Availability).filter(
+        Availability.professional_id == prof_id,
+        Availability.type == AvailabilityType(body_type),
+        Availability.is_recurring == is_recurring,
+    )
+    if is_recurring:
+        q = q.filter(Availability.day_of_week == day_of_week)
+    else:
+        q = q.filter(Availability.specific_date == specific_date)
+    if exclude_slot_id:
+        q = q.filter(Availability.id != exclude_slot_id)
+
+    try:
+        new_s, new_e = _slot_range_minutes(start_time, end_time)
+    except Exception:
+        return None  # malformed input — surface a different error upstream
+
+    for other in q.all():
+        try:
+            os_, oe_ = _slot_range_minutes(other.start_time, other.end_time)
+        except Exception:
+            continue
+        # Standard half-open overlap: [new_s, new_e) overlaps [os_, oe_)
+        # iff new_s < oe_ AND os_ < new_e. Touching endpoints (08:00 end →
+        # 08:00 start) are allowed.
+        if new_s < oe_ and os_ < new_e:
+            return other
+    return None
+
+
+def _overlap_error(other: "Availability"):
+    """Return HTTPException(409) with a deterministic payload describing the
+    conflict. Frontend shows the Portuguese `message`; `conflict` payload
+    carries the other slot's details for a richer UI if wanted."""
+    return HTTPException(409, detail={
+        "code": "slot_overlap",
+        "conflict_slot_id": other.id,
+        "conflict_start_time": other.start_time,
+        "conflict_end_time": other.end_time,
+        "message": (
+            f"Este horário se sobrepõe a outro horário de disponibilidade "
+            f"({other.start_time}–{other.end_time}). Escolha outro intervalo."
+        ),
+    })
+
+
 def _slot_covers_request(slot_start_str: str, slot_end_str: str, date_str: str,
                          req_start: datetime, req_end: datetime) -> bool:
     """Check if an availability slot covers the requested time window.
@@ -94,6 +169,14 @@ def add_slot(user_id: str, body: SlotCreate, db: Session = Depends(get_db), curr
     if body.day_of_week is not None and not 0 <= body.day_of_week <= 6:
         raise HTTPException(400, "day_of_week must be 0 (Mon) to 6 (Sun)")
 
+    # Rule #7 — no overlapping slots in the same bucket.
+    overlap = _find_overlap(
+        prof.id, body.type, body.is_recurring, body.day_of_week,
+        body.specific_date, body.start_time, body.end_time, db,
+    )
+    if overlap is not None:
+        raise _overlap_error(overlap)
+
     slot = Availability(
         professional_id=prof.id,
         type=AvailabilityType(body.type),
@@ -119,7 +202,23 @@ def update_slot(slot_id: str, body: SlotUpdate, db: Session = Depends(get_db), c
     role = current.role.value if hasattr(current.role, 'value') else str(current.role)
     if prof.user_id != current.id and role != "admin":
         raise HTTPException(403, "Access denied")
-    for k, v in body.dict(exclude_unset=True).items():
+
+    # Rule #7 — re-check overlap with the POST-EDIT values. Compute them by
+    # overlaying the body onto the existing slot so a user editing only one
+    # field doesn't need to resend the unchanged ones.
+    updates = body.dict(exclude_unset=True)
+    new_start = updates.get("start_time", slot.start_time)
+    new_end   = updates.get("end_time",   slot.end_time)
+    new_type  = updates.get("type",       slot.type.value if hasattr(slot.type, "value") else str(slot.type))
+    overlap = _find_overlap(
+        slot.professional_id, new_type, slot.is_recurring, slot.day_of_week,
+        slot.specific_date, new_start, new_end, db,
+        exclude_slot_id=slot.id,
+    )
+    if overlap is not None:
+        raise _overlap_error(overlap)
+
+    for k, v in updates.items():
         setattr(slot, k, v)
     db.commit()
     db.refresh(slot)
