@@ -884,3 +884,120 @@ def _serialize(p: Payment) -> dict:
         "refund_amount": p.refund_amount,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
+
+
+# ── Diagnostic endpoints (added 24/11/2026) ──────────────────────────────────
+# Both are purely read-only and additive. They do not touch initiate_payment,
+# the Payment model, or any status-transition logic.
+
+@router.get("/by-bookings")
+def get_payments_by_bookings(
+    ids: str,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Batch lookup — returns a dict { booking_id: {payment_id, status,
+    amount, held_at, stripe_intent_id, created_at} } for every id in the
+    comma-separated `ids` query param. Missing bookings get a null value.
+    Used by the client Dashboard so the Pagar button can correctly reflect
+    per-booking payment state without hitting /booking/{id} N times.
+
+    Access: auth'd user; admins see everything, non-admins only their own
+    bookings (either as client or as the assigned professional). Caps the
+    input list at 100 ids to keep the query bounded."""
+    raw_ids = [x.strip() for x in (ids or "").split(",") if x.strip()]
+    if not raw_ids:
+        return {}
+    if len(raw_ids) > 100:
+        raise HTTPException(400, "Too many booking ids (max 100).")
+
+    is_admin = current.role.value == "admin"
+    # Fetch bookings to enforce access
+    bookings = db.query(Booking).filter(Booking.id.in_(raw_ids)).all()
+    allowed = set()
+    pro = None if is_admin else db.query(Professional).filter(Professional.user_id == current.id).first()
+    patient_ids = set()
+    if not is_admin:
+        pats = db.query(Patient).filter(Patient.user_id == current.id).all()
+        patient_ids = {p.id for p in pats}
+    for b in bookings:
+        if is_admin:
+            allowed.add(b.id)
+        elif b.user_id == current.id:
+            allowed.add(b.id)
+        elif pro and b.professional_id == pro.id:
+            allowed.add(b.id)
+        elif b.patient_id in patient_ids:
+            allowed.add(b.id)
+
+    result = {bid: None for bid in raw_ids}
+    if not allowed:
+        return result
+    payments = db.query(Payment).filter(Payment.booking_id.in_(list(allowed))).all()
+    pmap = {p.booking_id: p for p in payments}
+    for bid in raw_ids:
+        if bid not in allowed:
+            continue
+        p = pmap.get(bid)
+        if p is None:
+            result[bid] = {"status": None, "payment_id": None}
+        else:
+            result[bid] = {
+                "payment_id":       p.id,
+                "status":           p.status.value if hasattr(p.status, "value") else str(p.status),
+                "amount":           p.amount,
+                "held_at":          p.held_at.isoformat() if p.held_at else None,
+                "released_at":      p.released_at.isoformat() if p.released_at else None,
+                "stripe_intent_id": p.stripe_intent_id,
+                "created_at":       p.created_at.isoformat() if p.created_at else None,
+            }
+    return result
+
+
+@router.get("/admin/client-audit")
+def admin_client_payment_audit(
+    client_user_id: str,
+    date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Admin diagnostic — side-by-side booking + payment rows for one client,
+    optionally filtered by a specific date (YYYY-MM-DD, local wall-clock).
+
+    This exists specifically for the "second booking shows already paid"
+    investigation (24/11/2026): shows whether each booking has a Payment row,
+    what its status is, and whether that row has a real Stripe PaymentIntent
+    (stripe_intent_id) or is a mock/phantom. Lets ops audit without DB
+    access.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    q = db.query(Booking).filter(Booking.user_id == client_user_id)
+    if date:
+        try:
+            d0 = _dt.strptime(date, "%Y-%m-%d")
+            d1 = d0 + _td(days=1)
+            q = q.filter(Booking.scheduled_start >= d0, Booking.scheduled_start < d1)
+        except ValueError:
+            raise HTTPException(400, "date must be YYYY-MM-DD")
+    bookings = q.order_by(Booking.scheduled_start.asc()).all()
+    out = []
+    for b in bookings:
+        p = db.query(Payment).filter(Payment.booking_id == b.id).first()
+        prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+        pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+        out.append({
+            "booking_id":          b.id,
+            "booking_code":        f"#{b.id[:6].upper()}",
+            "service_type":        b.service_type,
+            "professional_id":     b.professional_id,
+            "professional_name":   pro_user.full_name if pro_user else None,
+            "scheduled_start":     b.scheduled_start.isoformat() if b.scheduled_start else None,
+            "scheduled_end":       b.scheduled_end.isoformat() if b.scheduled_end else None,
+            "booking_status":      b.status.value if hasattr(b.status, "value") else str(b.status),
+            "total_price":         b.total_price,
+            "payment": _serialize(p) if p else None,
+            # flags that make the "ghost payment" case obvious at a glance
+            "has_payment_row":     p is not None,
+            "payment_is_mock":     bool(p and not p.stripe_intent_id) if p else None,
+        })
+    return {"client_user_id": client_user_id, "date": date, "bookings": out, "count": len(out)}

@@ -51,6 +51,9 @@ const NewBooking = () => {
   const [priceResult,   setPriceResult]   = useState(null);
   const [selectedPro,   setSelectedPro]   = useState(null);
   const [submitting,    setSubmitting]    = useState(false);
+  // Item 5 (24/11/2026) — pre-confirmation cancellation warning. All values
+  // come from Admin Panel via /api/settings/public.
+  const [publicSettings, setPublicSettings] = useState(null);
 
   const [selectedSvcs,setSelectedSvcs]= useState([]);
   const [date,        setDate]        = useState("");
@@ -128,6 +131,10 @@ const NewBooking = () => {
       });
   };
   useEffect(() => { loadData(); }, []);
+  // Item 5 — load public settings once (refund thresholds, grace period).
+  useEffect(() => {
+    axios.get(`${API}/api/settings/public`).then(r => setPublicSettings(r.data || null)).catch(() => {});
+  }, []);
 
   // Load the urgency threshold from admin settings so admin changes apply live.
   useEffect(() => {
@@ -249,6 +256,33 @@ const NewBooking = () => {
 
   const handleConfirm = async () => {
     if (!selectedPro||!priceResult) { toast.error(t("client_booking.select_pro_first")); return; }
+
+    // Item 5 (24/11/2026) — cancellation-window pre-confirmation warning.
+    // If the booking is already inside the reduced-refund window, surface a
+    // clear notice BEFORE the client commits. All thresholds from Admin
+    // Panel; falls back silently if settings didn't load.
+    try {
+      if (publicSettings) {
+        const fullH    = Number(publicSettings.refund_full_hours ?? 7);
+        const partialH = Number(publicSettings.refund_partial_hours ?? 2);
+        const partPct  = Number(publicSettings.refund_partial_pct ?? 50);
+        const graceMin = Number(publicSettings.grace_period_minutes ?? 10);
+        const startMs  = new Date(`${date}T${startTime}:00`).getTime();
+        const hoursUntil = (startMs - Date.now()) / 3_600_000;
+        if (hoursUntil <= partialH) {
+          // No-refund window
+          const msg = t("client_booking.cancel_warning_no_refund",
+            { hours: partialH, grace: graceMin });
+          if (!window.confirm(msg)) { return; }
+        } else if (hoursUntil <= fullH) {
+          // Partial-refund window
+          const msg = t("client_booking.cancel_warning_partial",
+            { grace: graceMin, pct: partPct });
+          if (!window.confirm(msg)) { return; }
+        }
+      }
+    } catch { /* non-fatal */ }
+
     setSubmitting(true);
     try {
       // Ensure patient record exists — auto-create for "myself" mode if needed

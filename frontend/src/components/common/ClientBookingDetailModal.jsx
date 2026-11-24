@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { X, MapPin, Clock, User, Phone, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass, Star } from "lucide-react";
+import { X, MapPin, Clock, User, Phone, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass, Star, Zap } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import CareBadges from "./CareBadges";
 import QuickMessagesButtons from "./QuickMessagesButtons";
 import ExtendServiceModal from "./ExtendServiceModal";
+import DurationChangeModal from "./DurationChangeModal";
 import RatingModal from "./RatingModal";
 import { formatBRL } from "../../utils/format";
 
@@ -40,6 +41,8 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
   const [confirmingPresence, setConfirmingPresence] = useState(false);
   // Rule #5 — "Estender atendimento" modal state.
   const [showExtend, setShowExtend] = useState(false);
+  // Item 6 (24/11/2026) — duration-change modal state.
+  const [showDurationChange, setShowDurationChange] = useState(false);
   // Rating flow — matches BookingDetailModal's pro-side pattern. `justRated`
   // tracks local state within this open modal; `current_user_has_rated` on
   // the booking row is the persistent flag (set by GET /my-bookings when the
@@ -213,7 +216,60 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
             <p className="text-xs font-semibold text-slate-500 uppercase">{t("client_booking_detail.total")}</p>
             <p className="text-lg font-bold text-green-700">{formatBRL(booking.total_price || 0)}</p>
           </div>
+          {/* Item 4 (24/11/2026) — urgency surcharge line. Separate from the
+              total so the client sees what the fee was. Platform fee stays
+              hidden. Only shown when urgency_fee_amount > 0. */}
+          {booking.urgency_fee_amount > 0 && (
+            <div className="mt-2 pt-2 border-t border-green-200/60">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 flex items-center gap-1">
+                  <Zap size={12} className="text-amber-500" />
+                  {t("client_booking_detail.urgency_fee_label", { pct: booking.urgency_fee_pct })}
+                </span>
+                <span className="font-semibold text-amber-700">+ {formatBRL(booking.urgency_fee_amount)}</span>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                {t("client_booking_detail.urgency_fee_note", { pct: booking.urgency_fee_pct })}
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Item 6 (24/11/2026) — Duration change (before service starts).
+            Uses DurationChangeModal. Hidden while a request is pending (we
+            show a pending banner instead). Also hidden for finalized bookings. */}
+        {!editing && ["pending", "accepted"].includes(booking.status) && (
+          <>
+            {booking.duration_change_status === "requested" ? (
+              <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-100 flex items-start gap-2">
+                <Hourglass size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 leading-snug">
+                  {t("client_booking_detail.duration_change_pending")}
+                </p>
+              </div>
+            ) : (
+              <>
+                {["declined"].includes(booking.duration_change_status) && (
+                  <div className="mb-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
+                    <AlertCircle size={16} className="text-slate-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-slate-700 leading-snug">
+                      {t("client_booking_detail.duration_change_declined")}
+                    </p>
+                  </div>
+                )}
+                <button onClick={() => setShowDurationChange(true)}
+                  className="mb-4 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white border border-blue-200 text-blue-600 font-semibold text-sm hover:bg-blue-50">
+                  <Clock size={14} /> {t("client_booking_detail.duration_change_button")}
+                </button>
+              </>
+            )}
+          </>
+        )}
+        {showDurationChange && (
+          <DurationChangeModal booking={booking}
+            onClose={() => setShowDurationChange(false)}
+            onUpdated={(p) => { onUpdated?.(p); setShowDurationChange(false); }} />
+        )}
 
         {/* Change 44a — One-tap quick-message chips (client side: Pode chegar / Estou aguardando) */}
         <div className="mb-4">

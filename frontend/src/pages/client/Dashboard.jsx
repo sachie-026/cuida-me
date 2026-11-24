@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare, X } from "lucide-react";
+import { CalendarDays, MapPin, Star, CreditCard, User, Plus, MessageSquare, X, CheckCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -36,6 +36,11 @@ const ClientDashboard = () => {
   const [cancellingBooking, setCancellingBooking] = useState(null);
   const [payingBooking,     setPayingBooking]     = useState(null);
   const [selectedBooking,   setSelectedBooking]   = useState(null);
+  // Bug fix (24/11/2026) — per-booking payment status, keyed by booking id.
+  // Populated from GET /api/payments/by-bookings after bookings load.
+  // Prevents the "already paid" error by hiding Pagar when a Payment row
+  // exists in a paid-ish status for that specific booking.
+  const [paymentMap,        setPaymentMap]        = useState({});
 
   useEffect(() => {
     // 2.5c: Check verification status
@@ -73,6 +78,17 @@ const ClientDashboard = () => {
             setRatedIds(results.filter(Boolean));
             console.log(`[53a] Ratings deferred: ${Math.round(performance.now()-t0)}ms`);
           });
+        }
+
+        // Bug fix (24/11/2026) — fetch payment status for every accepted
+        // booking so the Pagar button accurately reflects whether a Payment
+        // row already exists. Prevents the "already paid" 400 error by not
+        // offering the button in the first place.
+        const acceptedIds = fetchedBookings.filter(b => b.status === "accepted").map(b => b.id);
+        if (acceptedIds.length > 0) {
+          axios.get(`${API}/api/payments/by-bookings?ids=${encodeURIComponent(acceptedIds.join(","))}`, { headers })
+            .then(res => setPaymentMap(res.data || {}))
+            .catch(() => { /* best-effort — fall through to showing Pagar */ });
         }
       })
       .catch(() => { setLoading(false); });
@@ -193,12 +209,32 @@ const ClientDashboard = () => {
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor(b.status)}`}>
                       {statusLabel(b.status)}
                     </span>
-                    {b.status === "accepted" && (
-                      <button onClick={(e) => { e.stopPropagation(); setPayingBooking(b); }}
-                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
-                        <CreditCard size={11} /> Pagar
-                      </button>
-                    )}
+                    {b.status === "accepted" && (() => {
+                      // Bug fix (24/11/2026) — only show Pagar when no paid
+                      // Payment row already exists for THIS booking. Paid
+                      // statuses must match the backend's "existing payment
+                      // blocks initiate" set (authorized/received/held/
+                      // on_hold/released/partially_refunded). pending / failed
+                      // / refunded / null still show Pagar so the client can
+                      // (re)try. If the lookup hasn't landed yet, default to
+                      // showing Pagar so the UX isn't blocked.
+                      const p = paymentMap[b.id];
+                      const PAID = new Set(["authorized", "received", "held", "on_hold", "released", "partially_refunded"]);
+                      const alreadyPaid = p && p.status && PAID.has(p.status);
+                      if (alreadyPaid) {
+                        return (
+                          <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-green-100 text-green-700 rounded-full">
+                            <CheckCircle size={11} /> Pago
+                          </span>
+                        );
+                      }
+                      return (
+                        <button onClick={(e) => { e.stopPropagation(); setPayingBooking(b); }}
+                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
+                          <CreditCard size={11} /> Pagar
+                        </button>
+                      );
+                    })()}
                     {(b.status === "pending" || b.status === "accepted") && (
                       <button onClick={(e) => { e.stopPropagation(); setCancellingBooking(b); }}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors">

@@ -694,6 +694,51 @@ ADDITIONAL_EVENTS = [
              "Seu próximo atendimento ({{next_service}} — {{next_booking_code}}) começa às {{next_start_time}}. Finalize o atendimento atual ({{booking_code}}) para poder iniciar o próximo."),
         ], []),
     ]),
+
+    # Item 10 (24/11/2026) — client didn't pay in time → booking auto-cancelled.
+    ("booking.payment_expired", "booking", "Client did not complete payment within the deadline",
+     ["service", "booking_code"], [
+        ("client", ["in_app", "email"], "urgent", True, "/notifications", [
+            ("in_app", "Agendamento cancelado — pagamento não concluído",
+             "O pagamento do atendimento de {{service}} ({{booking_code}}) não foi concluído a tempo e o agendamento foi cancelado automaticamente. Você pode fazer um novo pedido quando quiser."),
+        ], []),
+        ("professional", ["in_app"], "normal", True, "/notifications", [
+            ("in_app", "Pagamento do cliente expirou",
+             "O cliente não concluiu o pagamento do atendimento de {{service}} ({{booking_code}}). O horário foi liberado na sua agenda."),
+        ], []),
+    ]),
+
+    # Item 10 — no pro responded in time → notify client.
+    ("booking.response_expired", "booking", "No professional responded in time — offer alternatives",
+     ["service", "booking_code"], [
+        ("client", ["in_app", "email"], "urgent", True, "/dashboard/client", [
+            ("in_app", "Nenhum profissional respondeu a tempo",
+             "Não conseguimos resposta para o seu pedido de {{service}} ({{booking_code}}). Veja outros profissionais disponíveis ou use \"Criar Alerta\" para ser avisado assim que alguém aceitar."),
+        ], []),
+    ]),
+
+    # Item 6 (24/11/2026) — client requested a duration change (before start).
+    ("service.duration_change_requested", "service", "Client requested a duration change (before service starts)",
+     ["service", "booking_code", "direction", "minutes", "delta"], [
+        ("professional", ["in_app"], "urgent", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Cliente pediu mudança de duração",
+             "O cliente pediu uma alteração ({{direction}} de {{minutes}} min) no atendimento de {{service}} ({{booking_code}}). Diferença: R$ {{delta}}. Aceite ou recuse no app."),
+        ], []),
+    ]),
+    ("service.duration_change_confirmed", "service", "Professional confirmed the duration change",
+     ["service", "booking_code", "new_end", "delta"], [
+        ("client", ["in_app"], "high", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Mudança de duração confirmada ✓",
+             "A mudança de duração do atendimento de {{service}} ({{booking_code}}) foi confirmada. Novo término: {{new_end}}. Diferença aplicada: R$ {{delta}}."),
+        ], []),
+    ]),
+    ("service.duration_change_declined", "service", "Professional declined the duration change",
+     ["service", "booking_code"], [
+        ("client", ["in_app"], "normal", True, "/bookings/{{booking_id}}", [
+            ("in_app", "Mudança de duração recusada",
+             "O profissional recusou a mudança de duração do atendimento de {{service}} ({{booking_code}}). O horário original permanece."),
+        ], []),
+    ]),
 ]
 
 

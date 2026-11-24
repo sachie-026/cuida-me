@@ -221,6 +221,21 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
             if patient_state and patient_state != pro_state:
                 raise HTTPException(403, f"Este profissional possui registro COREN-{pro_state} e não pode atender no estado {patient_state}.")
 
+    # Rule #4 (23/11/2026) — BUG FIX (24/11/2026): the 30-min travel buffer
+    # must also be enforced at CREATION time, not only at /accept. Without
+    # this, a client could submit a booking targeting a pro whose schedule
+    # already has a conflicting slot (e.g. prior booking ending at 23:30,
+    # new one starting at 23:30), and the pro's /accept step was the only
+    # guard — if the pro never explicitly accepted via the UI (or the
+    # backend change wasn't deployed), the conflicting row stayed in the DB.
+    # Now we reject at creation with the same clear message used on /accept.
+    if body.professional_id:
+        conflict = _has_scheduling_conflict(
+            body.professional_id, body.scheduled_start, body.scheduled_end, db
+        )
+        if conflict is not None:
+            raise HTTPException(409, detail=_conflict_response_for(conflict, db))
+
     # Change 44 — snapshot the service address onto the booking row.
     # Required fields enforced here (schema has them optional to avoid breaking
     # old frontend bundles during rollout, which is a soft failure path, not a
@@ -354,6 +369,24 @@ def _booking_to_dict(b: Booking, db: Session, enrich: bool = False) -> dict:
         # Expose the pro's user_id so the client-side rating flow knows who
         # to rate (Assessment.reviewee_id must be a user_id, not a pro_id).
         row["professional_user_id"] = pro_user.id if pro_user else None
+        # Item 4 (24/11/2026) — urgency surcharge breakdown. The payment,
+        # booking-detail and receipt screens render a "Adicional de urgência
+        # (+X%)" line when this > 0. Computed from the pricing_snapshot
+        # stored on the booking so a later Admin Panel change doesn't
+        # rewrite historical amounts.
+        row["urgency_fee_pct"]    = 0
+        row["urgency_fee_amount"] = 0
+        if b.is_urgent:
+            try:
+                from app.routes.settings import get_setting as _gs
+                snap = b.pricing_snapshot or {}
+                pct = float(snap.get("urgent_surcharge_pct",
+                                    _gs("urgent_surcharge_pct", db) or 20))
+                if pct > 0 and b.base_price:
+                    row["urgency_fee_pct"]    = pct
+                    row["urgency_fee_amount"] = round(float(b.base_price) * pct / 100, 2)
+            except Exception:
+                pass
         patient = db.query(Patient).filter(Patient.id == b.patient_id).first() if b.patient_id else None
         row["patient_name"] = patient.patient_name if patient else None
 
@@ -620,6 +653,19 @@ def accept_booking(booking_id: str, accept_caregiver_terms: bool = False, db: Se
             prof.category_acceptances = prof.category_acceptances + [acceptance]
 
     b.status = BookingStatus.accepted
+    # Item 10 (24/11/2026) — set the client payment deadline. Tiered by
+    # urgent vs standard; sweep in notification_scheduler auto-cancels the
+    # booking and frees the slot if the client doesn't pay in time.
+    try:
+        from app.routes.settings import get_setting as _get_setting
+        _now = datetime.now(timezone.utc)
+        if b.is_urgent:
+            _mins = int(_get_setting("client_payment_deadline_urgent_min", db) or 15)
+        else:
+            _mins = int(_get_setting("client_payment_deadline_standard_min", db) or 60)
+        b.payment_deadline = _now + timedelta(minutes=_mins)
+    except Exception as _e:
+        print(f"[ACCEPT] payment_deadline set failed: {_e}")
     db.commit()
     db.refresh(b)
 
@@ -1732,7 +1778,9 @@ def gps_checkout(booking_id: str, body: CheckInRequest, db: Session = Depends(ge
     # ever is, the "early check-in inflates duration" invariant will break.
     early_termination_delta = 0.0
     try:
-        EARLY_TOLERANCE_MIN = 10
+        # Item 8 (24/11/2026) — tolerance is admin-editable.
+        from app.routes.settings import get_setting as _get_setting
+        EARLY_TOLERANCE_MIN = int(_get_setting("early_termination_tolerance_min", db) or 10)
         sched_end = booking.scheduled_end
         if sched_end and booking.actual_checkout and booking.scheduled_start:
             # Normalise tz so arithmetic doesn't blow up on mixed types
@@ -1947,6 +1995,30 @@ def terminate_early(booking_id: str, body: EarlyTerminationRequest, db: Session 
 
 STANDARD_RESPONSE_HOURS = 3
 URGENT_RESPONSE_MINUTES = 90
+
+
+# Item 10 (24/11/2026) — tiered response deadlines by booking advance.
+def _pro_response_deadline(booking: "Booking", db: Session) -> "datetime":
+    """Return the deadline by which the pro must respond to this booking
+    request. Three tiers, all admin-editable:
+      - urgent          → booking.is_urgent is True
+      - same-day std    → scheduled_start within sameday_boundary_hours
+      - advance         → beyond sameday_boundary_hours
+    """
+    from app.routes.settings import get_setting
+    now = datetime.now(timezone.utc)
+    if booking.is_urgent:
+        return now + timedelta(minutes=int(get_setting("pro_response_urgent_min", db) or 30))
+    sched = booking.scheduled_start
+    if sched is None:
+        return now + timedelta(minutes=int(get_setting("pro_response_advance_min", db) or 180))
+    if getattr(sched, "tzinfo", None) is None:
+        sched = sched.replace(tzinfo=timezone.utc)
+    hours_until = (sched - now).total_seconds() / 3600
+    boundary = int(get_setting("pro_response_sameday_boundary_hours", db) or 24)
+    if hours_until <= boundary:
+        return now + timedelta(minutes=int(get_setting("pro_response_sameday_min", db) or 60))
+    return now + timedelta(minutes=int(get_setting("pro_response_advance_min", db) or 180))
 MAX_MATCH_BATCH = 5
 
 @router.post("/{booking_id}/smart-match")
@@ -1986,10 +2058,8 @@ def initiate_smart_match(booking_id: str, db: Session = Depends(get_db), current
         return {"booking_id": booking_id, "matched": 0, "message": "Nenhum profissional disponível para este atendimento."}
 
     # Set countdown
-    if booking.is_urgent:
-        deadline = now + timedelta(minutes=URGENT_RESPONSE_MINUTES)
-    else:
-        deadline = now + timedelta(hours=STANDARD_RESPONSE_HOURS)
+    # Item 10 — tiered deadline from Admin Panel (replaces hardcoded).
+    deadline = _pro_response_deadline(booking, db)
 
     booking.match_deadline = deadline
     booking.match_batch = 1
@@ -2048,10 +2118,8 @@ def expire_and_rematch(booking_id: str, db: Session = Depends(get_db), current: 
     if not next_batch:
         return {"booking_id": booking_id, "matched": 0, "message": "Nenhum profissional adicional disponível. Considere criar um alerta."}
 
-    if booking.is_urgent:
-        deadline = now + timedelta(minutes=URGENT_RESPONSE_MINUTES)
-    else:
-        deadline = now + timedelta(hours=STANDARD_RESPONSE_HOURS)
+    # Item 10 — tiered deadline from Admin Panel (replaces hardcoded).
+    deadline = _pro_response_deadline(booking, db)
 
     booking.match_deadline = deadline
     booking.match_batch = (booking.match_batch or 1) + 1
@@ -2103,21 +2171,37 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
     hours_until = (booking.scheduled_start.replace(tzinfo=timezone.utc) - now).total_seconds() / 3600
     minutes_since_creation = (now - booking.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60 if booking.created_at else 999
 
-    # Grace period: free cancellation within 10 min if pro hasn't accepted and >7h before
-    is_grace = minutes_since_creation <= GRACE_PERIOD_MINUTES and booking.status.value == "pending" and hours_until > 7
+    # Item 9 (24/11/2026) — all refund thresholds come from Admin Panel.
+    from app.routes.settings import get_setting as _gs_refund
+    grace_minutes = int(_gs_refund("grace_period_minutes", db) or GRACE_PERIOD_MINUTES)
+    full_hours    = int(_gs_refund("refund_full_hours",    db) or 7)
+    partial_hours = int(_gs_refund("refund_partial_hours", db) or 2)
+    partial_pct   = int(_gs_refund("refund_partial_pct",   db) or 50)
+
+    # Grace period: free cancellation within grace_minutes if pro hasn't
+    # accepted and we're outside the full-refund window (otherwise the
+    # standard 100% already applies and grace adds nothing).
+    is_grace = (minutes_since_creation <= grace_minutes
+                and booking.status.value == "pending"
+                and hours_until > full_hours)
 
     if is_grace:
         refund_pct = 100
-    elif hours_until > 7:
+    elif hours_until > full_hours:
         refund_pct = 100
-    elif hours_until >= 2:
-        refund_pct = 50
+    elif hours_until >= partial_hours:
+        refund_pct = partial_pct
     else:
         refund_pct = 0
 
-    # #3: Grace period 3-use limit per 30 days
+    # Item 9/11 (24/11/2026) — Grace use limit + manual-review trigger.
+    # All thresholds admin-editable:
+    #   grace_max_uses_30d          — max uses before grace stops applying
+    #   grace_manual_review_threshold — Nth use flags for manual admin review
+    # (no automatic suspension; replaces the old "Revisão após N" behaviour).
     if is_grace:
         from datetime import timedelta as td
+        from app.routes.settings import get_setting as _gs
         thirty_days_ago = now - td(days=30)
         _client_id = _get_booking_client_id(booking, db)
         grace_count = db.query(Booking).filter(
@@ -2126,13 +2210,21 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
             Booking.cancel_reason.contains("grace"),
             Booking.cancelled_at > thirty_days_ago,
         ).count()
-        if grace_count >= 3:
+        max_uses = int(_gs("grace_max_uses_30d", db) or 3)
+        review_at = int(_gs("grace_manual_review_threshold", db) or 4)
+        # Flag for manual review when hitting the Nth use (no auto-suspend).
+        if grace_count + 1 >= review_at:
+            booking.review_type = booking.review_type or "grace_abuse"
+        # Beyond the cap, grace stops applying; fall through to standard tiers.
+        if grace_count >= max_uses:
             is_grace = False
-            # Falls through to standard policy
-            if hours_until > 7:
+            full_hours = int(_gs("refund_full_hours", db) or 7)
+            partial_hours = int(_gs("refund_partial_hours", db) or 2)
+            partial_pct = int(_gs("refund_partial_pct", db) or 50)
+            if hours_until > full_hours:
                 refund_pct = 100
-            elif hours_until >= 2:
-                refund_pct = 50
+            elif hours_until >= partial_hours:
+                refund_pct = partial_pct
             else:
                 refund_pct = 0
 
@@ -2143,36 +2235,44 @@ def cancel_booking(booking_id: str, body: CancelRequest, db: Session = Depends(g
     booking.cancelled_by = body.cancelled_by
     booking.cancelled_at = now
 
-    # #5: Progressive professional penalties
+    # Item 11 (24/11/2026) — Progressive professional penalties, every
+    # threshold admin-editable. Steps:
+    #   recent_cancels <  warning_count         → warning only (no score hit)
+    #   recent_cancels >= warning_count AND
+    #                   <  score_reduction_count → warning + score drop
+    #   recent_cancels >= score_reduction_count → first suspension (N days)
+    #   recent_cancels >= score_reduction_count*2 → repeat suspension (N days)
     if body.cancelled_by == "professional":
         prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
         if prof:
             prof.late_cancellations = (prof.late_cancellations or 0) + 1
-            count = prof.late_cancellations
-
-            # 90-day reset window check
             from datetime import timedelta as td
-            ninety_days_ago = now - td(days=90)
+            from app.routes.settings import get_setting as _gs
+            warn_count    = int(_gs("pro_cancel_warning_count",         db) or 2)
+            score_count   = int(_gs("pro_cancel_score_reduction_count", db) or 3)
+            score_pts     = int(_gs("pro_cancel_score_reduction_pts",   db) or 10)
+            first_days    = int(_gs("pro_cancel_suspend_days_first",    db) or 7)
+            repeat_days   = int(_gs("pro_cancel_suspend_days_repeat",   db) or 30)
+            window_days   = int(_gs("penalty_reset_days",               db) or 90)
+            cutoff = now - td(days=window_days)
             recent_cancels = db.query(Booking).filter(
                 Booking.professional_id == booking.professional_id,
                 Booking.cancelled_by == "professional",
-                Booking.cancelled_at > ninety_days_ago,
+                Booking.cancelled_at > cutoff,
             ).count()
 
-            if recent_cancels <= 1:
-                pass  # 1st: warning only
-            elif recent_cancels == 2:
-                prof.reliability_score = max(0, (prof.reliability_score or 100) - 10)
-            elif recent_cancels == 3:
-                prof.reliability_score = max(0, (prof.reliability_score or 100) - 15)
-                prof.suspended_until = now + td(days=7)
+            if recent_cancels < warn_count:
+                pass  # warning only, no score hit
+            elif recent_cancels < score_count:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - score_pts)
+            elif recent_cancels < score_count * 2:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - score_pts * 2)
+                prof.suspended_until = now + td(days=first_days)
                 prof.is_available = False
-            elif recent_cancels == 4:
-                prof.reliability_score = max(0, (prof.reliability_score or 100) - 25)
-                prof.suspended_until = now + td(days=30)
+            else:
+                prof.reliability_score = max(0, (prof.reliability_score or 100) - score_pts * 3)
+                prof.suspended_until = now + td(days=repeat_days)
                 prof.is_available = False
-            elif recent_cancels >= 5:
-                prof.is_available = False  # permanent ban until admin review
 
     # #4: Progressive client penalties
     else:
@@ -2370,7 +2470,17 @@ LATE_ARRIVAL_TOLERANCE_MINUTES = 10
 
 @router.post("/{booking_id}/check-late-arrival")
 def check_late_arrival(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    """Check if professional arrived late (>10 min after scheduled start)."""
+    """Check if professional arrived late (past the tolerance).
+
+    Item 11 (24/11/2026) — thresholds come from the Admin Panel:
+      - late_arrival_after_min — tolerance after scheduled_start
+      - late_arrival_internal_only_count — first N incidents hurt only
+        the internal reliability_score
+      - late_arrival_public_threshold — crossing this count also docks
+        the public star rating (rating_avg).
+    Window: 90 days (also admin-editable via penalty_reset_days).
+    """
+    from app.routes.settings import get_setting
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
@@ -2378,37 +2488,72 @@ def check_late_arrival(booking_id: str, db: Session = Depends(get_db), current: 
     if not booking.actual_checkin or not booking.scheduled_start:
         return {"late": False}
 
+    tolerance = int(get_setting("late_arrival_after_min", db) or LATE_ARRIVAL_TOLERANCE_MINUTES)
     scheduled = booking.scheduled_start.replace(tzinfo=timezone.utc) if booking.scheduled_start.tzinfo is None else booking.scheduled_start
     actual = booking.actual_checkin.replace(tzinfo=timezone.utc) if booking.actual_checkin.tzinfo is None else booking.actual_checkin
     delay_minutes = (actual - scheduled).total_seconds() / 60
 
-    if delay_minutes > LATE_ARRIVAL_TOLERANCE_MINUTES:
-        booking.late_arrival = True
+    if delay_minutes <= tolerance:
+        return {"late": False, "delay_minutes": round(delay_minutes)}
 
-        # Update professional's late arrival count
-        prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
-        if prof:
-            # Count late arrivals in last 90 days
-            ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
-            late_count = db.query(Booking).filter(
-                Booking.professional_id == booking.professional_id,
-                Booking.late_arrival == True,
-                Booking.actual_checkin > ninety_days_ago,
-            ).count()
+    booking.late_arrival = True
+    prof = db.query(Professional).filter(Professional.id == booking.professional_id).first()
+    penalty_level = "internal"
+    if prof:
+        window_days = int(get_setting("penalty_reset_days", db) or 90)
+        internal_only_count = int(get_setting("late_arrival_internal_only_count", db) or 2)
+        public_threshold    = int(get_setting("late_arrival_public_threshold",    db) or 3)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+        late_count = db.query(Booking).filter(
+            Booking.professional_id == booking.professional_id,
+            Booking.late_arrival == True,
+            Booking.actual_checkin > cutoff,
+        ).count()
 
-            # 1st-2nd: internal reliability only
-            if late_count <= 2:
-                prof.reliability_score = max(0, (prof.reliability_score or 100) - 3)
-            # 3rd+: also affects public rating
-            else:
-                prof.reliability_score = max(0, (prof.reliability_score or 100) - 5)
-                if prof.rating_avg and prof.rating_avg > 0:
-                    prof.rating_avg = max(1.0, (prof.rating_avg or 5.0) - 0.1)
+        if late_count <= internal_only_count:
+            prof.reliability_score = max(0, (prof.reliability_score or 100) - 3)
+            penalty_level = "internal"
+        elif late_count >= public_threshold:
+            prof.reliability_score = max(0, (prof.reliability_score or 100) - 5)
+            if prof.rating_avg and prof.rating_avg > 0:
+                prof.rating_avg = max(1.0, (prof.rating_avg or 5.0) - 0.1)
+            penalty_level = "public"
+        else:
+            prof.reliability_score = max(0, (prof.reliability_score or 100) - 4)
+            penalty_level = "internal"
 
-        db.commit()
-        return {"late": True, "delay_minutes": round(delay_minutes), "penalty_level": "internal" if late_count <= 2 else "public"}
+    db.commit()
+    return {"late": True, "delay_minutes": round(delay_minutes), "penalty_level": penalty_level}
 
-    return {"late": False, "delay_minutes": round(delay_minutes)}
+
+# Item 11 (24/11/2026) — Client no-show threshold → require card pre-auth.
+def _client_requires_card_preauth(client_user_id: str, db: Session) -> bool:
+    """Return True when the client has had >= client_noshow_count_threshold
+    no-shows within client_noshow_window_days. Used by the booking creation
+    flow to force a pre-authorised card instead of a hold-less booking."""
+    try:
+        from app.routes.settings import get_setting
+        threshold = int(get_setting("client_noshow_count_threshold", db) or 3)
+        window_days = int(get_setting("client_noshow_window_days", db) or 90)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+        count = db.query(Booking).filter(
+            Booking.user_id == client_user_id,
+            Booking.no_show_who == "client",
+            Booking.cancelled_at.isnot(None),
+            Booking.cancelled_at > cutoff,
+        ).count()
+        return count >= threshold
+    except Exception:
+        return False
+
+
+@router.get("/client/requires-preauth")
+def client_requires_preauth(db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Public endpoint — the frontend's NewBooking flow calls this to decide
+    whether to force the card pre-auth path. Admin-tunable thresholds."""
+    return {
+        "requires_preauth": _client_requires_card_preauth(current.id, db),
+    }
 
 # ── #38: Cancellation Audit Log ────────────────────────────────────────────────
 
@@ -2873,3 +3018,314 @@ def decline_extension(booking_id: str, db: Session = Depends(get_db), current: U
         print(f"[EXTENSION] decline notify error: {e}")
 
     return {"booking_id": booking_id, "extension_status": "declined", "message": "Extensão recusada."}
+
+
+# ── Item 6 (24/11/2026): Client-initiated duration change (before start) ─────
+#
+# Distinct from the Extension flow (which only covers in-progress bookings
+# and only INCREASES). This flow runs while a booking is still `pending`
+# or `accepted` (service not yet started) and allows both increase and
+# decrease. Pro must confirm each change.
+#
+# Rules:
+#  - Only the booking's client can request.
+#  - Only when status in (pending, accepted). After start, use Extension
+#    (increase) or Early Termination (decrease).
+#  - Increase: respects travel gap to pro's next booking (same formula as
+#    extension-options). Client pays the difference.
+#  - Decrease: allowed only if (scheduled_start - now) > min_notice_reduce_hours.
+#    New duration must stay >= min_booking_hours. Client is refunded the
+#    removed hours.
+#  - Each change is logged (duration_change_log).
+
+@router.get("/{booking_id}/duration-change-options")
+def duration_change_options(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """List the duration-change options for the client. Returns 30-min
+    increments in both directions, bounded by travel gap (increase) and
+    the admin-editable notice-to-reduce + min booking duration (decrease)."""
+    from app.routes.settings import get_setting
+    b = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not b:
+        raise HTTPException(404, "Booking not found")
+    if _get_booking_client_id(b, db) != current.id and current.role.value != "admin":
+        raise HTTPException(403, "Apenas o cliente pode alterar a duração.")
+    status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
+    if status_val not in ("pending", "accepted"):
+        raise HTTPException(400, "A duração só pode ser alterada antes do atendimento começar.")
+    if b.duration_change_status == "requested":
+        raise HTTPException(400, "Já existe uma alteração de duração pendente.")
+
+    cfg = _time_cfg(db)
+    step = cfg["ext_step"]  # share step with extension for consistency
+
+    def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    start_n = _n(b.scheduled_start) if b.scheduled_start else None
+    end_n   = _n(b.scheduled_end)   if b.scheduled_end   else None
+    now_n   = _n(datetime.now(timezone.utc))
+    if start_n is None or end_n is None:
+        raise HTTPException(400, "Atendimento sem horários definidos.")
+
+    # ── Increase options (respects travel gap) ─────────────────────────────
+    max_increase = _extension_max_minutes_for(b, db)
+    increase_options = []
+    for m in range(step, EXTENSION_MAX_MINUTES + 1, step):
+        if m > max_increase: break
+        new_end = end_n + timedelta(minutes=m)
+        delta = _compute_extension_cost(b, end_n, new_end, db)
+        increase_options.append({
+            "direction": "increase",
+            "minutes":   m,
+            "new_end":   new_end.isoformat(),
+            "delta":     delta,
+        })
+
+    # ── Decrease options ───────────────────────────────────────────────────
+    decrease_options = []
+    min_notice_h = int(get_setting("min_notice_reduce_hours", db) or 2)
+    hours_until_start = (start_n - now_n).total_seconds() / 3600
+    min_booking_h = int(get_setting("min_booking_hours", db) or 2)
+    min_duration_min = min_booking_h * 60
+    cur_duration_min = int((end_n - start_n).total_seconds() / 60)
+    decrease_allowed = hours_until_start > min_notice_h
+    if decrease_allowed:
+        for m in range(step, EXTENSION_MAX_MINUTES + 1, step):
+            new_dur = cur_duration_min - m
+            if new_dur < min_duration_min:
+                break
+            new_end = end_n - timedelta(minutes=m)
+            # Refund = the removed portion priced with the same engine.
+            # Delta is NEGATIVE to signal refund.
+            refund = _compute_extension_cost(b, new_end, end_n, db)
+            decrease_options.append({
+                "direction": "decrease",
+                "minutes":   m,
+                "new_end":   new_end.isoformat(),
+                "delta":     -refund,
+            })
+
+    return {
+        "booking_id":         booking_id,
+        "current_end":        end_n.isoformat(),
+        "current_duration_minutes": cur_duration_min,
+        "step_minutes":       step,
+        "increase_options":   increase_options,
+        "decrease_options":   decrease_options,
+        "decrease_allowed":   decrease_allowed,
+        "decrease_locked_reason": None if decrease_allowed else (
+            f"Não é possível reduzir o atendimento com menos de {min_notice_h}h de antecedência."
+        ),
+        "min_booking_hours":  min_booking_h,
+        "min_notice_hours":   min_notice_h,
+    }
+
+
+class DurationChangeRequest(BaseModel):
+    direction: str                        # "increase" | "decrease"
+    minutes:   int                        # positive magnitude, multiple of step
+
+
+@router.post("/{booking_id}/duration-change-request")
+def duration_change_request(booking_id: str, body: DurationChangeRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Client requests a duration change. Validates, stores, notifies pro."""
+    from app.routes.settings import get_setting
+    b = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not b:
+        raise HTTPException(404, "Booking not found")
+    if _get_booking_client_id(b, db) != current.id:
+        raise HTTPException(403, "Apenas o cliente pode alterar a duração.")
+    status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
+    if status_val not in ("pending", "accepted"):
+        raise HTTPException(400, "A duração só pode ser alterada antes do atendimento começar.")
+    if b.duration_change_status == "requested":
+        raise HTTPException(400, "Já existe uma alteração de duração pendente.")
+    if body.direction not in ("increase", "decrease"):
+        raise HTTPException(400, "direction deve ser 'increase' ou 'decrease'.")
+
+    cfg = _time_cfg(db)
+    step = cfg["ext_step"]
+    if body.minutes <= 0 or body.minutes % step != 0:
+        raise HTTPException(400, f"A alteração deve ser em múltiplos de {step} minutos.")
+
+    def _n(d): return d.replace(tzinfo=None) if getattr(d, "tzinfo", None) else d
+    start_n = _n(b.scheduled_start)
+    end_n   = _n(b.scheduled_end)
+    now_n   = _n(datetime.now(timezone.utc))
+
+    if body.direction == "increase":
+        max_add = _extension_max_minutes_for(b, db)
+        if body.minutes > max_add:
+            raise HTTPException(
+                400,
+                f"O profissional tem outro atendimento em sequência. O aumento máximo disponível é de {max_add} minutos."
+            )
+        new_end = end_n + timedelta(minutes=body.minutes)
+        delta = _compute_extension_cost(b, end_n, new_end, db)
+    else:  # decrease
+        min_notice_h = int(get_setting("min_notice_reduce_hours", db) or 2)
+        if (start_n - now_n).total_seconds() / 3600 <= min_notice_h:
+            raise HTTPException(
+                400,
+                f"Não é possível reduzir o atendimento com menos de {min_notice_h}h de antecedência."
+            )
+        min_booking_h = int(get_setting("min_booking_hours", db) or 2)
+        cur_min = int((end_n - start_n).total_seconds() / 60)
+        if cur_min - body.minutes < min_booking_h * 60:
+            raise HTTPException(
+                400,
+                f"A nova duração não pode ser menor que o mínimo de {min_booking_h}h."
+            )
+        new_end = end_n - timedelta(minutes=body.minutes)
+        delta = -_compute_extension_cost(b, new_end, end_n, db)
+
+    b.duration_change_status       = "requested"
+    b.duration_change_new_end      = new_end
+    b.duration_change_delta        = delta
+    b.duration_change_direction    = body.direction
+    b.duration_change_requested_at = datetime.now(timezone.utc)
+    # Append to log
+    log = list(b.duration_change_log or [])
+    log.append({
+        "action":     "requested",
+        "by":         "client",
+        "by_user_id": current.id,
+        "at":         b.duration_change_requested_at.isoformat(),
+        "direction":  body.direction,
+        "minutes":    body.minutes,
+        "old_end":    end_n.isoformat(),
+        "new_end":    new_end.isoformat(),
+        "delta":      delta,
+    })
+    b.duration_change_log = log
+    db.commit()
+
+    try:
+        prof = db.query(Professional).filter(Professional.id == b.professional_id).first() if b.professional_id else None
+        pro_user = db.query(User).filter(User.id == prof.user_id).first() if prof else None
+        if pro_user:
+            fire_event(db, "service.duration_change_requested", {
+                "service": b.service_type or "Cuidado",
+                "booking_code": f"#{b.id[:6].upper()}",
+                "booking_id": b.id,
+                "direction": body.direction,
+                "minutes": str(body.minutes),
+                "delta": f"{delta:+.2f}",
+            }, recipient_users={"professional": [pro_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[DURATION-CHANGE] notify failed for {b.id}: {e}")
+
+    return {
+        "booking_id": booking_id,
+        "duration_change_status": "requested",
+        "direction": body.direction,
+        "minutes": body.minutes,
+        "delta": delta,
+        "new_end": new_end.isoformat(),
+    }
+
+
+@router.patch("/{booking_id}/duration-change/confirm")
+def duration_change_confirm(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Pro accepts the client's duration change. Applies new end + total_price;
+    on decrease, marks refund_amount on the Payment row. Rejects if a new
+    conflicting booking landed in the pro's schedule in the meantime."""
+    b = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not b: raise HTTPException(404, "Booking not found")
+    if b.duration_change_status != "requested":
+        raise HTTPException(400, "Nenhuma alteração pendente.")
+    prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+    if not prof or prof.user_id != current.id:
+        raise HTTPException(403, "Apenas o profissional pode confirmar a alteração.")
+
+    # Re-check travel-gap for increase (a conflicting booking might have been
+    # accepted by the pro between request and confirmation).
+    if b.duration_change_direction == "increase" and b.duration_change_new_end is not None:
+        conflict = _has_scheduling_conflict(
+            b.professional_id, b.scheduled_start, b.duration_change_new_end, db,
+            exclude_booking_id=b.id,
+        )
+        if conflict is not None:
+            b.duration_change_status = "declined"
+            db.commit()
+            raise HTTPException(400, "Conflito com outro atendimento. Peça ao cliente para enviar uma nova alteração.")
+
+    old_end = b.scheduled_end
+    b.scheduled_end = b.duration_change_new_end
+    delta = float(b.duration_change_delta or 0)
+    b.total_price = round(float(b.total_price or 0) + delta, 2)
+    # Update Payment row amount and, on decrease, refund_amount.
+    try:
+        from app.models.models import Payment, PaymentStatus
+        pay = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+        if pay:
+            pay.amount = round(float(pay.amount or 0) + delta, 2)
+            if delta < 0:
+                prev = float(getattr(pay, "refund_amount", 0) or 0)
+                pay.refund_amount = round(prev + abs(delta), 2)
+    except Exception as e:
+        print(f"[DURATION-CHANGE] payment update failed for {booking_id}: {e}")
+
+    b.duration_change_status = "confirmed"
+    log = list(b.duration_change_log or [])
+    log.append({
+        "action": "confirmed", "by": "professional", "by_user_id": current.id,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "applied_new_end": b.scheduled_end.isoformat() if b.scheduled_end else None,
+        "applied_delta":   delta,
+    })
+    b.duration_change_log = log
+    db.commit()
+
+    try:
+        client_user = _get_booking_client_user(b, db)
+        if client_user:
+            fire_event(db, "service.duration_change_confirmed", {
+                "service": b.service_type or "Cuidado",
+                "booking_code": f"#{b.id[:6].upper()}",
+                "booking_id": b.id,
+                "new_end": b.scheduled_end.strftime("%H:%M"),
+                "delta": f"{delta:+.2f}",
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[DURATION-CHANGE] confirm notify failed: {e}")
+
+    return {
+        "booking_id": booking_id,
+        "duration_change_status": "confirmed",
+        "new_end": b.scheduled_end.isoformat() if b.scheduled_end else None,
+        "new_total": b.total_price,
+        "delta": delta,
+    }
+
+
+@router.patch("/{booking_id}/duration-change/decline")
+def duration_change_decline(booking_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    """Pro declines. Booking stays as it was; log the decline; notify client."""
+    b = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not b: raise HTTPException(404, "Booking not found")
+    if b.duration_change_status != "requested":
+        raise HTTPException(400, "Nenhuma alteração pendente.")
+    prof = db.query(Professional).filter(Professional.id == b.professional_id).first()
+    if not prof or prof.user_id != current.id:
+        raise HTTPException(403, "Apenas o profissional pode recusar a alteração.")
+    b.duration_change_status = "declined"
+    log = list(b.duration_change_log or [])
+    log.append({
+        "action": "declined", "by": "professional", "by_user_id": current.id,
+        "at": datetime.now(timezone.utc).isoformat(),
+    })
+    b.duration_change_log = log
+    db.commit()
+    try:
+        client_user = _get_booking_client_user(b, db)
+        if client_user:
+            fire_event(db, "service.duration_change_declined", {
+                "service": b.service_type or "Cuidado",
+                "booking_code": f"#{b.id[:6].upper()}",
+                "booking_id": b.id,
+            }, recipient_users={"client": [client_user]})
+            db.commit()
+    except Exception as e:
+        print(f"[DURATION-CHANGE] decline notify failed: {e}")
+    return {"booking_id": booking_id, "duration_change_status": "declined"}
