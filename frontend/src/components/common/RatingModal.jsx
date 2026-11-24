@@ -49,7 +49,18 @@ const RatingModal = ({ booking, revieweeId, onClose, onDone }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    // BUG FIX (24/11/2026): when this modal is mounted INSIDE another modal
+    // that already has `onClick={onClose}` on its backdrop container
+    // (ClientBookingDetailModal and BookingDetailModal do this), every
+    // click on a star, textarea or button here bubbles up to the parent's
+    // backdrop handler and silently closes the whole stack — the user
+    // saw the history card instead of saving the rating. stopPropagation
+    // on the outermost div stops the bubble before it reaches the parent.
+    // We also bump z-index to z-[60] so this always sits above z-50
+    // parent modals.
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center px-4"
+      onClick={(e) => e.stopPropagation()}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-hover w-full max-w-md p-6 z-10">
         <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 transition-colors">

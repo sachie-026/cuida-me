@@ -44,26 +44,54 @@ DEFAULTS = {
     "client_confirm_timeout_hours": 24,
     # Rule #7 (23/11/2026) — editable time-gate values used by the
     # start/finish/extension flows. Changes take effect immediately.
-    # start_window_before_min — minutes BEFORE scheduled_start the pro can
-    # tap "Iniciar atendimento" (default 10).
     "start_window_before_min":      10,
-    # late_arrival_after_min — minutes AFTER scheduled_start past which a
-    # successful start is flagged as late arrival (default 15).
     "late_arrival_after_min":       15,
-    # start_window_after_min — hard cutoff minutes AFTER scheduled_start for
-    # a self-service start (default 30). Past this the pro needs the client
-    # to confirm presence (Rule #1).
     "start_window_after_min":       30,
-    # finish_window_after_min — hard cutoff minutes AFTER scheduled_end for
-    # a manual finish (default 30). Past this the auto-finish sweep applies.
     "finish_window_after_min":      30,
-    # min_gap_between_bookings_min — required travel buffer between any two
-    # of the same pro's bookings (default 30). Enforced on accept + match
-    # filtering.
     "min_gap_between_bookings_min": 30,
-    # extension_step_min — granularity of the client-initiated service
-    # extension options (default 30 → 30/60/90/… minutes).
     "extension_step_min":           30,
+
+    # Item 8 (24/11/2026) — Early Termination tolerance: finishing within
+    # this many minutes of scheduled_end triggers NO deduction. Beyond
+    # it, the tiered refund formula kicks in. Separate from grace_period.
+    "early_termination_tolerance_min":  10,
+
+    # Item 12 (24/11/2026) — Min advance (hours) the client needs to
+    # reduce a booking's duration before the service starts. Used by
+    # Item 6's duration-change flow.
+    "min_notice_reduce_hours":          2,
+
+    # Item 10 (24/11/2026) — Prazos de resposta e pagamento.
+    # Response time tiers (minutes), by how far in advance the booking is:
+    "pro_response_urgent_min":          30,
+    "pro_response_sameday_min":         60,
+    "pro_response_advance_min":        180,
+    # Boundary hours — advance > sameday_boundary_hours → "advance" tier.
+    "pro_response_sameday_boundary_hours": 24,
+    # Client payment deadline AFTER the pro accepts, by tier (minutes).
+    "client_payment_deadline_urgent_min":   15,
+    "client_payment_deadline_standard_min": 60,
+    # Reliability score: expired-request thresholds.
+    "pro_expired_requests_count":           3,
+    "pro_expired_requests_window_days":    30,
+    "pro_expired_requests_score_reduction": 5,
+
+    # Item 11 (24/11/2026) — Penalties restructure.
+    # Pro cancellations: tiered steps (counts in rolling 30 days).
+    "pro_cancel_warning_count":         2,     # at this count → warning
+    "pro_cancel_score_reduction_count": 3,     # at this count → reliability score drop
+    "pro_cancel_score_reduction_pts":   10,    # amount dropped per cancel past threshold
+    # First and repeat suspension already exist as:
+    #   pro_cancel_suspend_days_first (default 7)
+    #   pro_cancel_suspend_days_repeat (default 30)
+    # Grace Period use → manual review (not auto-suspension).
+    "grace_manual_review_threshold":    4,     # Nth grace use in 30d triggers review
+    # Client no-show escalation (card pre-auth requirement).
+    "client_noshow_count_threshold":    3,
+    "client_noshow_window_days":       90,
+    # Late Arrival progression (already have late_arrival_public_threshold
+    # at value 3; add an explicit "internal only" count for clarity).
+    "late_arrival_internal_only_count": 2,
     # Rest
     "rest_after_24h_hours":         11,
     # Day/Night
@@ -194,6 +222,25 @@ VALIDATION = {
     "finish_window_after_min":      (10, 120, "int"),
     "min_gap_between_bookings_min": (0, 240, "int"),
     "extension_step_min":           (10, 60, "int"),
+    # Items 8, 10, 11, 12 (24/11/2026)
+    "early_termination_tolerance_min":      (0, 60, "int"),
+    "min_notice_reduce_hours":              (0, 72, "int"),
+    "pro_response_urgent_min":              (5, 120, "int"),
+    "pro_response_sameday_min":             (10, 240, "int"),
+    "pro_response_advance_min":             (30, 1440, "int"),
+    "pro_response_sameday_boundary_hours":  (1, 72, "int"),
+    "client_payment_deadline_urgent_min":   (5, 120, "int"),
+    "client_payment_deadline_standard_min": (10, 240, "int"),
+    "pro_expired_requests_count":           (1, 20, "int"),
+    "pro_expired_requests_window_days":     (1, 365, "int"),
+    "pro_expired_requests_score_reduction": (0, 100, "int"),
+    "pro_cancel_warning_count":             (1, 20, "int"),
+    "pro_cancel_score_reduction_count":     (1, 20, "int"),
+    "pro_cancel_score_reduction_pts":       (0, 100, "int"),
+    "grace_manual_review_threshold":        (1, 20, "int"),
+    "client_noshow_count_threshold":        (1, 20, "int"),
+    "client_noshow_window_days":            (1, 365, "int"),
+    "late_arrival_internal_only_count":     (0, 20, "int"),
     "client_confirm_timeout_hours": (1, 72, "int"),
     "rest_after_24h_hours":         (6, 24, "int"),
     "day_start_hour":               (0, 23, "int"),
@@ -243,6 +290,15 @@ def _cross_validate(data: dict) -> Optional[str]:
     rp = data.get("refund_partial_hours", DEFAULTS["refund_partial_hours"])
     if rp >= rf:
         return f"Janela de reembolso parcial ({rp}h) deve ser menor que a de reembolso total ({rf}h)"
+    # Item 9 (24/11/2026) — partial refund boundary cannot be below the
+    # minimum advance to book, otherwise there is no window in which a
+    # cancellation can land in the partial tier.
+    ma = data.get("min_advance_hours", DEFAULTS["min_advance_hours"])
+    if rp < ma:
+        return (
+            f"Janela de reembolso parcial ({rp}h) não pode ser menor que a "
+            f"antecedência mínima de agendamento ({ma}h)"
+        )
     ds = data.get("day_start_hour", DEFAULTS["day_start_hour"])
     ns = data.get("night_start_hour", DEFAULTS["night_start_hour"])
     if ds == ns:
@@ -303,6 +359,12 @@ def get_public_settings(db: Session = Depends(get_db)):
         "finish_window_after_min",
         "min_gap_between_bookings_min",
         "extension_step_min",
+        # Items 8/12 — frontend needs these for client-side hints
+        "early_termination_tolerance_min",
+        "min_notice_reduce_hours",
+        # Item 10 — payment deadline UX hint in NewBooking
+        "client_payment_deadline_urgent_min",
+        "client_payment_deadline_standard_min",
     ]
     return {k: current.get(k, DEFAULTS.get(k)) for k in PUBLIC_KEYS}
 
@@ -324,7 +386,22 @@ def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
             # Rule #7 — editable time-gate values (start/finish/extension).
             "time_gates":   ["start_window_before_min", "late_arrival_after_min",
                             "start_window_after_min", "finish_window_after_min",
-                            "min_gap_between_bookings_min", "extension_step_min"],
+                            "min_gap_between_bookings_min", "extension_step_min",
+                            "early_termination_tolerance_min", "min_notice_reduce_hours"],
+            # Item 10 — Prazos de resposta e pagamento
+            "deadlines":    ["pro_response_urgent_min", "pro_response_sameday_min",
+                            "pro_response_advance_min", "pro_response_sameday_boundary_hours",
+                            "client_payment_deadline_urgent_min",
+                            "client_payment_deadline_standard_min",
+                            "pro_expired_requests_count", "pro_expired_requests_window_days",
+                            "pro_expired_requests_score_reduction"],
+            # Item 11 — Penalties (separate client/professional)
+            "penalties_pro":    ["pro_cancel_warning_count", "pro_cancel_score_reduction_count",
+                                 "pro_cancel_score_reduction_pts",
+                                 "pro_cancel_suspend_days_first", "pro_cancel_suspend_days_repeat",
+                                 "grace_manual_review_threshold",
+                                 "late_arrival_internal_only_count", "late_arrival_public_threshold"],
+            "penalties_client": ["client_noshow_count_threshold", "client_noshow_window_days"],
             "pricing":      [f"{p}_{r}" for p in ["initial_fee", "day_rate", "night_rate"]
                             for r in ["caregiver", "nursing_assistant", "technician", "nurse"]],
             "commission":   ["platform_commission_pct", "holiday_surcharge_pct"],
@@ -379,7 +456,7 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db), current
 
     # 50-34: Enforce sub-role permissions
     FINANCE_FIELDS = {"initial_fee_", "day_rate_", "night_rate_", "platform_commission", "holiday_surcharge", "urgent_surcharge", "holiday_pricing", "urgent_booking", "urgent_fee", "urgent_fixed", "payment_"}
-    OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait", "start_window_", "finish_window_", "min_gap_between_bookings", "extension_step_"}
+    OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait", "start_window_", "finish_window_", "min_gap_between_bookings", "extension_step_", "early_termination", "min_notice_reduce", "pro_response_", "pro_expired_", "client_payment_deadline", "pro_cancel_", "grace_manual_", "client_noshow_"}
     admin_role = getattr(current, 'admin_role', None) or "super_admin"
     if admin_role != "super_admin":
         for field in body.updates:

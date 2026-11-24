@@ -76,6 +76,9 @@ const ProfileMenu = () => {
       { icon: <History size={15}/>, text: t("profile_menu.my_activity"), path: "/activity" },
       { icon: <History size={15}/>, text: t("profile_menu.history"), path: "/history" },
       { icon: <MessageSquare size={15}/>, text: t("profile_menu.messages"), path: "/messages" },
+      // Item 3 (24/11/2026) — client now has "Avaliações" with tabs
+      // Recebidas / Feitas (and pending reviews).
+      { icon: <Star size={15}/>, text: t("profile_menu.reviews"), path: "/reviews" },
     ]},
     { label: t("profile_menu.section_payments"), items: [
       { icon: <CreditCard size={15}/>, text: t("profile_menu.payment_methods"), path: "/payment-methods" },

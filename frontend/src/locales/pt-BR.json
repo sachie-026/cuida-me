@@ -669,6 +669,8 @@
     "reason": "Motivo"
   },
   "client_booking": {
+    "cancel_warning_no_refund": "Atenção: este atendimento começa em menos de {{hours}}h. Você pode cancelar grátis só nos próximos {{grace}} minutos. Depois disso, não haverá reembolso. Deseja confirmar?",
+    "cancel_warning_partial": "Você pode cancelar grátis nos próximos {{grace}} minutos. Depois disso, o reembolso será de {{pct}}%. Deseja confirmar?",
     "title": "Novo Agendamento",
     "step_of": "Etapa {{step}} de {{total}}",
     "back": "Voltar",
@@ -2106,9 +2108,33 @@
     "overall": "Avaliação geral",
     "count_one": "{{count}} avaliação recebida",
     "count_other": "{{count}} avaliações recebidas",
-    "empty": "Ainda não há avaliações. Após seus primeiros atendimentos concluídos, os clientes poderão avaliar seu trabalho aqui.",
+    "empty": "Ainda não há avaliações.",
+    "empty_received": "Nenhuma avaliação recebida ainda.",
+    "empty_given": "Você ainda não avaliou nenhum atendimento.",
+    "empty_pending": "Nenhuma avaliação pendente.",
     "load_error": "Não foi possível carregar suas avaliações. Tente novamente.",
-    "client_fallback": "Cliente"
+    "client_fallback": "Cliente",
+    "pro_fallback": "Profissional",
+    "service_fallback": "Atendimento",
+    "tab_received": "Recebidas",
+    "tab_given": "Feitas",
+    "tab_pending": "Pendentes",
+    "given_to": "Avaliação enviada",
+    "rate_button": "Avaliar"
+  },
+  "duration_change": {
+    "title": "Alterar duração",
+    "subtitle": "Aumente ou reduza a duração. O profissional precisa aceitar antes da aplicação.",
+    "increase": "Aumentar",
+    "decrease": "Reduzir",
+    "cost_note_increase": "Você paga a diferença após o profissional aceitar. A Taxa Inicial não é cobrada novamente.",
+    "cost_note_decrease": "O valor das horas removidas é reembolsado após o profissional aceitar.",
+    "no_increase_options": "Sem tempo disponível para aumentar: o profissional tem outro atendimento logo após este.",
+    "no_decrease_options": "Não há reduções disponíveis dentro do mínimo de duração.",
+    "confirm": "Solicitar alteração",
+    "request_sent": "Pedido enviado. Aguardando o profissional.",
+    "request_error": "Não foi possível enviar o pedido. Tente novamente.",
+    "load_error": "Não foi possível carregar as opções."
   },
   "extend_service": {
     "title": "Estender atendimento",
@@ -2173,6 +2199,15 @@
     "extension_confirmed_toast": "Extensão confirmada. Horário atualizado.",
     "extension_declined_toast": "Extensão recusada.",
     "extension_response_error": "Não foi possível responder ao pedido. Tente novamente.",
+    "duration_change_title": "Pedido de alteração de duração",
+    "duration_change_message": "O cliente pediu {{direction}} no atendimento até {{newEnd}}. Diferença: {{sign}} {{delta}}. Aceite para aplicar e ajustar cobrança/reembolso.",
+    "duration_change_accept": "Aceitar",
+    "duration_change_decline": "Recusar",
+    "duration_change_confirmed_toast": "Alteração de duração confirmada.",
+    "duration_change_declined_toast": "Alteração de duração recusada.",
+    "duration_change_response_error": "Não foi possível responder à alteração. Tente novamente.",
+    "dir_increase": "aumentar",
+    "dir_decrease": "reduzir",
     "status": {
       "pending": "Pendente",
       "accepted": "Aceito",
@@ -2220,7 +2255,12 @@
     "extension_payment_failed": "O pagamento da extensão falhou. O horário original permanece — verifique seu método de pagamento.",
     "extension_expired": "O pedido de extensão expirou sem resposta. O horário original permanece.",
     "rate_professional": "Avaliar profissional",
-    "rating_sent": "Avaliação enviada"
+    "rating_sent": "Avaliação enviada",
+    "urgency_fee_label": "Adicional de urgência (+{{pct}}%)",
+    "urgency_fee_note": "Este agendamento foi solicitado com pouca antecedência, por isso é aplicado um adicional de urgência de {{pct}}%.",
+    "duration_change_button": "Alterar duração",
+    "duration_change_pending": "Pedido de alteração enviado. Aguardando resposta do profissional.",
+    "duration_change_declined": "O profissional recusou a alteração de duração. O horário original permanece."
   },
   "admin_availability": {
     "title": "Agenda do profissional",

@@ -668,6 +668,8 @@
     "reason": "Reason"
   },
   "client_booking": {
+    "cancel_warning_no_refund": "Heads up: this booking starts in less than {{hours}}h. You can cancel for free only in the next {{grace}} minutes. After that, there is no refund. Confirm?",
+    "cancel_warning_partial": "You can cancel for free in the next {{grace}} minutes. After that, the refund will be {{pct}}%. Confirm?",
     "title": "New Booking",
     "step_of": "Step {{step}} of {{total}}",
     "back": "Back",
@@ -2105,9 +2107,33 @@
     "overall": "Overall rating",
     "count_one": "{{count}} review received",
     "count_other": "{{count}} reviews received",
-    "empty": "No reviews yet. After your first completed services, clients will be able to review your work here.",
+    "empty": "No reviews yet.",
+    "empty_received": "No reviews received yet.",
+    "empty_given": "You haven't rated any service yet.",
+    "empty_pending": "No pending reviews.",
     "load_error": "Could not load your reviews. Please try again.",
-    "client_fallback": "Client"
+    "client_fallback": "Client",
+    "pro_fallback": "Professional",
+    "service_fallback": "Service",
+    "tab_received": "Received",
+    "tab_given": "Given",
+    "tab_pending": "Pending",
+    "given_to": "Review sent",
+    "rate_button": "Rate"
+  },
+  "duration_change": {
+    "title": "Change duration",
+    "subtitle": "Increase or reduce duration. The professional must accept before it applies.",
+    "increase": "Increase",
+    "decrease": "Reduce",
+    "cost_note_increase": "You pay the difference once the professional accepts. The Initial Service Fee is not charged again.",
+    "cost_note_decrease": "The amount for the removed hours is refunded once the professional accepts.",
+    "no_increase_options": "No time available to increase: the professional has another appointment right after.",
+    "no_decrease_options": "No reductions available within the minimum duration.",
+    "confirm": "Request change",
+    "request_sent": "Request sent. Waiting for the professional.",
+    "request_error": "Could not send the request. Please try again.",
+    "load_error": "Could not load options."
   },
   "extend_service": {
     "title": "Extend service",
@@ -2172,6 +2198,15 @@
     "extension_confirmed_toast": "Extension confirmed. Schedule updated.",
     "extension_declined_toast": "Extension declined.",
     "extension_response_error": "Could not respond to the request. Please try again.",
+    "duration_change_title": "Duration change request",
+    "duration_change_message": "The client asked to {{direction}} the service until {{newEnd}}. Difference: {{sign}} {{delta}}. Accept to apply and adjust charge/refund.",
+    "duration_change_accept": "Accept",
+    "duration_change_decline": "Decline",
+    "duration_change_confirmed_toast": "Duration change confirmed.",
+    "duration_change_declined_toast": "Duration change declined.",
+    "duration_change_response_error": "Could not respond to the change. Please try again.",
+    "dir_increase": "increase",
+    "dir_decrease": "reduce",
     "status": {
       "pending": "Pending",
       "accepted": "Accepted",
@@ -2219,7 +2254,12 @@
     "extension_payment_failed": "Extension payment failed. Original schedule remains — please check your payment method.",
     "extension_expired": "The extension request expired without a response. Original schedule remains.",
     "rate_professional": "Rate professional",
-    "rating_sent": "Rating sent"
+    "rating_sent": "Rating sent",
+    "urgency_fee_label": "Urgency surcharge (+{{pct}}%)",
+    "urgency_fee_note": "This booking was requested on short notice, so an urgency surcharge of {{pct}}% applies.",
+    "duration_change_button": "Change duration",
+    "duration_change_pending": "Change request sent. Waiting for the professional.",
+    "duration_change_declined": "The professional declined the duration change. Original schedule remains."
   },
   "admin_availability": {
     "title": "Professional schedule",

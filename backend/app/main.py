@@ -110,6 +110,17 @@ def run_migrations():
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_end BOOLEAN DEFAULT FALSE",
         # Rule #1 (23/11/2026) — client-confirmed pro presence unlocks start past T+30.
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_confirmed_pro_presence BOOLEAN DEFAULT FALSE",
+        # Item 10 (24/11/2026) — client payment deadline after pro accepts.
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_deadline TIMESTAMPTZ",
+        # Item 10 — rolling count of booking requests the pro ignored.
+        "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS expired_requests_count INTEGER DEFAULT 0",
+        # Item 6 (24/11/2026) — client-initiated duration change.
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_change_status TEXT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_change_new_end TIMESTAMPTZ",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_change_delta FLOAT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_change_direction TEXT",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_change_requested_at TIMESTAMPTZ",
+        "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_change_log JSONB",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_dispute BOOLEAN DEFAULT FALSE",
         "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS dispute_reason TEXT",
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_amount FLOAT",

@@ -123,6 +123,9 @@ class Professional(Base):
     late_cancellations = Column(Integer, default=0)
     no_shows         = Column(Integer, default=0)
     completed_count  = Column(Integer, default=0)
+    # Item 10 (24/11/2026) — count of booking requests the pro ignored.
+    # Rolling-window interpretation lives in the response-expiry sweep.
+    expired_requests_count = Column(Integer, default=0)
     suspended_until  = Column(DateTime(timezone=True), nullable=True)
     rest_until       = Column(DateTime(timezone=True), nullable=True)
     stripe_connect_id = Column(String, nullable=True)   # Stripe Connect Express account ID
@@ -282,8 +285,22 @@ class Booking(Base):
     extension_requested_by  = Column(String, nullable=True)
     extension_additional_cost = Column(Float, nullable=True)
     extension_status        = Column(String, nullable=True)  # requested, confirmed, declined
+    # Item 6 (24/11/2026) — client-initiated duration change (before service
+    # starts). Distinct from extension_* which only extends in-progress
+    # bookings. Direction is "increase" or "decrease"; delta is the money
+    # difference (positive = client owes more, negative = client gets refund).
+    duration_change_status       = Column(String, nullable=True)   # requested, confirmed, declined, cancelled
+    duration_change_new_end      = Column(DateTime(timezone=True), nullable=True)
+    duration_change_delta        = Column(Float, nullable=True)
+    duration_change_direction    = Column(String, nullable=True)   # increase | decrease
+    duration_change_requested_at = Column(DateTime(timezone=True), nullable=True)
+    duration_change_log          = Column(JSON, default=list)      # history of changes for audit
     # Smart matching
     match_deadline   = Column(DateTime(timezone=True), nullable=True)
+    # Item 10 (24/11/2026) — deadline by which the client must pay after the
+    # pro accepts. Past this, the scheduler auto-cancels the booking, frees
+    # the slot and notifies the client.
+    payment_deadline = Column(DateTime(timezone=True), nullable=True)
     match_batch      = Column(Integer, nullable=True)
     matched_pro_ids  = Column(JSON, default=list)
     # Change 44 — service-address snapshot (captured at booking creation so
