@@ -27,6 +27,24 @@ const Messages = () => {
   const [sending,       setSending]        = useState(false);
   // Change 44a — active booking shared between current user & partner, for the quick-message chips
   const [activeBooking, setActiveBooking] = useState(null);
+  // Chat (25/11/2026) — when opened via ?booking=<id>, fetch THAT specific
+  // booking to decide whether the chat is read-only. Statuses that keep the
+  // chat interactive come from the Admin Panel (chat_active_statuses).
+  // For threads without a specific booking context (just a partner), input
+  // stays interactive as before.
+  const [contextBooking, setContextBooking] = useState(null);
+  const chatActiveStatuses = (() => {
+    try {
+      const raw = localStorage.getItem("chat_active_statuses")
+        || "accepted,professional_arrived,checked_in";
+      return new Set(raw.split(",").map(s => s.trim()).filter(Boolean));
+    } catch { return new Set(["accepted", "professional_arrived", "checked_in"]); }
+  })();
+  const bookingIdFromUrl = params.get("booking");
+  const chatReadOnly = Boolean(
+    contextBooking && contextBooking.status
+    && !chatActiveStatuses.has(contextBooking.status)
+  );
   // Current user's primary role — used to pick which chip set to render
   const currentRole = (localStorage.getItem("role") || "").toLowerCase();
   const chipSide = currentRole === "client" ? "client"
@@ -37,6 +55,17 @@ const Messages = () => {
     axios.get(`${API}/api/messages/conversations`, { headers })
       .then(r => setConversations(r.data))
       .catch(() => {});
+    // Chat (25/11/2026) — pull the admin-configured chat_active_statuses
+    // into localStorage so the read-only check is accurate for future
+    // navigations in this session too.
+    axios.get(`${API}/api/settings/public`).then(r => {
+      try {
+        const v = r?.data?.chat_active_statuses;
+        if (typeof v === "string" && v.trim()) {
+          localStorage.setItem("chat_active_statuses", v);
+        }
+      } catch {}
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -50,6 +79,17 @@ const Messages = () => {
       .then(r => setActiveBooking(r.data || null))
       .catch(() => setActiveBooking(null));
   }, [activePartner]);
+
+  // Chat (25/11/2026) — fetch the specific booking passed as ?booking=<id>
+  // so we can decide read-only vs interactive. Independent of
+  // `with-partner` (which only returns ACTIVE ones — we may be opening a
+  // past/finalized one from History).
+  useEffect(() => {
+    if (!bookingIdFromUrl) { setContextBooking(null); return; }
+    axios.get(`${API}/api/bookings/${bookingIdFromUrl}`, { headers })
+      .then(r => setContextBooking(r.data || null))
+      .catch(() => setContextBooking(null));
+  }, [bookingIdFromUrl]);
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
@@ -164,17 +204,28 @@ const Messages = () => {
                 </div>
               )}
 
+              {/* Chat (25/11/2026) — read-only banner when the booking
+                  passed as ?booking=<id> is in a non-active status (History).
+                  Original interactive path is preserved for threads without
+                  a ?booking context. */}
+              {chatReadOnly && (
+                <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 text-xs text-amber-800 text-center">
+                  {t("messages.read_only_hint")}
+                </div>
+              )}
+
               {/* Input */}
               <div className="bg-white border-t border-slate-100 p-4 flex gap-3">
                 <input
                   className="form-input flex-1"
-                  placeholder={t("messages.placeholder")}
+                  placeholder={chatReadOnly ? t("messages.read_only_placeholder") : t("messages.placeholder")}
                   value={newMsg}
                   onChange={e => setNewMsg(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  onKeyDown={e => e.key === "Enter" && !e.shiftKey && !chatReadOnly && handleSend()}
                   maxLength={2000}
+                  disabled={chatReadOnly}
                 />
-                <button onClick={handleSend} disabled={sending || !newMsg.trim()}
+                <button onClick={handleSend} disabled={sending || !newMsg.trim() || chatReadOnly}
                   className="btn-primary px-4 py-2 flex-shrink-0 disabled:opacity-60">
                   <Send size={16} />
                 </button>

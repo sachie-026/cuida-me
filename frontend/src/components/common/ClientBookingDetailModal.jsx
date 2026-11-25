@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { X, MapPin, Clock, User, Phone, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass, Star, Zap } from "lucide-react";
+import { X, MapPin, Clock, User, Phone, MessageSquare, Edit2, Save, AlertCircle, Loader, CheckCircle2, Hourglass, Star, Zap } from "lucide-react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import CareBadges from "./CareBadges";
@@ -30,8 +31,21 @@ const fmtTime = (iso) =>
 
 const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
+  // Chat (25/11/2026) — comma-separated list of statuses in which chat
+  // is interactive. Comes from the Admin Panel via /api/settings/public;
+  // we cache it in localStorage so the modal can decide without an extra
+  // round-trip. Null fallback → use the baseline default so the button
+  // works even before the public settings fetch has landed.
+  const chatActiveStatuses = (() => {
+    try {
+      const raw = localStorage.getItem("chat_active_statuses")
+        || "accepted,professional_arrived,checked_in";
+      return new Set(raw.split(",").map(s => s.trim()).filter(Boolean));
+    } catch { return new Set(["accepted", "professional_arrived", "checked_in"]); }
+  })();
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,6 +75,20 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
   useEffect(() => {
     const h = setInterval(() => setNowTick(x => x + 1), 15000);
     return () => clearInterval(h);
+  }, []);
+
+  // Chat (25/11/2026) — best-effort refresh of chat_active_statuses from
+  // the Admin Panel. Falls back silently if the fetch fails; the chat
+  // button then uses the baseline default.
+  useEffect(() => {
+    axios.get(`${API}/api/settings/public`).then(r => {
+      try {
+        const v = r?.data?.chat_active_statuses;
+        if (typeof v === "string" && v.trim()) {
+          localStorage.setItem("chat_active_statuses", v);
+        }
+      } catch {}
+    }).catch(() => {});
   }, []);
 
   // Resync local draft if the parent passes a different booking in
@@ -269,6 +297,22 @@ const ClientBookingDetailModal = ({ booking, onClose, onUpdated }) => {
           <DurationChangeModal booking={booking}
             onClose={() => setShowDurationChange(false)}
             onUpdated={(p) => { onUpdated?.(p); setShowDurationChange(false); }} />
+        )}
+
+        {/* Chat (25/11/2026) — client ↔ professional. Reuses the Messages
+            page the pro already uses; routes with ?partner=<pro_user_id>
+            &booking=<booking_id> so Messages auto-selects the right thread.
+            Button is hidden when the booking is not in an interactive
+            status (completed / cancelled / no_show / under_review go to
+            History, where the conversation is read-only). The check uses
+            chat_active_statuses from the Admin Panel. */}
+        {booking.professional_user_id && chatActiveStatuses.has(booking.status) && (
+          <button
+            onClick={() => navigate(`/messages?partner=${encodeURIComponent(booking.professional_user_id)}&booking=${encodeURIComponent(booking.id)}`)}
+            className="mb-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-blue-500 text-white font-semibold text-sm hover:bg-blue-600">
+            <MessageSquare size={14} />
+            {t("client_booking_detail.chat_with_professional")}
+          </button>
         )}
 
         {/* Change 44a — One-tap quick-message chips (client side: Pode chegar / Estou aguardando) */}

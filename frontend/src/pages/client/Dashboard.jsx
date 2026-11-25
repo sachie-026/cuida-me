@@ -235,6 +235,19 @@ const ClientDashboard = () => {
                         </button>
                       );
                     })()}
+                    {/* Chat (25/11/2026) — shortcut to the Messages page for
+                        this booking. Shown only when status is in the
+                        admin-configured chat_active_statuses set, so bookings
+                        that already moved to History don't offer this chip
+                        (their chat opens read-only from the detail modal). */}
+                    {b.professional_user_id && ["accepted", "professional_arrived", "checked_in"].includes(b.status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/messages?partner=${encodeURIComponent(b.professional_user_id)}&booking=${encodeURIComponent(b.id)}`); }}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
+                        title="Conversar com o profissional">
+                        <MessageSquare size={11} />
+                      </button>
+                    )}
                     {(b.status === "pending" || b.status === "accepted") && (
                       <button onClick={(e) => { e.stopPropagation(); setCancellingBooking(b); }}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors">
