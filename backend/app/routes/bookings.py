@@ -1053,6 +1053,24 @@ CHECK_IN_HARD_BLOCK_METERS = 2000  # hard block — beyond this the pro is
                                    # at /{id}/gps-exception for legitimate
                                    # edge cases.
 
+# Bug fix (25/11/2026) — scheduled_start / scheduled_end are stored as
+# naive datetimes meant to be wall-clock Brazilian time. Treating them as
+# UTC with `.replace(tzinfo=timezone.utc)` was off by the SP→UTC offset
+# (3 h), so the time-gate helpers I added opened and closed windows 3 h
+# too early. Use this helper everywhere a scheduled_* column is compared
+# against datetime.now(timezone.utc).
+_TZ_SP_SCHED = ZoneInfo("America/Sao_Paulo")
+
+def _sched_to_utc(dt):
+    """Scheduled times are naive wall-clock Brazilian time. Convert to
+    tz-aware UTC so comparisons with datetime.now(timezone.utc) work."""
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is None:
+        return dt.replace(tzinfo=_TZ_SP_SCHED).astimezone(timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 # Rule #3 (21/11/2026): a professional can only hit "Iniciar atendimento"
 # starting 10 minutes before the scheduled start time.
 # Rule #1 (23/11/2026): the start window closes 30 minutes AFTER the scheduled
@@ -1081,11 +1099,10 @@ def _check_start_time_gate(booking: "Booking", db: Session = None) -> None:
     Values default to module constants; if `db` is provided, PlatformSettings
     override them so an admin edit takes effect immediately.
     """
-    sched = booking.scheduled_start
+    # Bug fix (25/11/2026) — scheduled_start is wall-clock Brazilian.
+    sched = _sched_to_utc(booking.scheduled_start)
     if sched is None:
         return
-    if sched.tzinfo is None:
-        sched = sched.replace(tzinfo=timezone.utc)
     now_utc = datetime.now(timezone.utc)
 
     cfg = _time_cfg(db) if db is not None else None
@@ -1233,19 +1250,14 @@ def _find_blocking_booking(current_pro: "Professional", this_booking: "Booking",
         status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
         if status_val == "checked_in":
             # Would auto-finish at scheduled_end + 30.
-            end = b.scheduled_end
-            if end is not None:
-                if getattr(end, "tzinfo", None) is None:
-                    end = end.replace(tzinfo=timezone.utc)
-                if now_utc > end + timedelta(minutes=MAX_FINISH_LATE_MINUTES):
-                    continue  # effectively over, don't block
+            # Bug fix (25/11/2026) — wall-clock Brazilian → UTC.
+            end = _sched_to_utc(b.scheduled_end)
+            if end is not None and now_utc > end + timedelta(minutes=MAX_FINISH_LATE_MINUTES):
+                continue  # effectively over, don't block
         else:  # professional_arrived — legacy, would auto-no-show at start+30
-            start = b.scheduled_start
-            if start is not None:
-                if getattr(start, "tzinfo", None) is None:
-                    start = start.replace(tzinfo=timezone.utc)
-                if now_utc > start + timedelta(minutes=MAX_START_LATE_MINUTES):
-                    continue
+            start = _sched_to_utc(b.scheduled_start)
+            if start is not None and now_utc > start + timedelta(minutes=MAX_START_LATE_MINUTES):
+                continue
         return b
     return None
 
@@ -1292,11 +1304,10 @@ def _check_finish_time_gate(booking: "Booking", db: Session = None) -> None:
       extension flow next time, and let the sweep catch up.
     - No gate when scheduled_end is missing (data issue, don't lock pro out).
     """
-    sched_end = booking.scheduled_end
+    # Bug fix (25/11/2026) — scheduled_end is wall-clock Brazilian.
+    sched_end = _sched_to_utc(booking.scheduled_end)
     if sched_end is None:
         return
-    if sched_end.tzinfo is None:
-        sched_end = sched_end.replace(tzinfo=timezone.utc)
     now_utc = datetime.now(timezone.utc)
     cfg = _time_cfg(db) if db is not None else None
     cap_min = cfg["finish_after"] if cfg else MAX_FINISH_LATE_MINUTES
@@ -1317,11 +1328,10 @@ def _mark_late_arrival_if_applicable(booking: "Booking", db: Session, current_us
     to both sides. Returns True iff it fired. Called from the start handlers
     AFTER the time gate passes, so we know we're within [T+15, T+30] or the
     client-confirmed override window."""
-    sched = booking.scheduled_start
+    # Bug fix (25/11/2026) — scheduled_start is wall-clock Brazilian.
+    sched = _sched_to_utc(booking.scheduled_start)
     if sched is None:
         return False
-    if sched.tzinfo is None:
-        sched = sched.replace(tzinfo=timezone.utc)
     now_utc = datetime.now(timezone.utc)
     cfg = _time_cfg(db) if db is not None else None
     late_after = cfg["late_arrival"] if cfg else LATE_ARRIVAL_AFTER_MINUTES
@@ -1643,9 +1653,8 @@ def start_service_combined(booking_id: str, body: CheckInRequest, db: Session = 
     # only got in because of a client-confirmed override past T+30, also flag
     # the booking for admin review so the ops team can inspect.
     was_late = _mark_late_arrival_if_applicable(booking, db, current)
-    sched = booking.scheduled_start
-    if sched is not None and getattr(sched, "tzinfo", None) is None:
-        sched = sched.replace(tzinfo=timezone.utc)
+    # Bug fix (25/11/2026) — scheduled_start is wall-clock Brazilian.
+    sched = _sched_to_utc(booking.scheduled_start)
     client_override_used = (
         sched is not None
         and now_utc > sched + timedelta(minutes=MAX_START_LATE_MINUTES)
@@ -2009,11 +2018,10 @@ def _pro_response_deadline(booking: "Booking", db: Session) -> "datetime":
     now = datetime.now(timezone.utc)
     if booking.is_urgent:
         return now + timedelta(minutes=int(get_setting("pro_response_urgent_min", db) or 30))
-    sched = booking.scheduled_start
+    # Bug fix (25/11/2026) — scheduled_start is wall-clock Brazilian.
+    sched = _sched_to_utc(booking.scheduled_start)
     if sched is None:
         return now + timedelta(minutes=int(get_setting("pro_response_advance_min", db) or 180))
-    if getattr(sched, "tzinfo", None) is None:
-        sched = sched.replace(tzinfo=timezone.utc)
     hours_until = (sched - now).total_seconds() / 3600
     boundary = int(get_setting("pro_response_sameday_boundary_hours", db) or 24)
     if hours_until <= boundary:
