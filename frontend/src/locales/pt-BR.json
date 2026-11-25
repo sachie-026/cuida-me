@@ -1995,7 +1995,9 @@
     "or_start_new": "ou inicie uma nova a partir de um agendamento",
     "conversation_fallback": "Conversa",
     "placeholder": "Digite uma mensagem...",
-    "send_error": "Erro ao enviar mensagem."
+    "send_error": "Erro ao enviar mensagem.",
+    "read_only_hint": "Atendimento encerrado — conversa somente leitura.",
+    "read_only_placeholder": "Conversa somente leitura"
   },
   "profile_menu": {
     "default_user": "Usuário",
@@ -2256,6 +2258,7 @@
     "extension_expired": "O pedido de extensão expirou sem resposta. O horário original permanece.",
     "rate_professional": "Avaliar profissional",
     "rating_sent": "Avaliação enviada",
+    "chat_with_professional": "Conversar com o profissional",
     "urgency_fee_label": "Adicional de urgência (+{{pct}}%)",
     "urgency_fee_note": "Este agendamento foi solicitado com pouca antecedência, por isso é aplicado um adicional de urgência de {{pct}}%.",
     "duration_change_button": "Alterar duração",

@@ -1994,7 +1994,9 @@
     "or_start_new": "or start a new one from a booking",
     "conversation_fallback": "Conversation",
     "placeholder": "Type a message...",
-    "send_error": "Error sending message."
+    "send_error": "Error sending message.",
+    "read_only_hint": "Service ended — conversation is read-only.",
+    "read_only_placeholder": "Read-only conversation"
   },
   "profile_menu": {
     "default_user": "User",
@@ -2255,6 +2257,7 @@
     "extension_expired": "The extension request expired without a response. Original schedule remains.",
     "rate_professional": "Rate professional",
     "rating_sent": "Rating sent",
+    "chat_with_professional": "Chat with the professional",
     "urgency_fee_label": "Urgency surcharge (+{{pct}}%)",
     "urgency_fee_note": "This booking was requested on short notice, so an urgency surcharge of {{pct}}% applies.",
     "duration_change_button": "Change duration",

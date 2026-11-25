@@ -51,6 +51,12 @@ DEFAULTS = {
     "min_gap_between_bookings_min": 30,
     "extension_step_min":           30,
 
+    # Chat (25/11/2026) — comma-separated booking statuses in which the
+    # client <-> professional chat is INTERACTIVE. Any other status renders
+    # the chat read-only (History). Admin-editable per the "no hardcoding"
+    # rule. Default covers "Confirmed → end of service".
+    "chat_active_statuses":         "accepted,professional_arrived,checked_in",
+
     # Item 8 (24/11/2026) — Early Termination tolerance: finishing within
     # this many minutes of scheduled_end triggers NO deduction. Beyond
     # it, the tiered refund formula kicks in. Separate from grace_period.
@@ -359,6 +365,8 @@ def get_public_settings(db: Session = Depends(get_db)):
         "finish_window_after_min",
         "min_gap_between_bookings_min",
         "extension_step_min",
+        # Chat window — frontend needs it to toggle chat read-only state.
+        "chat_active_statuses",
         # Items 8/12 — frontend needs these for client-side hints
         "early_termination_tolerance_min",
         "min_notice_reduce_hours",
@@ -387,7 +395,8 @@ def get_settings(db: Session = Depends(get_db), _=Depends(require_admin)):
             "time_gates":   ["start_window_before_min", "late_arrival_after_min",
                             "start_window_after_min", "finish_window_after_min",
                             "min_gap_between_bookings_min", "extension_step_min",
-                            "early_termination_tolerance_min", "min_notice_reduce_hours"],
+                            "early_termination_tolerance_min", "min_notice_reduce_hours",
+                            "chat_active_statuses"],
             # Item 10 — Prazos de resposta e pagamento
             "deadlines":    ["pro_response_urgent_min", "pro_response_sameday_min",
                             "pro_response_advance_min", "pro_response_sameday_boundary_hours",
@@ -456,7 +465,7 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db), current
 
     # 50-34: Enforce sub-role permissions
     FINANCE_FIELDS = {"initial_fee_", "day_rate_", "night_rate_", "platform_commission", "holiday_surcharge", "urgent_surcharge", "holiday_pricing", "urgent_booking", "urgent_fee", "urgent_fixed", "payment_"}
-    OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait", "start_window_", "finish_window_", "min_gap_between_bookings", "extension_step_", "early_termination", "min_notice_reduce", "pro_response_", "pro_expired_", "client_payment_deadline", "pro_cancel_", "grace_manual_", "client_noshow_"}
+    OPERATIONS_FIELDS = {"min_advance", "min_booking", "max_booking", "grace_", "refund_", "penalty_", "late_arrival", "gps_radius", "checkin_", "rest_after", "day_start", "night_start", "enabled_categories", "eval_window", "standard_response", "urgent_response", "max_match", "arrival_wait", "start_window_", "finish_window_", "min_gap_between_bookings", "extension_step_", "early_termination", "min_notice_reduce", "pro_response_", "pro_expired_", "client_payment_deadline", "pro_cancel_", "grace_manual_", "client_noshow_", "chat_active_statuses"}
     admin_role = getattr(current, 'admin_role', None) or "super_admin"
     if admin_role != "super_admin":
         for field in body.updates:
