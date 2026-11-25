@@ -11,6 +11,28 @@ Runner is called periodically (e.g. every 5 minutes) to check for pending schedu
 """
 import threading
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+
+# Bug fix (25/11/2026) — Booking scheduled_start / scheduled_end columns are
+# stored as naive datetimes meant to be wall-clock Brazilian time (see the
+# codebase-wide convention at bookings.py: "Scheduled times are treated as
+# bare wall-clock Brazilian time throughout the app"). Comparing them to
+# datetime.now(timezone.utc) with `.replace(tzinfo=timezone.utc)` was
+# WRONG — it treated 09:00 as 09:00 UTC when it meant 09:00 São Paulo
+# (12:00 UTC). On the no-show sweep this fired the auto-cancel 3 h too
+# early. The helper below is the correct conversion for every comparison
+# of a scheduled_* column against UTC now.
+_TZ_SP = ZoneInfo("America/Sao_Paulo")
+
+def _sched_to_utc(dt):
+    """Scheduled times are naive wall-clock Brazilian time.
+    Convert to tz-aware UTC so comparisons with datetime.now(timezone.utc)
+    are correct. Returns None for None."""
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is None:
+        return dt.replace(tzinfo=_TZ_SP).astimezone(timezone.utc)
+    return dt.astimezone(timezone.utc)
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -271,12 +293,10 @@ def _run_auto_no_show_sweep():
             if getattr(b, "client_confirmed_pro_presence", False):
                 continue
 
-            start = b.scheduled_start
-            if getattr(start, "tzinfo", None) is None:
-                start = start.replace(tzinfo=timezone.utc)
-            end = b.scheduled_end
-            if end and getattr(end, "tzinfo", None) is None:
-                end = end.replace(tzinfo=timezone.utc)
+            # Bug fix (25/11/2026) — scheduled_* are wall-clock Brazilian,
+            # not UTC. Convert correctly or the sweep fires 3h too early.
+            start = _sched_to_utc(b.scheduled_start)
+            end   = _sched_to_utc(b.scheduled_end)
 
             status_val = b.status.value if hasattr(b.status, "value") else str(b.status)
             if status_val == "accepted":
@@ -361,9 +381,10 @@ def _run_auto_finish_sweep():
             Booking.scheduled_end.isnot(None),
         ).all()
         for b in bookings:
-            end = b.scheduled_end
-            if getattr(end, "tzinfo", None) is None:
-                end = end.replace(tzinfo=timezone.utc)
+            # Bug fix (25/11/2026) — scheduled_* are wall-clock Brazilian.
+            end = _sched_to_utc(b.scheduled_end)
+            if end is None:
+                continue
             threshold = end + timedelta(minutes=30)
             if now < threshold:
                 continue
@@ -373,10 +394,14 @@ def _run_auto_finish_sweep():
 
             # Payment based on scheduled time — set actual_checkout exactly
             # to scheduled_end (not "now") so the duration-based duration
-            # audit reflects the agreed service window.
-            b.actual_checkout = end
+            # audit reflects the agreed service window. Keep the stored
+            # value naive (matches the rest of the booking row).
+            b.actual_checkout = b.scheduled_end
             b.status = BookingStatus.completed
             if b.actual_checkin:
+                # actual_checkin is set via datetime.now(timezone.utc) in the
+                # checkin handlers, so it IS UTC — not wall-clock. Use the
+                # raw utc-aware form, not _sched_to_utc.
                 checkin_val = b.actual_checkin
                 if getattr(checkin_val, "tzinfo", None) is None:
                     checkin_val = checkin_val.replace(tzinfo=timezone.utc)
@@ -426,10 +451,9 @@ def _run_extension_expiry_sweep():
             Booking.scheduled_end.isnot(None),
         ).all()
         for b in bookings:
-            end = b.scheduled_end
-            if getattr(end, "tzinfo", None) is None:
-                end = end.replace(tzinfo=timezone.utc)
-            if now < end:
+            # Bug fix (25/11/2026) — scheduled_* are wall-clock Brazilian.
+            end = _sched_to_utc(b.scheduled_end)
+            if end is None or now < end:
                 continue
             cache_key = ("extexpire", b.id)
             if cache_key in _processed_cache:
@@ -475,10 +499,9 @@ def _run_finish_reminder_sweep():
             Booking.scheduled_end.isnot(None),
         ).all()
         for b in bookings:
-            end = b.scheduled_end
-            if getattr(end, "tzinfo", None) is None:
-                end = end.replace(tzinfo=timezone.utc)
-            if now < end:
+            # Bug fix (25/11/2026) — scheduled_* are wall-clock Brazilian.
+            end = _sched_to_utc(b.scheduled_end)
+            if end is None or now < end:
                 continue  # service hasn't reached its scheduled end yet
             cache_key = ("finishreminder", b.id)
             if cache_key in _processed_cache:
@@ -494,7 +517,8 @@ def _run_finish_reminder_sweep():
                         "booking_id": b.id,
                         # Format the wall-clock scheduled end — the whole app treats
                         # these as wall-clock Brazilian time, no TZ conversion.
-                        "end_time": (end.replace(tzinfo=None) if end.tzinfo else end).strftime("%H:%M"),
+                        # Show wall-clock Brazilian time in the message.
+                        "end_time": end.astimezone(_TZ_SP).strftime("%H:%M"),
                     }, recipient_users={"professional": [pro_user]})
             except Exception as e:
                 print(f"[FINISH-REMINDER] notify failed for {b.id}: {e}")
@@ -539,9 +563,10 @@ def _run_finish_before_next_sweep():
             ).all()
             next_near = None
             for nb in upcoming:
-                s = nb.scheduled_start
-                if getattr(s, "tzinfo", None) is None:
-                    s = s.replace(tzinfo=timezone.utc)
+                # Bug fix (25/11/2026) — wall-clock Brazilian → UTC.
+                s = _sched_to_utc(nb.scheduled_start)
+                if s is None:
+                    continue
                 if now <= s <= window:
                     if next_near is None or s < next_near[1]:
                         next_near = (nb, s)
@@ -562,7 +587,8 @@ def _run_finish_before_next_sweep():
                         "booking_id": cur.id,
                         "next_service": nb.service_type or "Cuidado",
                         "next_booking_code": f"#{nb.id[:6].upper()}",
-                        "next_start_time": (start_dt.replace(tzinfo=None) if start_dt.tzinfo else start_dt).strftime("%H:%M"),
+                        # Show wall-clock Brazilian time in the message.
+                        "next_start_time": start_dt.astimezone(_TZ_SP).strftime("%H:%M"),
                     }, recipient_users={"professional": [pro_user]})
             except Exception as e:
                 print(f"[FINISH-BEFORE-NEXT] notify failed for {cur.id} -> {nb.id}: {e}")
