@@ -1062,13 +1062,20 @@ CHECK_IN_HARD_BLOCK_METERS = 2000  # hard block — beyond this the pro is
 _TZ_SP_SCHED = ZoneInfo("America/Sao_Paulo")
 
 def _sched_to_utc(dt):
-    """Scheduled times are naive wall-clock Brazilian time. Convert to
-    tz-aware UTC so comparisons with datetime.now(timezone.utc) work."""
+    """Scheduled times represent wall-clock Brazilian time (how the rest of
+    the codebase treats them — display, strftime, frontend Date()). The
+    DB column is TIMESTAMPTZ, so SQLAlchemy may return naive OR tz-aware
+    UTC depending on driver/row; in BOTH cases the stored hour IS the
+    Brazilian wall-clock hour (the write path never converts SP → UTC).
+    Strip any claimed tzinfo, re-interpret as São Paulo, convert to real
+    UTC for comparison with datetime.now(timezone.utc).
+    Bug fix (27/11/2026) — supersedes the 25/11 half-fix which only
+    handled the naive branch."""
     if dt is None:
         return None
-    if getattr(dt, "tzinfo", None) is None:
-        return dt.replace(tzinfo=_TZ_SP_SCHED).astimezone(timezone.utc)
-    return dt.astimezone(timezone.utc)
+    if getattr(dt, "tzinfo", None) is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt.replace(tzinfo=_TZ_SP_SCHED).astimezone(timezone.utc)
 
 
 # Rule #3 (21/11/2026): a professional can only hit "Iniciar atendimento"

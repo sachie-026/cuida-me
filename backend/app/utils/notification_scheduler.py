@@ -25,14 +25,22 @@ from zoneinfo import ZoneInfo
 _TZ_SP = ZoneInfo("America/Sao_Paulo")
 
 def _sched_to_utc(dt):
-    """Scheduled times are naive wall-clock Brazilian time.
-    Convert to tz-aware UTC so comparisons with datetime.now(timezone.utc)
-    are correct. Returns None for None."""
+    """Scheduled times represent wall-clock Brazilian time (that's how the
+    rest of the codebase — display, strftime, frontend Date() — treats
+    them). The underlying DB column is TIMESTAMPTZ, so SQLAlchemy may
+    return the value as either naive OR tz-aware UTC depending on
+    driver/row; in BOTH cases the numeric hour/minute IS the Brazilian
+    wall-clock hour because nothing on the write path ever converted
+    SP → UTC. We normalise by stripping any claimed tzinfo and
+    re-interpreting as São Paulo, then converting to real UTC. This is
+    the correct comparison basis for datetime.now(timezone.utc).
+    Bug fix (27/11/2026) — supersedes the 25/11 half-fix which only
+    handled the naive branch; aware-UTC rows fell through unchanged."""
     if dt is None:
         return None
-    if getattr(dt, "tzinfo", None) is None:
-        return dt.replace(tzinfo=_TZ_SP).astimezone(timezone.utc)
-    return dt.astimezone(timezone.utc)
+    if getattr(dt, "tzinfo", None) is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt.replace(tzinfo=_TZ_SP).astimezone(timezone.utc)
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
