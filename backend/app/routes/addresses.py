@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.auth_deps import get_current_user
 from app.models.models import ServiceAddress, User
 from app.utils.cep_lookup import lookup_cep
-from app.utils.geocoding import geocode_address
+from app.utils.geocoding import geocode_address, geocode_structured
 
 router = APIRouter(prefix="/addresses", tags=["addresses"])
 
@@ -111,8 +111,10 @@ def create_address(body: AddressCreate, db: Session = Depends(get_db), current: 
         neighborhood=body.neighborhood, city=body.city, state=body.state,
         reference=body.reference, is_default=bool(body.is_default),
     )
-    # Geocode (optional — returns None if no API key configured)
-    coords = geocode_address(_full_address_string(a))
+    # Geocode (optional — returns None if no API key configured, or if the
+    # returned point does not validate against the requested city/state —
+    # see geocode_structured for why we don't use the free-form geocoder here).
+    coords = geocode_structured(a.street, a.number, a.neighborhood, a.city, a.state, a.cep)
     if coords:
         a.latitude, a.longitude = coords
 
@@ -152,9 +154,9 @@ def update_address(address_id: str, body: AddressUpdate, db: Session = Depends(g
                 changed_location = True
         setattr(a, k, v)
 
-    # Re-geocode if any location field changed
+    # Re-geocode if any location field changed (uses validated helper)
     if changed_location:
-        coords = geocode_address(_full_address_string(a))
+        coords = geocode_structured(a.street, a.number, a.neighborhood, a.city, a.state, a.cep)
         if coords:
             a.latitude, a.longitude = coords
 
