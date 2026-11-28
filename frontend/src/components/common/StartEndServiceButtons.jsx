@@ -119,14 +119,24 @@ const StartEndServiceButtons = ({ booking, onUpdate, compact = false }) => {
   const canFinish = status === "checked_in" || status === "professional_arrived";
   if (!canStart && !canFinish) return null;
 
-  // GPS helper — resolves with {latitude, longitude} or rejects with a translated string
+  // GPS helper — resolves with {latitude, longitude, accuracy_m} or rejects
+  // with a translated string. accuracy_m (meters) is sent to the backend so
+  // it can reject imprecise Wi-Fi/IP fixes with a clear "use phone or GPS
+  // exception" message instead of a nonsensical distance error — see the
+  // Londrina → São Paulo 460 km bug (28/11/2026).
   const getGPS = () => new Promise((resolve, reject) => {
     if (!navigator?.geolocation) {
       reject(t("start_end_service.gps_unavailable"));
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      (pos) => resolve({
+        latitude:   pos.coords.latitude,
+        longitude:  pos.coords.longitude,
+        accuracy_m: (typeof pos.coords.accuracy === "number" && isFinite(pos.coords.accuracy))
+                      ? pos.coords.accuracy
+                      : null,
+      }),
       (err) => {
         if (err.code === 1)      reject(t("start_end_service.gps_denied"));
         else if (err.code === 3) reject(t("start_end_service.gps_timeout"));

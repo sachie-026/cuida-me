@@ -244,23 +244,27 @@ def create_booking(body: BookingCreate, db: Session = Depends(get_db), current: 
     sa = body.service_address
     if not sa or not (sa.street and sa.city and sa.state):
         raise HTTPException(400, "Endereço de atendimento é obrigatório (rua, cidade e estado).")
-    # Lat/lng — use what the client sent, otherwise geocode on the server as a
-    # best-effort fallback. Missing coordinates are OK; GPS check-in simply
-    # won't enforce a radius for this booking.
-    sa_lat, sa_lng = sa.latitude, sa.longitude
+    # Lat/lng — ALWAYS re-geocode fresh with the validated helper so a
+    # booking inherits the correct point even if the saved ServiceAddress
+    # row has stale/wrong coords from an older, pre-fix geocode (Londrina
+    # → São Paulo 460 km bug). geocode_structured omits the unit complement
+    # (which confused Google's parser) and validates the returned point
+    # against the requested city/state. If the fresh call fails or doesn't
+    # validate, fall back to the client-supplied coords, then to the saved
+    # ServiceAddress coords. Missing coordinates are still OK: GPS check-in
+    # simply won't enforce a radius for this booking.
+    sa_lat, sa_lng = None, None
+    try:
+        from app.utils.geocoding import geocode_structured
+        coords = geocode_structured(sa.street, sa.number, sa.neighborhood, sa.city, sa.state, sa.cep)
+        if coords:
+            sa_lat, sa_lng = coords
+    except Exception:
+        pass
     if sa_lat is None or sa_lng is None:
-        try:
-            from app.utils.geocoding import geocode_address
-            full = ", ".join(x for x in [
-                f"{sa.street}, {sa.number}" if sa.number else sa.street,
-                sa.complement, sa.neighborhood, sa.city, sa.state,
-                f"CEP {sa.cep}" if sa.cep else None,
-            ] if x)
-            coords = geocode_address(full)
-            if coords:
-                sa_lat, sa_lng = coords
-        except Exception:
-            pass
+        # Fallback #1 — client-supplied (if the frontend sent them).
+        if sa.latitude is not None and sa.longitude is not None:
+            sa_lat, sa_lng = sa.latitude, sa.longitude
 
     server_price = _compute_price(body, db)
     booking_data = body.dict()
@@ -1010,8 +1014,17 @@ def report_issue(booking_id: str, reason: str = "Problema com o atendimento", db
 # ── #14: GPS Check-In/Check-Out ───────────────────────────────────────────────
 
 class CheckInRequest(BaseModel):
-    latitude:  float
-    longitude: float
+    latitude:   float
+    longitude:  float
+    # GPS bug fix (28/11/2026) — browser reports the accuracy of the position
+    # fix (meters). On a laptop without GPS hardware Chrome falls back to
+    # Wi-Fi / IP geolocation, which in Brazil frequently resolves to the ISP
+    # POP in São Paulo with accuracy in the tens of thousands of meters. The
+    # start-GPS check rejects the fix as "imprecise" when this is > 1000 m
+    # instead of showing a nonsensical 460 km distance error. Optional for
+    # backward compatibility with old frontend bundles (they just skip the
+    # accuracy gate and keep the existing soft/hard radius behaviour).
+    accuracy_m: Optional[float] = None
 
 # Rule #7 (23/11/2026) — time-gate values below are dynamic. The module-
 # level constants are fallback defaults; the real values come from
@@ -1368,13 +1381,23 @@ def _mark_late_arrival_if_applicable(booking: "Booking", db: Session, current_us
     return True
 
 
-def _check_start_gps(booking: "Booking", lat: float, lng: float, db: Session):
+def _check_start_gps(booking: "Booking", lat: float, lng: float, db: Session,
+                     accuracy_m: Optional[float] = None):
     """Soft-flag + hard-block GPS check for start/check-in.
 
     Returns (flagged: bool, distance_m: Optional[int]). Also mutates the
     booking row: writes checkin_flagged / checkin_distance so the audit
     trail is correct whether we flag or block.
 
+    - accuracy_m > 1000m        → HTTPException(400), "imprecise" message.
+                                  The browser used Wi-Fi / IP geolocation
+                                  (common on a laptop without GPS hardware);
+                                  in Brazil this frequently resolves to a
+                                  distant ISP POP, so a distance-based
+                                  verdict would be nonsense (see the
+                                  Londrina → São Paulo 460 km bug). The pro
+                                  is told to use the phone or register a
+                                  GPS exception instead.
     - distance <= 500m          → ok, not flagged
     - 500m < distance <= 2000m  → soft flag (allow), caller returns a
                                   warning to the frontend
@@ -1392,6 +1415,26 @@ def _check_start_gps(booking: "Booking", lat: float, lng: float, db: Session):
             target_lng = getattr(patient, "longitude", None) or getattr(patient, "lng", None)
     if target_lat is None or target_lng is None:
         return (False, None)
+
+    # Accuracy gate — only enforced when we have a target to measure against
+    # (if there's no target the radius check is skipped anyway, so blocking
+    # on accuracy here would pointlessly harm a legitimate pro). Threshold
+    # of 1000 m matches the ~order-of-magnitude where a Wi-Fi/IP fix starts
+    # being useless for a 500/2000 m radius judgement.
+    try:
+        acc = float(accuracy_m) if accuracy_m is not None else None
+    except (TypeError, ValueError):
+        acc = None
+    if acc is not None and acc > 1000:
+        booking.checkin_flagged = True
+        booking.checkin_distance = None
+        raise HTTPException(
+            400,
+            f"Não foi possível obter uma localização precisa (precisão de "
+            f"{round(acc)} m). Abra o app pelo celular ou registre uma "
+            f"exceção de GPS para iniciar o atendimento."
+        )
+
     try:
         distance = _haversine_meters(lat, lng, target_lat, target_lng)
     except Exception:
@@ -1449,12 +1492,14 @@ def gps_checkin(booking_id: str, body: CheckInRequest, db: Session = Depends(get
     # check-in path so it can't be used to bypass the one-shot start.
     _check_start_time_gate(booking, db)
 
-    # Store GPS, validate via helper (soft flag 500–2000m, hard block > 2km).
+    # Store GPS, validate via helper (soft flag 500–2000m, hard block > 2km,
+    # and reject with an "imprecise" message when the browser's accuracy
+    # is > 1000 m — see _check_start_gps).
     booking.checkin_lat = body.latitude
     booking.checkin_lng = body.longitude
     booking.actual_checkin = datetime.now(timezone.utc)
     booking.status = BookingStatus.professional_arrived
-    _check_start_gps(booking, body.latitude, body.longitude, db)
+    _check_start_gps(booking, body.latitude, body.longitude, db, accuracy_m=body.accuracy_m)
 
     # Late-arrival audit (matches start-service-combined behaviour).
     _mark_late_arrival_if_applicable(booking, db, current)
@@ -1648,7 +1693,7 @@ def start_service_combined(booking_id: str, body: CheckInRequest, db: Session = 
     # preserves prior behaviour for bookings created before Change 44.
     booking.checkin_lat = body.latitude
     booking.checkin_lng = body.longitude
-    flagged, distance_m = _check_start_gps(booking, body.latitude, body.longitude, db)
+    flagged, distance_m = _check_start_gps(booking, body.latitude, body.longitude, db, accuracy_m=body.accuracy_m)
 
     now_utc = datetime.now(timezone.utc)
     booking.actual_checkin = now_utc
